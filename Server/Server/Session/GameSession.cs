@@ -13,7 +13,7 @@ namespace Server
 		public override void OnConnected( EndPoint endPoint )
 		{
 			Console.WriteLine( $"[Connected] {endPoint}" );
-			Send( Encoding.UTF8.GetBytes( "Welcome to MMORPG Server" ) );
+			Send( 2, Encoding.UTF8.GetBytes( "Welcome to MMORPG Server" ) );
 		}
 
 		public override void OnDisConnected( EndPoint endPoint )
@@ -23,9 +23,14 @@ namespace Server
 
 		public override void OnRecvPacket( ArraySegment<byte> buffer )
 		{
-			string msg = Encoding.UTF8.GetString(buffer.Array, buffer.Offset, buffer.Count);
+			ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset );
+			ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + 2);
+
+			Console.WriteLine( $"[Recv Packet] Size : {size}, Id : {id}");
+
+			string msg = Encoding.UTF8.GetString(buffer.Array, buffer.Offset + 4, size - 4);
 			Console.WriteLine( $"[Recv] {msg}" );
-			Send( Encoding.UTF8.GetBytes( $"Echo: {msg}" ) );
+			Send( 3, Encoding.UTF8.GetBytes( $"Echo: {msg}" ) );
 		}
 
 		public override void OnSend( int bytes )

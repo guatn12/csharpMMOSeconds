@@ -17,8 +17,6 @@ namespace ServerCore
 		// TODO : 일단 쉬운 리스트 버퍼로 추가. - 링 버퍼로 고도화 예정.
 		private List<byte> _recvBuffer = new List<byte>();
 
-		private static ushort HeaderSize { get; } = 2;
-
 		public void Start(Socket socket)
 		{
 			_socket = socket;
@@ -48,17 +46,17 @@ namespace ServerCore
 					if(_recvBuffer.Count <4)
 						break;
 
-					byte[] sizeBytes = _recvBuffer.GetRange(0, HeaderSize).ToArray();
+					byte[] sizeBytes = _recvBuffer.GetRange(0, 2).ToArray();
 					ushort packetSize = BitConverter.ToUInt16(sizeBytes, 0);
 
 					// 패킷 전체 도착 확인
 					if(_recvBuffer.Count < packetSize)
 						break;
 
-					ArraySegment<byte> packet = new ArraySegment<byte>(_recvBuffer.GetRange(HeaderSize, packetSize).ToArray());
+					ArraySegment<byte> packet = new ArraySegment<byte>(_recvBuffer.GetRange(0, packetSize).ToArray());
 					OnRecvPacket( packet );
 
-					_recvBuffer.RemoveRange( 0, args.BytesTransferred );
+					_recvBuffer.RemoveRange( 0, packetSize );
 				}
 
 				Receive();
@@ -70,9 +68,17 @@ namespace ServerCore
 			}
 		}
 
-		public void Send( byte[] data)
+		public void Send( ushort PacketId, byte[] data)
 		{
-			_socket.Send( data );
+			ushort dataSize = (ushort)data.Length;
+			ushort packetSize = (ushort)(dataSize + 4);
+
+			byte[] sendBuffer = new byte[packetSize];
+			Buffer.BlockCopy( BitConverter.GetBytes( packetSize ), 0, sendBuffer, 0, sizeof( ushort ) );
+			Buffer.BlockCopy( BitConverter.GetBytes( PacketId ), 0, sendBuffer, 2, sizeof( ushort ) );
+			Buffer.BlockCopy( data, 0, sendBuffer, 4, dataSize );
+
+			_socket.Send( sendBuffer );
 			OnSend( data.Length );
 		}
 
