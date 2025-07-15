@@ -21,7 +21,7 @@ namespace Server
 			Console.WriteLine( $"[Disconnected] {endPoint}" );
 		}
 
-		public override void OnRecv( ArraySegment<byte> buffer )
+		public override void OnRecvPacket( ArraySegment<byte> buffer )
 		{
 			string msg = Encoding.UTF8.GetString(buffer.Array, buffer.Offset, buffer.Count);
 			Console.WriteLine( $"[Recv] {msg}" );

@@ -12,13 +12,19 @@ namespace ServerCore
 	{
 		private Socket _socket;
 		private SocketAsyncEventArgs _recvArgs = new SocketAsyncEventArgs();
-		private byte[] _buffer = new byte[1024];
+		private byte[] _ioBuffer = new byte[4096];
+
+		// TODO : 일단 쉬운 리스트 버퍼로 추가. - 링 버퍼로 고도화 예정.
+		private List<byte> _recvBuffer = new List<byte>();
+
+		private static ushort HeaderSize { get; } = 2;
 
 		public void Start(Socket socket)
 		{
 			_socket = socket;
 			_recvArgs.Completed += OnRecvCompleted;
-			_recvArgs.SetBuffer(_buffer, 0, _buffer.Length);
+			// i/o 버퍼 등록.
+			_recvArgs.SetBuffer(_ioBuffer, 0, _ioBuffer.Length);
 			Receive();
 		}
 
@@ -33,7 +39,28 @@ namespace ServerCore
 		{
 			if (args.BytesTransferred > 0 && args.SocketError == SocketError.Success)
 			{
-				OnRecv( new ArraySegment<byte>( args.Buffer, args.Offset, args.BytesTransferred ) );
+				// 수신 버퍼에 데이터 추가.
+				_recvBuffer.AddRange(new ArraySegment<byte>(args.Buffer, args.Offset, args.BytesTransferred));
+
+				while(true)
+				{
+					// 최소 헤더 사이즈 확인
+					if(_recvBuffer.Count <4)
+						break;
+
+					byte[] sizeBytes = _recvBuffer.GetRange(0, HeaderSize).ToArray();
+					ushort packetSize = BitConverter.ToUInt16(sizeBytes, 0);
+
+					// 패킷 전체 도착 확인
+					if(_recvBuffer.Count < packetSize)
+						break;
+
+					ArraySegment<byte> packet = new ArraySegment<byte>(_recvBuffer.GetRange(HeaderSize, packetSize).ToArray());
+					OnRecvPacket( packet );
+
+					_recvBuffer.RemoveRange( 0, args.BytesTransferred );
+				}
+
 				Receive();
 			}
 			else
@@ -50,7 +77,7 @@ namespace ServerCore
 		}
 
 		public abstract void OnConnected( EndPoint endPoint );
-		public abstract void OnRecv(ArraySegment<byte> buffer);
+		public abstract void OnRecvPacket(ArraySegment<byte> buffer);
 		public abstract void OnSend( int bytes );
 		public abstract void OnDisConnected(EndPoint endPoint );
 	}
