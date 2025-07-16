@@ -22,14 +22,15 @@ namespace ServerCore
 
 			for(int i = 0; i < 10; i++)
 			{
-				RegisterAccept( new SocketAsyncEventArgs() );
+				SocketAsyncEventArgs args = new SocketAsyncEventArgs();
+				args.Completed += OnAcceptComplated;
+				RegisterAccept( args );
 			}
 		}
 
 		private void RegisterAccept(SocketAsyncEventArgs args)
 		{
 			args.AcceptSocket = null;
-			args.Completed += OnAcceptComplated;
 
 			bool pending = _listenSocket.AcceptAsync(args);
 			if(pending == false)
