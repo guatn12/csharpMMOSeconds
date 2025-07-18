@@ -1,0 +1,75 @@
+syntax = "proto3";
+package Protocol;
+
+enum MsgId {
+	S_ENTER_GAME = 0;
+	S_LEAVE_GAME = 1;
+	S_SPAWN = 2;
+	S_DESPAWN = 3;
+	C_MOVE = 4;
+	S_MOVE = 5;
+	C_CHAT = 6;
+	S_CHAT = 7;
+}
+
+// 서버 -> 클라이언트
+// 게임 입장
+message S_EnterGame {
+	PlayerInfo player = 1;
+}
+
+// 서버 -> 클라이언트
+// 플레이어가 게임을 떠났을 때,
+message S_LeaveGame {
+	int64 playerId = 1;
+}
+
+// 서버 -> 클라이언트
+// 새로운 플레이어, 몬스터 등이 시야에 나왔을 때.
+message S_Spawn {
+	repeated PlayerInfo players = 1;
+}
+
+// 서버 -> 클라이언트
+// 플레이어 / 몬스터 등이 시야에서 사라졌을 때.
+message S_Despawn {
+	repeated int64 objectIds = 1;
+}
+
+// 클라이언트 -> 서버
+// 이동 했을 때 주기적으로 전송.
+message C_Move {
+	PosInfo posInfo = 1;
+}
+
+// 서버 -> 클라이언트
+// 다른 플레이어 / 몬스터가 이동했을 때 브로드 캐스팅.
+message S_Move {
+	int64 playerId = 1;
+	PosInfo posInfo = 2;
+}
+
+// 클라이언트 -> 서버
+// 클라이언트가 채팅 전송.
+message C_Chat {
+	string message = 1;
+}
+
+message S_Chat {
+	int64 playerId = 1;
+	string message = 2;
+}
+
+// --------- 공용 데이터 구조 --------- 
+
+message PlayerInfo {
+	int64 playerId = 1;
+	string name = 2;
+	PosInfo posInfo = 3;
+}
+
+message PosInfo {
+	float posX = 1;
+	float posY = 2;
+	float posZ = 3;
+}

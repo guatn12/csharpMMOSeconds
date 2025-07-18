@@ -1,13 +1,17 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.13.35913.81 d17.13
+VisualStudioVersion = 17.13.35913.81
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Server", "Server\Server.csproj", "{859C053D-EC1A-4CF4-A911-EE69FA91F70F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ServerCore", "ServerCore\ServerCore.csproj", "{078123F9-EC64-4F43-BCDC-0DE3266A24DB}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DummyClient", "DummyClient\DummyClient.csproj", "{30E03F9B-C456-488A-B8EF-436DF82A9CCC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{C8D5274F-AC00-46C7-1F8D-E88E81087A52}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PacketGenerate", "PacketGenerate\PacketGenerate.csproj", "{8858D034-B792-4B63-B6C7-2C16687CF351}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,9 +31,16 @@ Global
 		{30E03F9B-C456-488A-B8EF-436DF82A9CCC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{30E03F9B-C456-488A-B8EF-436DF82A9CCC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{30E03F9B-C456-488A-B8EF-436DF82A9CCC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8858D034-B792-4B63-B6C7-2C16687CF351}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8858D034-B792-4B63-B6C7-2C16687CF351}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8858D034-B792-4B63-B6C7-2C16687CF351}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8858D034-B792-4B63-B6C7-2C16687CF351}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{8858D034-B792-4B63-B6C7-2C16687CF351} = {C8D5274F-AC00-46C7-1F8D-E88E81087A52}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {F197E3FC-4FC6-403E-B2FA-046545917402}

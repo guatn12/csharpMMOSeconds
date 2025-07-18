@@ -134,3 +134,9 @@ $RECYCLE.BIN/
 .DS_Store
 
 _NCrunch*
+
+# Common files
+Common/Protobuf/*.cs
+Common/Protobuf/*.h
+Common/Generated/*.cs
+Common/Generated/*.h
