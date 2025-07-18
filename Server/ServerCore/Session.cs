@@ -11,31 +11,39 @@ namespace ServerCore
 	public abstract class Session
 	{
 		private Socket _socket;
+
 		private SocketAsyncEventArgs _recvArgs = new SocketAsyncEventArgs();
+		private SocketAsyncEventArgs _sendArgs = new SocketAsyncEventArgs();
 		private RingBuffer _recvBuffer;
+
+		private readonly Queue<ArraySegment<byte>> _sendQueue = new Queue<ArraySegment<byte>>();
+		private readonly object _lock = new object();
+		private bool _isSending = false;
+		private readonly List<ArraySegment<byte>> _pendingList = new List<ArraySegment<byte>>();
 
 		private const int HeaderSize = 2;
 
-		public void Start(Socket socket, int recvBufferSize = 40)
+		public void Start( Socket socket, int recvBufferSize = 4096 )
 		{
 			_socket = socket;
 			_recvArgs.Completed += OnRecvCompleted;
-			_recvBuffer = new RingBuffer(recvBufferSize);
+
+			_recvBuffer = new RingBuffer( recvBufferSize );
 			Receive();
 		}
 
 		private void Receive()
 		{
 			// TODO : 임시로 버퍼 사이즈를 줄여서 테스트하는 중 버퍼가 가득차게 되면 stream을 처리하지 못하는 현상 발생으로 예외처리. 수정이 필요하다.
-			if (_recvBuffer.FreeSize == 0)
+			if(_recvBuffer.FreeSize == 0)
 			{
 				Console.WriteLine( "Receive buffer is full. Closing Session." );
-				close();
+				Close();
 				return;
 			}
 
 			ArraySegment<byte> argsBuffer = _recvBuffer.WriteSegment();
-			_recvArgs.SetBuffer(argsBuffer.Array, argsBuffer.Offset, argsBuffer.Count);
+			_recvArgs.SetBuffer( argsBuffer.Array, argsBuffer.Offset, argsBuffer.Count );
 
 			try
 			{
@@ -43,16 +51,16 @@ namespace ServerCore
 				if(!pending)
 					OnRecvCompleted( null, _recvArgs );
 			}
-			catch( Exception ex )
+			catch(Exception ex)
 			{
-				Console.WriteLine($"Receive Failed {ex}");
+				Console.WriteLine( $"Receive Failed {ex}" );
 			}
-			
+
 		}
 
-		private void OnRecvCompleted(object sender, SocketAsyncEventArgs args)
+		private void OnRecvCompleted( object sender, SocketAsyncEventArgs args )
 		{
-			if (args.BytesTransferred > 0 && args.SocketError == SocketError.Success)
+			if(args.BytesTransferred > 0 && args.SocketError == SocketError.Success)
 			{
 				try
 				{
@@ -72,7 +80,7 @@ namespace ServerCore
 						if(_recvBuffer.Capacity < packetSize)
 						{
 							Console.WriteLine( $"Packet Size ({packetSize}) exceeds buffer capacity. Closing session." );
-							close();
+							Close();
 							return;
 						}
 
@@ -88,20 +96,20 @@ namespace ServerCore
 
 					Receive();
 				}
-				catch (Exception ex)
+				catch(Exception ex)
 				{
-					Console.WriteLine($"OnRecvComplated Failed : {ex}");
+					Console.WriteLine( $"OnRecvComplated Failed : {ex}" );
 				}
 
-				
+
 			}
 			else
 			{
-				close();
+				Close();
 			}
 		}
 
-		public void Send( ushort PacketId, byte[] data)
+		public void Send( ushort PacketId, byte[] data )
 		{
 			ushort dataSize = (ushort)data.Length;
 			ushort packetSize = (ushort)(dataSize + 4);
@@ -111,32 +119,124 @@ namespace ServerCore
 			Buffer.BlockCopy( BitConverter.GetBytes( PacketId ), 0, sendBuffer, 2, sizeof( ushort ) );
 			Buffer.BlockCopy( data, 0, sendBuffer, 4, dataSize );
 
-			try
+			ArraySegment<byte> sendSegment = new ArraySegment<byte>(sendBuffer);
+
+			lock(_lock)
 			{
-				_socket.Send( sendBuffer );
-				OnSend( data.Length );
+				_sendQueue.Enqueue( sendSegment );
+				// 다른 스레드가 Sending을 진행 중인지 확인.
+				if(!_isSending)
+					ProcessSend();
 			}
-			catch (Exception ex)
-			{
-				Console.WriteLine($"Send Failed: {ex}");
-				close();
-			}
-			
 		}
 
-		private void close()
+		private void ProcessSend()
+		{
+			if(_socket == null || !_socket.Connected)
+			{
+				Close();
+				return;
+			}
+
+			lock(_lock)
+			{
+				if(_isSending)
+					return;
+
+				_pendingList.Clear();
+
+				while(0 < _sendQueue.Count)
+				{
+					ArraySegment<byte> segment = _sendQueue.Dequeue();
+					_pendingList.Add( segment );
+				}
+
+				if(_pendingList.Count == 0)
+					return;
+
+				_sendArgs.BufferList = _pendingList;
+				_isSending = true;
+			}
+
+			try
+			{
+				bool pending = _socket.SendAsync(_sendArgs);
+				if(!pending)
+					OnSendCompleted(null, _sendArgs);
+			}
+			catch(Exception ex)
+			{
+				Console.WriteLine( $"Send Failed: {ex}" );
+			}
+		}
+
+		private void OnSendCompleted(object sender, SocketAsyncEventArgs args)
+		{
+			lock(_lock)
+			{
+				if( 0 < args.BytesTransferred || args.SocketError == SocketError.Success)
+				{
+					try
+					{
+						_sendArgs.BufferList = null;
+						_pendingList.Clear();
+
+						OnSend( args.BytesTransferred );
+
+						if(0 < _sendQueue.Count)
+						{
+							ProcessSend();
+						}
+						else
+						{
+							_isSending = false;
+						}
+					}
+					catch(Exception ex)
+					{
+						Console.WriteLine($"OnSendCompleted Failed: {ex}");
+						Close();
+					}
+				}
+				else
+				{
+					Close();
+				}
+			}
+		}
+
+		private void Close()
 		{
 			if(_socket == null)
 				return;
 
-			OnDisConnected(_socket.RemoteEndPoint );
+			try
+			{
+				OnDisConnected( _socket.RemoteEndPoint );
+				_socket.Shutdown( SocketShutdown.Both );
+			}
+			catch(Exception ex)
+			{
+				// 이미 종료된 오류는 무시.
+			}
+			
 			_socket.Close();
+			Clear();
+		}
+
+		private void Clear()
+		{
+			lock( _lock)
+			{
+				_pendingList.Clear();
+				_sendQueue.Clear();
+			}
 			_socket = null;
 		}
 
 		public abstract void OnConnected( EndPoint endPoint );
-		public abstract void OnRecvPacket(ArraySegment<byte> buffer);
+		public abstract void OnRecvPacket( ArraySegment<byte> buffer );
 		public abstract void OnSend( int bytes );
-		public abstract void OnDisConnected(EndPoint endPoint );
+		public abstract void OnDisConnected( EndPoint endPoint );
 	}
 }
