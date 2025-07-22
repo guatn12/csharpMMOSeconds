@@ -1,4 +1,5 @@
-﻿using ServerCore;
+﻿using Google.Protobuf;
+using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,10 +11,20 @@ namespace Server
 {
 	public class GameSession : Session
 	{
+		public int SessionId { get; private set; }
+
+		public void Send(IMessage packet)
+		{
+			ArraySegment<byte> segment = Program.PacketManagerInstance.MakeSendPacket(packet);
+
+			base.Send( segment );
+		}
+
 		public override void OnConnected( EndPoint endPoint )
 		{
 			Console.WriteLine( $"[Connected] {endPoint}" );
-			Send( 2, Encoding.UTF8.GetBytes( "Welcome to MMORPG Server" ) );
+			//Send( 2, Encoding.UTF8.GetBytes( "Welcome to MMORPG Server" ) );
+			// TODO : 클라이언트에게 입장 패킷 전송.
 		}
 
 		public override void OnDisConnected( EndPoint endPoint )
@@ -23,14 +34,7 @@ namespace Server
 
 		public override void OnRecvPacket( ArraySegment<byte> buffer )
 		{
-			ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset );
-			ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + 2);
-
-			Console.WriteLine( $"[Recv Packet] Size : {size}, Id : {id}");
-
-			string msg = Encoding.UTF8.GetString(buffer.Array, buffer.Offset + 4, size - 4);
-			Console.WriteLine( $"[Recv] {msg}" );
-			Send( 3, Encoding.UTF8.GetBytes( $"Echo: {msg}" ) );
+			Program.PacketManagerInstance.HandlePacket( this, buffer );
 		}
 
 		public override void OnSend( int bytes )

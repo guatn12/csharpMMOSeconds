@@ -71,6 +71,7 @@
    xcopy /Y /Q Gen_Client_PacketID.cs "%CLIENT_GENERATED_DEST_DIR%"
    xcopy /Y /Q Gen_Client_PacketManager.cs "%CLIENT_GENERATED_DEST_DIR%"
    xcopy /Y /Q Gen_PacketID.h "%CLIENT_GENERATED_DEST_DIR%"
+   xcopy /Y /Q Protocol.cs "%CLIENT_GENERATED_DEST_DIR%"
    REM ECHO  -> Client files copied.
    REM ECHO.
    

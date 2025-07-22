@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.31.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.7" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.7" />
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.7" />
@@ -34,7 +35,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Packet\" />
+    <Compile Include="../../Common/Protobuf/Protocol.cs" Link="Packet/Protocol.cs" />
   </ItemGroup>
 
 </Project>

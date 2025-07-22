@@ -1,4 +1,5 @@
-﻿using ServerCore;
+﻿using Google.Protobuf;
+using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,8 +9,17 @@ using System.Threading.Tasks;
 
 namespace DummyClient
 {
-	public class ServerSesssion : Session
+	public class ServerSession : Session
 	{
+		public int DummyId { get; private set; }
+
+		public void Send( IMessage packet )
+		{
+			ArraySegment<byte> segment = Program.PacketManagerInstance.MakeSendPacket(packet);
+
+			base.Send( segment );
+		}
+
 		public override void OnConnected( EndPoint endPoint )
 		{
 			Console.WriteLine( $"OnConnected: {endPoint}" );
@@ -25,10 +35,7 @@ namespace DummyClient
 		public override void OnRecvPacket( ArraySegment<byte> buffer )
 		{
 			// 서버 패킷 처리.
-			ushort packetSize = BitConverter.ToUInt16(buffer.Array, buffer.Offset);
-			ushort packetId = BitConverter.ToUInt16(buffer.Array, buffer.Offset+2);
-			string msg = Encoding.UTF8.GetString(buffer.Array, buffer.Offset+4, packetSize-4);
-			Console.WriteLine( $"[From Server] Packet ID: {packetId}, Size:{packetSize}, Message: {msg}" );
+			Program.PacketManagerInstance.HandlePacket( this, buffer );
 		}
 
 		public override void OnSend( int bytes )

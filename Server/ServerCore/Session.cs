@@ -109,21 +109,11 @@ namespace ServerCore
 			}
 		}
 
-		public void Send( ushort PacketId, byte[] data )
+		protected void Send( ArraySegment<byte> sendBuffer )
 		{
-			ushort dataSize = (ushort)data.Length;
-			ushort packetSize = (ushort)(dataSize + 4);
-
-			byte[] sendBuffer = new byte[packetSize];
-			Buffer.BlockCopy( BitConverter.GetBytes( packetSize ), 0, sendBuffer, 0, sizeof( ushort ) );
-			Buffer.BlockCopy( BitConverter.GetBytes( PacketId ), 0, sendBuffer, 2, sizeof( ushort ) );
-			Buffer.BlockCopy( data, 0, sendBuffer, 4, dataSize );
-
-			ArraySegment<byte> sendSegment = new ArraySegment<byte>(sendBuffer);
-
 			lock(_lock)
 			{
-				_sendQueue.Enqueue( sendSegment );
+				_sendQueue.Enqueue( sendBuffer );
 				// 다른 스레드가 Sending을 진행 중인지 확인.
 				if(!_isSending)
 					ProcessSend();
@@ -205,7 +195,7 @@ namespace ServerCore
 			}
 		}
 
-		private void Close()
+		public void Close()
 		{
 			if(_socket == null)
 				return;

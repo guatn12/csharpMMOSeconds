@@ -6,6 +6,7 @@ using System.Threading;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
 using ServerCore;
+using Protocol;
 
 namespace DummyClient
 {
@@ -17,7 +18,8 @@ namespace DummyClient
 
 	internal class Program
 	{
-		public static ServerSesssion Session;
+		public static ServerSession Session;
+		public static PacketManager PacketManagerInstance { get; private set; }
 
 		static void Main( string[] args )
 		{
@@ -34,7 +36,10 @@ namespace DummyClient
 			IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse(settings.Host), settings.Port);
 			Connector connector = new Connector();
 
-			connector.Connect( endPoint, () => new ServerSesssion() );
+			IPacketHandler packetHandler = new ClientPacketHandler();
+			PacketManagerInstance = new PacketManager( packetHandler );
+
+			connector.Connect( endPoint, () => new ServerSession() );
 
 			while(true)
 			{
@@ -45,10 +50,10 @@ namespace DummyClient
 				}
 
 				Console.WriteLine( "\n------------------------------------" );
-				Console.WriteLine( "테스트를 선택하세요:" );
-				Console.WriteLine( "1. 작은 패킷 5개 동시 전송 (1회)" );
-				Console.WriteLine( "2. 큰 패킷 1개 전송 (1회)" );
-				Console.WriteLine( "3. [반복] 전체 테스트 랜덤 실행 (중지: 아무 키)" );
+				Console.WriteLine( "전송할 패킷을 선택하세요:" );
+				Console.WriteLine( "1. 이동 (C_Move)" );
+				Console.WriteLine( "2. 채팅 (C_Chat)" );
+				Console.WriteLine( "3. ALL 랜덤 테스트" );
 				Console.WriteLine( "Q. 종료" );
 				Console.Write( "> " );
 
@@ -61,11 +66,11 @@ namespace DummyClient
 				switch(input)
 				{
 				case "1":
-					RunTest( settings, TestScenario.SmallPackets );
+					RunTest( TestScenario.C_MOVE );
 					break;
 
 				case "2":
-					RunTest( settings, TestScenario.LargePacket );
+					RunTest( TestScenario.C_CHAT );
 					break;
 
 				case "3":
@@ -76,11 +81,11 @@ namespace DummyClient
 						// 0 또는 1을 랜덤하게 생성하여 테스트 선택
 						if(rand.Next( 0, 2 ) == 0)
 						{
-							RunTest( settings, TestScenario.SmallPackets );
+							RunTest( TestScenario.C_MOVE );
 						}
 						else
 						{
-							RunTest( settings, TestScenario.LargePacket );
+							RunTest( TestScenario.RANDOMCHAT );
 						}
 						Thread.Sleep( 100 ); // 0.1초 간격
 					}
@@ -100,32 +105,44 @@ namespace DummyClient
 
 		enum TestScenario
 		{
-			SmallPackets,
-			LargePacket
+			C_MOVE,
+			C_CHAT,
+			RANDOMCHAT,
 		}
 
-		static void RunTest( ConnectionSettings settings, TestScenario scenario )
+		static void RunTest( TestScenario scenario )
 		{
 			switch(scenario)
 			{
-			case TestScenario.SmallPackets:
-				Console.WriteLine( "[테스트 1] 5개의 작은 패킷을 연속으로 전송합니다..." );
-				for (int i = 0; i < 5; i++)
+			case TestScenario.C_MOVE:
+				C_Move movePacket = new C_Move()
 				{
-					string message = $"Test{i}";
-					byte[] data = Encoding.UTF8.GetBytes( message );
-					Session.Send( (ushort)i, data );
-				}
-				
-				Console.WriteLine( $" -> 5개 패킷 전송 완료." );
+					PosInfo = new PosInfo() {PosX = 1, PosY = 2, PosZ = 3},
+				};
+				Session.Send( movePacket );
+				Console.WriteLine( "[Send] C_Move" );
 				break;
 
-			case TestScenario.LargePacket:
-				Console.WriteLine( "[테스트 2] 1개의 큰 패킷(33바이트)을 전송합니다..." );
-				string largeMessage = "This is a very big packet data!";
-				byte[] largePacket = Encoding.UTF8.GetBytes( largeMessage );
-				Session.Send( 100, largePacket );
-				Console.WriteLine( $" -> {largePacket.Length + 4} 바이트 전송 완료." );
+			case TestScenario.C_CHAT:
+				Console.WriteLine( "채팅 메시지 입력: " );
+				string message = Console.ReadLine();
+				if(string.IsNullOrEmpty( message ))
+				{
+					Console.WriteLine( "메시지가 비어있습니다." );
+					return;
+				}
+
+				C_Chat chat = new C_Chat() { Message = message };
+				Session.Send( chat );
+				Console.WriteLine( $"[Send] C_Chat: {message}" );
+				break;
+			case TestScenario.RANDOMCHAT:
+				Random rand = new Random();
+
+				string randomchat = rand.NextInt64().ToString();
+				C_Chat ranChat = new C_Chat() {Message = randomchat};
+				Session.Send( ranChat );
+				Console.WriteLine($"[Send] C_Chat: {ranChat}");
 				break;
 			}
 		}

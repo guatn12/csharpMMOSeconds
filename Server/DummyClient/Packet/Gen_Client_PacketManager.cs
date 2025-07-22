@@ -6,34 +6,51 @@ using System;
 using System.Collections.Generic;
 using Google.Protobuf;
 
-public partial class PacketManager
+public class PacketManager
 {
-	public static PacketManager Instance { get; } = new PacketManager();
-	Dictionary<ushort, Action<PacketSession, ArraySegment<byte>>> _onRecv = new Dictionary<ushort, Action<PacketSession, ArraySegment<byte>>>();
+	IPacketHandler _handler;
+	Dictionary<ushort, Action<Session, ArraySegment<byte>>> _onRecv = new Dictionary<ushort, Action<Session, ArraySegment<byte>>>();
 	Dictionary<ushort, Func<IMessage, ArraySegment<byte>>> _makePacket = new Dictionary<ushort, Func<IMessage, ArraySegment<byte>>>();
+	Dictionary<Type, PacketID> _packetTypeToId = new Dictionary<Type, PacketID>();
 
-	PacketManager() { Register(); }
+	public PacketManager( IPacketHandler handler )
+	{
+		_handler = handler;
+		Register();
+	}
+
 	// 핸들러 자동 등록
 	public void Register()
 	{
-		_makePacket.Add((ushort)PacketID.S_ENTER_GAME, MakeSendPacket);
-		_onRecv.Add((ushort)PacketID.S_ENTER_GAME, (s, b) => HandlePacket<Protocol.S_ENTER_GAME>(s, b, On_S_ENTER_GAME));
-		_makePacket.Add((ushort)PacketID.S_LEAVE_GAME, MakeSendPacket);
-		_onRecv.Add((ushort)PacketID.S_LEAVE_GAME, (s, b) => HandlePacket<Protocol.S_LEAVE_GAME>(s, b, On_S_LEAVE_GAME));
-		_makePacket.Add((ushort)PacketID.S_SPAWN, MakeSendPacket);
-		_onRecv.Add((ushort)PacketID.S_SPAWN, (s, b) => HandlePacket<Protocol.S_SPAWN>(s, b, On_S_SPAWN));
-		_makePacket.Add((ushort)PacketID.S_DESPAWN, MakeSendPacket);
-		_onRecv.Add((ushort)PacketID.S_DESPAWN, (s, b) => HandlePacket<Protocol.S_DESPAWN>(s, b, On_S_DESPAWN));
-		_makePacket.Add((ushort)PacketID.C_MOVE, MakeSendPacket);
-		_makePacket.Add((ushort)PacketID.S_MOVE, MakeSendPacket);
-		_onRecv.Add((ushort)PacketID.S_MOVE, (s, b) => HandlePacket<Protocol.S_MOVE>(s, b, On_S_MOVE));
-		_makePacket.Add((ushort)PacketID.C_CHAT, MakeSendPacket);
-		_makePacket.Add((ushort)PacketID.S_CHAT, MakeSendPacket);
-		_onRecv.Add((ushort)PacketID.S_CHAT, (s, b) => HandlePacket<Protocol.S_CHAT>(s, b, On_S_CHAT));
+		_onRecv.Add( (ushort)PacketID.S_EnterGame, ( s, b ) => HandlePacket<Protocol.S_EnterGame>( s, b, _handler.On_S_EnterGame ) );
+		_onRecv.Add( (ushort)PacketID.S_LeaveGame, ( s, b ) => HandlePacket<Protocol.S_LeaveGame>( s, b, _handler.On_S_LeaveGame ) );
+		_onRecv.Add( (ushort)PacketID.S_Spawn, ( s, b ) => HandlePacket<Protocol.S_Spawn>( s, b, _handler.On_S_Spawn ) );
+		_onRecv.Add( (ushort)PacketID.S_Despawn, ( s, b ) => HandlePacket<Protocol.S_Despawn>( s, b, _handler.On_S_Despawn ) );
+		_makePacket.Add((ushort)PacketID.C_Move, MakeSendPacket);
+		_packetTypeToId.Add( typeof( Protocol.C_Move ), PacketID.C_Move );
+		_onRecv.Add( (ushort)PacketID.S_Move, ( s, b ) => HandlePacket<Protocol.S_Move>( s, b, _handler.On_S_Move ) );
+		_makePacket.Add((ushort)PacketID.C_Chat, MakeSendPacket);
+		_packetTypeToId.Add( typeof( Protocol.C_Chat ), PacketID.C_Chat );
+		_onRecv.Add( (ushort)PacketID.S_Chat, ( s, b ) => HandlePacket<Protocol.S_Chat>( s, b, _handler.On_S_Chat ) );
+	}
+
+	// 패킷 진입 처리점
+	public void HandlePacket( Session session, ArraySegment<byte> buffer )
+	{
+		ushort count = 0;
+		ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);
+		count += 2;
+		ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + count);
+		count += 2;
+
+		if(_onRecv.TryGetValue( id, out var action ))
+		{
+			action.Invoke( session, new ArraySegment<byte>( buffer.Array, buffer.Offset + count, size - count ) );
+		}
 	}
 
 	 // 패킷 처리 로직
-	void HandlePacket<T>(PacketSession session, ArraySegment<byte> buffer, Action<PacketSession, T> handler) where T : Imessage, new()
+	private void HandlePacket<T>(Session session, ArraySegment<byte> buffer, Action<Session, T> handler) where T : IMessage, new()
 	{
 		T pkt = new T();
 		pkt.MergeFrom(buffer);
@@ -41,22 +58,18 @@ public partial class PacketManager
 	}
 
 	// 신규 패킷 생성 로직
-	ArraySegment<byte> MakeSendPacket(IMessage Packet)
+	public ArraySegment<byte> MakeSendPacket(IMessage Packet)
 	{
-		ushort packetId = (ushort)Enum.Parse<PacketID>(packet.Descriptor.Name);
-		ushort size = (ushort)packet.CalculateSize();
+		PacketID packetId;
+		bool getValue = _packetTypeToId.TryGetValue( Packet.GetType(), out packetId );
+		if (!getValue)
+			return new ArraySegment<byte>();
+		ushort size = (ushort)Packet.CalculateSize();
 		byte[] buffer = new byte[size+4];
 		Array.Copy(BitConverter.GetBytes((ushort)(size + 4)), 0, buffer, 0, sizeof(ushort));
-		Array.Copy(BitConverter.GetBytes(packetId), 0, buffer, 2, sizeof(ushort));
-		packet.WriteTo(new System.IO.MemoryStream(buffer, 4, size));
+		Array.Copy(BitConverter.GetBytes((ushort)packetId), 0, buffer, 2, sizeof(ushort));
+		Packet.WriteTo(new System.IO.MemoryStream(buffer, 4, size));
 		return new ArraySegment<byte>(buffer);
 	}
 
-	 // partial 함수 선언부
-	partial void On_S_ENTER_GAME(PacketSession session, Protocol.S_ENTER_GAME packet);
-	partial void On_S_LEAVE_GAME(PacketSession session, Protocol.S_LEAVE_GAME packet);
-	partial void On_S_SPAWN(PacketSession session, Protocol.S_SPAWN packet);
-	partial void On_S_DESPAWN(PacketSession session, Protocol.S_DESPAWN packet);
-	partial void On_S_MOVE(PacketSession session, Protocol.S_MOVE packet);
-	partial void On_S_CHAT(PacketSession session, Protocol.S_CHAT packet);
 }

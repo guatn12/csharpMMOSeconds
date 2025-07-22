@@ -3,12 +3,12 @@
 
 public enum PacketID
 {
-	S_ENTER_GAME = 0,
-	S_LEAVE_GAME = 1,
-	S_SPAWN = 2,
-	S_DESPAWN = 3,
-	C_MOVE = 4,
-	S_MOVE = 5,
-	C_CHAT = 6,
-	S_CHAT = 7,
+	S_EnterGame = 0,
+	S_LeaveGame = 1,
+	S_Spawn = 2,
+	S_Despawn = 3,
+	C_Move = 4,
+	S_Move = 5,
+	C_Chat = 6,
+	S_Chat = 7,
 }

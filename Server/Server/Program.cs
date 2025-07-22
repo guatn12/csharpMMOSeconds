@@ -16,6 +16,8 @@ namespace Server
 
 	internal class Program
 	{
+		static Listener _listener = new Listener();
+		public static PacketManager PacketManagerInstance { get; private set; }
 		static void Main( string[] args )
 		{
 			// 환경 변수 가져오기
@@ -46,8 +48,10 @@ namespace Server
 
 			IPEndPoint endPoint = new IPEndPoint(ipAddr, settings.Port);
 
-			Listerner listerner = new Listerner();
-			listerner.Init( endPoint, () => new GameSession(), settings.ListenBacklog );
+			IPacketHandler handler = new ServerPacketHandler();
+			PacketManagerInstance = new PacketManager( handler );
+
+			_listener.Init( endPoint, () => new GameSession(), settings.ListenBacklog );
 
 			
 			Console.WriteLine( "Linstening..." );
