@@ -1,6 +1,15 @@
 syntax = "proto3";
 package Protocol;
 
+import "google/protobuf/descriptor.proto"; // descriptor를 사용하기 위해 import
+
+// 1. 커스텀 옵션을 정의.
+//    'string' 타입이고, 'handler_name'이라는 이름을 가지며,
+//    500001번 필드 번호를 사용합니다. (충돌을 피하기 위해 높은 번호 사용)
+extend google.protobuf.MessageOptions {
+	string handler_name = 500001;
+}
+
 enum MsgId {
 	S_ENTER_GAME = 0;
 	S_LEAVE_GAME = 1;
@@ -15,36 +24,42 @@ enum MsgId {
 // 서버 -> 클라이언트
 // 게임 입장
 message S_EnterGame {
+	option (handler_name) = "SystemPacketHandler";
 	PlayerInfo player = 1;
 }
 
 // 서버 -> 클라이언트
 // 플레이어가 게임을 떠났을 때,
 message S_LeaveGame {
+	option (handler_name) = "SystemPacketHandler";
 	int64 playerId = 1;
 }
 
 // 서버 -> 클라이언트
 // 새로운 플레이어, 몬스터 등이 시야에 나왔을 때.
 message S_Spawn {
+	option (handler_name) = "GamePlayPacketHandler";
 	repeated PlayerInfo players = 1;
 }
 
 // 서버 -> 클라이언트
 // 플레이어 / 몬스터 등이 시야에서 사라졌을 때.
 message S_Despawn {
+	option (handler_name) = "GamePlayPacketHandler";
 	repeated int64 objectIds = 1;
 }
 
 // 클라이언트 -> 서버
 // 이동 했을 때 주기적으로 전송.
 message C_Move {
+	option (handler_name) = "MovementPacketHandler";
 	PosInfo posInfo = 1;
 }
 
 // 서버 -> 클라이언트
 // 다른 플레이어 / 몬스터가 이동했을 때 브로드 캐스팅.
 message S_Move {
+	option (handler_name) = "MovementPacketHandler";
 	int64 playerId = 1;
 	PosInfo posInfo = 2;
 }
@@ -52,10 +67,12 @@ message S_Move {
 // 클라이언트 -> 서버
 // 클라이언트가 채팅 전송.
 message C_Chat {
+	option (handler_name) = "ChatPacketHandler";
 	string message = 1;
 }
 
 message S_Chat {
+	option (handler_name) = "ChatPacketHandler";
 	int64 playerId = 1;
 	string message = 2;
 }

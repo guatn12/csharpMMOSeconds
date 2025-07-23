@@ -5,6 +5,7 @@ using ServerCore;
 using System;
 using System.Collections.Generic;
 using Google.Protobuf;
+using Protocol;
 
 public class PacketManager
 {
@@ -22,16 +23,16 @@ public class PacketManager
 	// 핸들러 자동 등록
 	public void Register()
 	{
-		_onRecv.Add( (ushort)PacketID.S_EnterGame, ( s, b ) => HandlePacket<Protocol.S_EnterGame>( s, b, _handler.On_S_EnterGame ) );
-		_onRecv.Add( (ushort)PacketID.S_LeaveGame, ( s, b ) => HandlePacket<Protocol.S_LeaveGame>( s, b, _handler.On_S_LeaveGame ) );
-		_onRecv.Add( (ushort)PacketID.S_Spawn, ( s, b ) => HandlePacket<Protocol.S_Spawn>( s, b, _handler.On_S_Spawn ) );
-		_onRecv.Add( (ushort)PacketID.S_Despawn, ( s, b ) => HandlePacket<Protocol.S_Despawn>( s, b, _handler.On_S_Despawn ) );
+		_onRecv.Add( (ushort)PacketID.S_EnterGame, ( s, b ) => HandlePacket<Protocol.S_EnterGame>( s, b, _handler.SystemPacketHandler.On_S_EnterGame ) );
+		_onRecv.Add( (ushort)PacketID.S_LeaveGame, ( s, b ) => HandlePacket<Protocol.S_LeaveGame>( s, b, _handler.SystemPacketHandler.On_S_LeaveGame ) );
+		_onRecv.Add( (ushort)PacketID.S_Spawn, ( s, b ) => HandlePacket<Protocol.S_Spawn>( s, b, _handler.GamePlayPacketHandler.On_S_Spawn ) );
+		_onRecv.Add( (ushort)PacketID.S_Despawn, ( s, b ) => HandlePacket<Protocol.S_Despawn>( s, b, _handler.GamePlayPacketHandler.On_S_Despawn ) );
 		_makePacket.Add((ushort)PacketID.C_Move, MakeSendPacket);
 		_packetTypeToId.Add( typeof( Protocol.C_Move ), PacketID.C_Move );
-		_onRecv.Add( (ushort)PacketID.S_Move, ( s, b ) => HandlePacket<Protocol.S_Move>( s, b, _handler.On_S_Move ) );
+		_onRecv.Add( (ushort)PacketID.S_Move, ( s, b ) => HandlePacket<Protocol.S_Move>( s, b, _handler.MovementPacketHandler.On_S_Move ) );
 		_makePacket.Add((ushort)PacketID.C_Chat, MakeSendPacket);
 		_packetTypeToId.Add( typeof( Protocol.C_Chat ), PacketID.C_Chat );
-		_onRecv.Add( (ushort)PacketID.S_Chat, ( s, b ) => HandlePacket<Protocol.S_Chat>( s, b, _handler.On_S_Chat ) );
+		_onRecv.Add( (ushort)PacketID.S_Chat, ( s, b ) => HandlePacket<Protocol.S_Chat>( s, b, _handler.ChatPacketHandler.On_S_Chat ) );
 	}
 
 	// 패킷 진입 처리점

@@ -1,7 +1,9 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Collections.Generic; // Added for List<Tuple> and HashSet
+using System.Linq; // Added for Distinct
 
 namespace PacketGenerator
 {
@@ -42,13 +44,13 @@ namespace PacketGenerator
 			return null;
 		}
 
-		static void ParseProto(string protoText, string outputDir )
+		static void ParseProto(string protoText, string outputDir)
 		{
 			// 정규식을 사용하여 MsgId enum 블록 추출
 			Match idMatch = Regex.Match(protoText, @"enum\s+MsgId\s*\{([\s\S]*?)\}");
-			if(!idMatch.Success)
+			if (!idMatch.Success)
 			{
-				Console.WriteLine( "Could not find MsgId enum in .proto file." );
+				Console.WriteLine("Could not find MsgId enum in .proto file.");
 				return;
 			}
 
@@ -58,30 +60,53 @@ namespace PacketGenerator
 			var idRegex = new Regex(@"(\w+)\s*=\s*(\d+);");
 			var matches = idRegex.Matches(idBlock);
 
+			// Extract message names and their handler_name options
+			List<Tuple<string, string, string>> packetInfoList = new List<Tuple<string, string, string>>();
+			Regex messageRegex = new Regex(@"message\s+(\w+)\s*\{[^}]*?option\s+\(handler_name\)\s*=\s*""(\w+)"";", RegexOptions.Singleline);
+			MatchCollection messageMatches = messageRegex.Matches(protoText);
+
+			foreach (Match messageMatch in messageMatches)
+			{
+				string messageName = messageMatch.Groups[1].Value.Trim(); // Add .Trim() here
+				string handlerName = messageMatch.Groups[2].Value;
+				string packetType = "";
+				if (messageName.StartsWith("C_"))
+				{
+					packetType = "C_";
+				}
+				else if (messageName.StartsWith("S_"))
+				{
+					packetType = "S_";
+				}
+				packetInfoList.Add(Tuple.Create(messageName, handlerName, packetType));
+			}
+
 			// 서버용 PacketID enum 생성
 			StringBuilder serverPacketEnum = new StringBuilder();
-			GeneratePacketEnum( matches, serverPacketEnum, "Server" );
-			File.WriteAllText( "Gen_Server_PacketID.cs", serverPacketEnum.ToString() );
+			GeneratePacketEnum(matches, serverPacketEnum, "Server");
+			File.WriteAllText("Gen_Server_PacketID.cs", serverPacketEnum.ToString());
 
 			// 클라이언트(unity)용 PacketID enum 생성
 			StringBuilder clientPacketEnum = new StringBuilder();
-			GeneratePacketEnum( matches, clientPacketEnum, "Client" );
-			File.WriteAllText( "Gen_Client_PacketID.cs", clientPacketEnum.ToString() );
+			GeneratePacketEnum(matches, clientPacketEnum, "Client");
+			File.WriteAllText("Gen_Client_PacketID.cs", clientPacketEnum.ToString());
 
 			// 서버용 PacketManager 생성
 			StringBuilder ServerManager = new StringBuilder();
-			GeneratePacketManager( matches, ServerManager, "Server" );
-			File.WriteAllText ( "Gen_Server_PacketManager.cs", ServerManager.ToString() );
+			GeneratePacketManager(matches, ServerManager, "Server", packetInfoList);
+			File.WriteAllText("Gen_Server_PacketManager.cs", ServerManager.ToString());
 
 			// 클라이언트(unity)용 Packetmanager 생성
 			StringBuilder ClientManager = new StringBuilder();
-			GeneratePacketManager( matches, ClientManager, "Client" );
-			File.WriteAllText( "Gen_Client_PacketManager.cs", ClientManager.ToString() );
+			GeneratePacketManager(matches, ClientManager, "Client", packetInfoList);
+			File.WriteAllText("Gen_Client_PacketManager.cs", ClientManager.ToString());
 
 			// 클라이언트(unreal)용 c++ 헤더 생성
 			StringBuilder unrealHeader = new StringBuilder();
-			GenerateUnrealHeader( matches, unrealHeader );
-			File.WriteAllText( "Gen_PacketID.h", unrealHeader.ToString() );
+			GenerateUnrealHeader(matches, unrealHeader);
+			File.WriteAllText("Gen_PacketID.h", unrealHeader.ToString());
+
+			// Generate IPacketHandler interfaces (Removed calls to GenerateIPacketHandler)
 		}
 
 		static void GeneratePacketEnum (MatchCollection matches, StringBuilder sb, string target)
@@ -100,7 +125,7 @@ namespace PacketGenerator
 			sb.AppendLine( "}" );
 		}
 
-		static void GeneratePacketManager(MatchCollection matches, StringBuilder sb, string target)
+		static void GeneratePacketManager(MatchCollection matches, StringBuilder sb, string target, List<Tuple<string, string, string>> packetInfoList)
 		{
 			sb.AppendLine( "// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다." );
 			sb.AppendLine( $"// Target: {target}" );
@@ -109,18 +134,18 @@ namespace PacketGenerator
 			sb.AppendLine( "using System;" );
 			sb.AppendLine( "using System.Collections.Generic;" );
 			sb.AppendLine( "using Google.Protobuf;" );
-			//sb.AppendLine( "using Protocol;" );
+			sb.AppendLine( "using Protocol;" ); // Added using Protocol;
 			sb.AppendLine();
 			sb.AppendLine( "public class PacketManager" );
 			sb.AppendLine( "{" );
-			sb.AppendLine( "\tIPacketHandler _handler;" );
+			sb.AppendLine( "\tIPacketHandler _handler;" ); // Changed back to IPacketHandler
 			sb.AppendLine( "\tDictionary<ushort, Action<Session, ArraySegment<byte>>> _onRecv = new Dictionary<ushort, Action<Session, ArraySegment<byte>>>();" );
 			sb.AppendLine( "\tDictionary<ushort, Func<IMessage, ArraySegment<byte>>> _makePacket = new Dictionary<ushort, Func<IMessage, ArraySegment<byte>>>();" );
 			sb.AppendLine( "\tDictionary<Type, PacketID> _packetTypeToId = new Dictionary<Type, PacketID>();" );
 			sb.AppendLine();
-			sb.AppendLine( "\tpublic PacketManager( IPacketHandler handler )" );
+			sb.AppendLine( "\tpublic PacketManager( IPacketHandler handler )" ); // Changed constructor parameter
 			sb.AppendLine( "\t{" );
-			sb.AppendLine( "\t\t_handler = handler;" );
+			sb.AppendLine( "\t\t_handler = handler;" ); // Assign handler
 			sb.AppendLine( "\t\tRegister();" );
 			sb.AppendLine( "\t}" );
 			sb.AppendLine();
@@ -132,6 +157,10 @@ namespace PacketGenerator
 			{
 				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
 
+				// Find packet info for the current packet
+				Tuple<string, string, string> currentPacketInfo = packetInfoList.Find(p => p.Item1 == pName); // Corrected comparison
+				string handlerName = currentPacketInfo?.Item2;
+				string packetType = currentPacketInfo?.Item3;
 
 				// 서버는 S_로 시작하는 패킷을 생성하고, 클라이언트는 C_로 시작하는 패킷을 생성.
 				if (target == "Server" && pName.StartsWith("S_"))
@@ -148,11 +177,11 @@ namespace PacketGenerator
 				// 서버는 C_로 시작하는 패킷을 받고, 클라이언트는 S_로 시작하는 패킷을 받음
 				if (target == "Server" && pName.StartsWith("C_"))
 				{
-					sb.AppendLine( $"\t\t_onRecv.Add( (ushort)PacketID.{pName}, ( s, b ) => HandlePacket<Protocol.{pName}>( s, b, _handler.On_{pName} ) );" );
+					sb.AppendLine( $"\t\t_onRecv.Add( (ushort)PacketID.{pName}, ( s, b ) => HandlePacket<Protocol.{pName}>( s, b, _handler.{handlerName}.On_{pName} ) );" ); // Modified handler call
 				}
 				else if(target == "Client" && pName.StartsWith("S_"))
 				{
-					sb.AppendLine( $"\t\t_onRecv.Add( (ushort)PacketID.{pName}, ( s, b ) => HandlePacket<Protocol.{pName}>( s, b, _handler.On_{pName} ) );" );
+					sb.AppendLine( $"\t\t_onRecv.Add( (ushort)PacketID.{pName}, ( s, b ) => HandlePacket<Protocol.{pName}>( s, b, _handler.{handlerName}.On_{pName} ) );" ); // Modified handler call
 				}
 			}
 
@@ -186,7 +215,6 @@ namespace PacketGenerator
 			sb.AppendLine( "\t// 신규 패킷 생성 로직" );
 			sb.AppendLine( "\tpublic ArraySegment<byte> MakeSendPacket(IMessage Packet)" );
 			sb.AppendLine( "\t{" );
-			//sb.AppendLine( "\t\tushort packetId = (ushort)Enum.Parse<PacketID>(Packet.Descriptor.Name);" );
 			sb.AppendLine( $"\t\tPacketID packetId;" );
 			sb.AppendLine( $"\t\tbool getValue = _packetTypeToId.TryGetValue( Packet.GetType(), out packetId );" );
 			sb.AppendLine( $"\t\tif (!getValue)" );
@@ -223,6 +251,66 @@ namespace PacketGenerator
 			}
 
 			sb.AppendLine("};");
+		}
+
+		static void GenerateIPacketHandler(List<Tuple<string, string, string>> packetInfoList, string target)
+		{
+			// Collect unique handler names
+			HashSet<string> handlerNames = new HashSet<string>();
+			foreach (var packetInfo in packetInfoList)
+			{
+				// Only consider packets relevant to the target (Server receives C_, Client receives S_)
+				if ((target == "Server" && packetInfo.Item3 == "C_") || (target == "Client" && packetInfo.Item3 == "S_"))
+				{
+					handlerNames.Add(packetInfo.Item2);
+				}
+			}
+
+			// Generate individual handler interfaces
+			foreach (string handlerName in handlerNames)
+			{
+				StringBuilder sb = new StringBuilder();
+				sb.AppendLine("// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다.");
+				sb.AppendLine($"// Target: {target}");
+				sb.AppendLine();
+				sb.AppendLine("using ServerCore;");
+				sb.AppendLine("using Protocol;");
+				sb.AppendLine();
+				sb.AppendLine($"public interface I{handlerName}");
+				sb.AppendLine("{");
+
+				foreach (var packetInfo in packetInfoList)
+				{
+					if (packetInfo.Item2 == handlerName)
+					{
+						string pName = MakeEnumNameToCamelName(packetInfo.Item1);
+						// Only generate handler methods for packets relevant to the target
+						if ((target == "Server" && pName.StartsWith("C_")) || (target == "Client" && pName.StartsWith("S_")))
+						{
+							sb.AppendLine($"\tvoid On_{pName}(Session session, {pName} packet);" );
+						}
+					}
+				}
+				sb.AppendLine("}");
+				File.WriteAllText($"Gen_{handlerName}.cs", sb.ToString());
+			}
+
+			// Generate main IPacketHandler interface
+			StringBuilder mainSb = new StringBuilder();
+			mainSb.AppendLine("// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다.");
+			mainSb.AppendLine($"// Target: {target}");
+			mainSb.AppendLine();
+			mainSb.AppendLine("using ServerCore;");
+			mainSb.AppendLine("using Protocol;");
+			mainSb.AppendLine();
+			mainSb.AppendLine("public interface IPacketHandler");
+			mainSb.AppendLine("{");
+			foreach (string handlerName in handlerNames)
+			{
+				mainSb.AppendLine($"\tI{handlerName} {handlerName} {{ get; }}"); // Properties for each specific handler interface
+			}
+			mainSb.AppendLine("}");
+			File.WriteAllText($"Gen_IPacketHandler.cs", mainSb.ToString());
 		}
 
 		static private string MakeEnumNameToCamelName( string name )

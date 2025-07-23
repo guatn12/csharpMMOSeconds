@@ -9,6 +9,17 @@ using System.Threading.Tasks;
 
 public class ClientPacketHandler : IPacketHandler
 {
+	public IMovementPacketHandler MovementPacketHandler => new MovementPacketHandler();
+
+	public IChatPacketHandler ChatPacketHandler => new ChatPacketHandler();
+
+	public ISystemPacketHandler SystemPacketHandler => new SystemPacketHandler();
+
+	public IGamePlayPacketHandler GamePlayPacketHandler => new GamePlayPacketHandler();
+}
+
+public class SystemPacketHandler : ISystemPacketHandler
+{
 	public void On_S_EnterGame( Session session, S_EnterGame packet )
 	{
 		Console.WriteLine( $"[FromServer] {packet.Player.Name}님이 게임에 입장했습니다." );
@@ -18,7 +29,10 @@ public class ClientPacketHandler : IPacketHandler
 	{
 		Console.WriteLine( $"[FromServer] Player({packet.PlayerId})님이 게임을 떠났습니다." );
 	}
+}
 
+public class GamePlayPacketHandler : IGamePlayPacketHandler
+{
 	public void On_S_Spawn( Session session, S_Spawn packet )
 	{
 		foreach(var p in packet.Players)
@@ -34,17 +48,21 @@ public class ClientPacketHandler : IPacketHandler
 			Console.WriteLine( $"[FromServer] Player({p})가 사라졌습니다." );
 		}
 	}
+}
 
+public class MovementPacketHandler : IMovementPacketHandler
+{
+	public void On_S_Move( Session session, S_Move packet )
+	{
+		Console.WriteLine( $"[FromServer] Player({packet.PlayerId})가 이동했습니다. PosInfo ({packet.PosInfo.PosX}, {packet.PosInfo.PosY}, {packet.PosInfo.PosZ})" );
+	}
+}
+
+public class ChatPacketHandler : IChatPacketHandler
+{
 	public void On_S_Chat( Session session, S_Chat packet )
 	{
 		if(Program.Session != null && Program.Session.DummyId != packet.PlayerId)
 			Console.WriteLine( $"[FromServer] Player({packet.PlayerId}): {packet.Message}" );
 	}
-
-	public void On_S_Move( Session session, S_Move packet )
-	{
-		Console.WriteLine( $"[FromServer] Player({packet.PlayerId})가 이동했습니다. PosInfo ({packet.PosInfo.PosX}, {packet.PosInfo.PosY}, {packet.PosInfo.PosZ})" );
-	}
-
-
 }

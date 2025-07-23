@@ -5,6 +5,7 @@ using ServerCore;
 using System;
 using System.Collections.Generic;
 using Google.Protobuf;
+using Protocol;
 
 public class PacketManager
 {
@@ -30,10 +31,10 @@ public class PacketManager
 		_packetTypeToId.Add( typeof( Protocol.S_Spawn ), PacketID.S_Spawn );
 		_makePacket.Add((ushort)PacketID.S_Despawn, MakeSendPacket);
 		_packetTypeToId.Add( typeof( Protocol.S_Despawn ), PacketID.S_Despawn );
-		_onRecv.Add( (ushort)PacketID.C_Move, ( s, b ) => HandlePacket<Protocol.C_Move>( s, b, _handler.On_C_Move ) );
+		_onRecv.Add( (ushort)PacketID.C_Move, ( s, b ) => HandlePacket<Protocol.C_Move>( s, b, _handler.MovementPacketHandler.On_C_Move ) );
 		_makePacket.Add((ushort)PacketID.S_Move, MakeSendPacket);
 		_packetTypeToId.Add( typeof( Protocol.S_Move ), PacketID.S_Move );
-		_onRecv.Add( (ushort)PacketID.C_Chat, ( s, b ) => HandlePacket<Protocol.C_Chat>( s, b, _handler.On_C_Chat ) );
+		_onRecv.Add( (ushort)PacketID.C_Chat, ( s, b ) => HandlePacket<Protocol.C_Chat>( s, b, _handler.ChatPacketHandler.On_C_Chat ) );
 		_makePacket.Add((ushort)PacketID.S_Chat, MakeSendPacket);
 		_packetTypeToId.Add( typeof( Protocol.S_Chat ), PacketID.S_Chat );
 	}
