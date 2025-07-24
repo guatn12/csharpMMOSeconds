@@ -49,7 +49,8 @@ namespace Server
 			// JobQueueManager에게 "이 세션에서 처리할 작업이 생겼다"고 알려줍니다.
 			if(prevJobCount == 0)
             {
-                JobQueueManager.Instance.Push( this );
+                //JobQueueManager.Instance.Push( this );
+                _ = JobQueueManager.Instance.PushAsync( this );
             }
         }
 

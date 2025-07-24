@@ -2,6 +2,8 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 
 namespace ServerCore
 {
@@ -14,79 +16,125 @@ namespace ServerCore
     {
         public static JobQueueManager Instance { get; } = new JobQueueManager();
 
-        private List<Thread> _threads = new List<Thread>();
-        // TODO : GaemSession 대신 IJobOwner를 사용하도록 변경하면 확장성이 좋아집니다.
-        private ConcurrentQueue<IJobOwner> _pendingOwners = new ConcurrentQueue<IJobOwner>();
-        private volatile bool _isShuttingDown = false;
+        private List<Task> _workerTasks = new List<Task>();
+        private Channel<IJobOwner> _pendingOwners;
+        private CancellationTokenSource _cancellationTokenSource;
 
         private JobQueueManager() { }
 
-        public void Start(int threadCount)
+        public void Start(int workerCount, int channelCapacity = 1000)
         {
-            _isShuttingDown = false;
-
-            for(int i = 0; i < threadCount; i++)
+            // 이미 시작된 경우 중복 방지.
+            if(0 < _workerTasks.Count)
             {
-                Thread t = new Thread(WorkerThread);
-                t.Name = $"Job Worker Thread_{i}";
-                t.Start();
-                _threads.Add( t );
+                LogManager.Warning( "JobQueueManager is already running." );
+                return;
             }
 
-            LogManager.Info($"JobQueueManager started with {threadCount} threads.");
-        }
-
-        public void Stop()
-        {
-            _isShuttingDown=true;
-
-            LogManager.Info("JobQueueManager stopping... Waiting for threads to finish.");
-
-            foreach(Thread t in _threads)
+            _cancellationTokenSource = new CancellationTokenSource();
+            // BlockingCollection은 기본적으로 ConcurrentQueue를 사용합니다.
+            var options = new BoundedChannelOptions(channelCapacity)
             {
-                t.Join();
+                FullMode = BoundedChannelFullMode.Wait, // 채널이 가득 차면 비동기 대기
+                SingleReader = false,   // 여러 워커가 읽을 수 있음
+                SingleWriter = false    // 여러 워커가 쓸 수 있음.
+            };
+            _pendingOwners = Channel.CreateBounded<IJobOwner>( options );
+
+            for(int i = 0; i < workerCount; i++)
+            {
+                var task = Task.Factory.StartNew(() => WorkerLoopAsync(_cancellationTokenSource.Token),
+                    _cancellationTokenSource.Token, TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+                _workerTasks.Add(task);
             }
-            _threads.Clear();
 
-            while(_pendingOwners.TryDequeue(out _)) ;
-
-            LogManager.Info( "All Job Threads Stopped." );
+            LogManager.Info($"JobQueueManager started with {workerCount} workers.");
         }
 
-        public void Push(IJobOwner jobOwner)
+        public async Task StopAsync()
         {
-			_pendingOwners.Enqueue(jobOwner);
-        }
-
-        private void WorkerThread()
-        {
-            while(!_isShuttingDown)
+            if(_cancellationTokenSource == null || _cancellationTokenSource.IsCancellationRequested)
             {
-                if(_pendingOwners.TryDequeue( out IJobOwner jobOwner ))
+                return;
+            }
+
+            LogManager.Info("JobQueueManager stopping...");
+
+            //_pendingOwners.CompleteAdding();
+            _pendingOwners.Writer.Complete();
+
+            _cancellationTokenSource.Cancel();
+
+            await Task.WhenAll( _workerTasks );
+            _workerTasks.Clear();
+            _cancellationTokenSource.Dispose();
+            _cancellationTokenSource = null;
+
+            LogManager.Info( "All Job Workers Stopped." );
+        }
+
+        public async ValueTask PushAsync(IJobOwner jobOwner)
+        {
+            if(jobOwner == null) return;
+
+            // CancellationTokenSource가 null이거나 종료 중이면 작업을 추가하지 않음.
+            if(_cancellationTokenSource == null || _cancellationTokenSource.IsCancellationRequested )
+            {
+                return;
+            }
+
+            try
+            {
+                //_pendingOwners.Add( jobOwner, _cancellationTokenSource.Token );
+                await _pendingOwners.Writer.WriteAsync( jobOwner, _cancellationTokenSource.Token );
+            }
+            catch(ChannelClosedException)
+            {
+                // 종료 과정에서 발생할 수 있는 예외라 무시.
+            }
+        }
+
+        private async Task WorkerLoopAsync(CancellationToken token)
+        {
+            LogManager.Info( $"Job Worker Thread_{Task.CurrentId} started." );
+
+            try
+            {
+                // GetConsumingEnumerable은 컬렉션이 비어있으면 블로킹하고,
+                // CompleteAdding()이 호출되고, 컬렉션이 비면 루프를 종료합니다.
+                // CancellationToken이 취소되면 OperationCanceledException을 발생시킵니다.
+
+                // ReadAllAsync는 채널에서 아이템을 비동기적으로 기다립니다.
+                // 채널 Writer가 Complete되고 채널이 비면 루프가 종료됩니다.
+                await foreach(var jobOwner in _pendingOwners.Reader.ReadAllAsync())
                 {
-                    // IJobOwner 인터페이스를 통해 JobQueue에 접근
-                    if(jobOwner.JobQueue.TryDequeue( out IJob job ))
+                    if(jobOwner.JobQueue.TryDequeue(out IJob job))
                     {
-                        try
-                        {
-                            job.Execute();
-                        }
-                        catch(Exception ex)
-                        {
-                            LogManager.Error( "Job Execution Failed", ex );
-                        }
-                    }
+						try
+						{
+							job.Execute();
+						}
+						catch(Exception ex)
+						{
+							LogManager.Error( $"Job Execution Failed For Owner {jobOwner.GetType().Name}", ex );
+						}
+					}
 
                     if(0 < jobOwner.JobQueue.Count)
                     {
-                        _pendingOwners.Enqueue( jobOwner );
+                        await PushAsync(jobOwner);
                     }
                 }
-                else
-                {
-                    // 작업이 없을 때는 CPU 점유율을 낮추기 위해 잠시 대기.
-                    Thread.Sleep( 1 );
-                }
+            }
+            catch(OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                // 정상적인 종료
+                LogManager.Info( $"Job Worker Thread_{Task.CurrentId} is shutting down." );
+            }
+            catch(Exception ex )
+            {
+                LogManager.Error( $"UnHandled exception in WorkerLoop (Thread_{Task.CurrentId}).", ex );
             }
         }
     }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using ServerCore;
 
@@ -20,7 +21,7 @@ namespace Server
 		public static PacketManager PacketManagerInstance { get; private set; }
 
 		static ManualResetEvent _shutdownEvent = new ManualResetEvent(false);
-		static void Main( string[] args )
+		static async Task Main( string[] args )
 		{
 			// 로거 초기화
 			LogManager.Init();
@@ -62,7 +63,6 @@ namespace Server
 				Console.CancelKeyPress += ( sender, e ) =>
 				{
 					LogManager.Info( "Stopping server... (Ctrl+C pressed)" );
-					//JobQueueManager.Instance.Stop();
 					_shutdownEvent.Set();
 					e.Cancel = true;    // 기본 종료 동작을 막습니다.
 				};
@@ -82,7 +82,7 @@ namespace Server
 			}
 			finally
 			{
-				JobQueueManager.Instance.Stop();
+				await JobQueueManager.Instance.StopAsync();
 				LogManager.CloseAndFlush();
 			}
 		}
