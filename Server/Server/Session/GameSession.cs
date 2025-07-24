@@ -1,13 +1,15 @@
 ﻿using Google.Protobuf;
 using ServerCore;
 using System;
+using System.Collections.Concurrent;
 using System.Net;
 
 namespace Server
 {
-    public class GameSession : Session
+    public class GameSession : Session, IJobOwner
     {
         public int SessionId { get; private set; }
+        public ConcurrentQueue<IJob> JobQueue { get; } = new ConcurrentQueue<IJob>();
 
         public void Send(IMessage packet)
         {
@@ -35,27 +37,20 @@ namespace Server
             LogManager.Debug("Packet Received. SessionId: {SessionId}, PacketID: {PacketID}, Size: {Size}",
                 this.SessionId, packetId, buffer.Count);
 
-            JobPriority priority;
-            switch (packetId)
+            // JobQueue에 작업을 넣기 전 작업 개수
+            int prevJobCount = JobQueue.Count;
+
+            JobQueue.Enqueue( new Job( () =>
             {
-                case PacketID.C_Move:
-                    priority = JobPriority.High;
-                    break;
-                case PacketID.C_Chat:
-                    priority = JobPriority.Medium;
-                    break;
-                default:
-                    priority = JobPriority.Low;
-                    break;
+                Program.PacketManagerInstance.HandlePacket( this, buffer );
+            } ) );
+
+			// 큐에 작업을 넣은 후, 만약 큐가 비어있다가(0개) 처음으로 작업이 추가된(1개) 상황이라면
+			// JobQueueManager에게 "이 세션에서 처리할 작업이 생겼다"고 알려줍니다.
+			if(prevJobCount == 0)
+            {
+                JobQueueManager.Instance.Push( this );
             }
-
-            Action jobAction = () =>
-            {
-                Program.PacketManagerInstance.HandlePacket(this, buffer);
-            };
-
-            GameJob gameJob = new GameJob(jobAction, priority);
-            JobQueueManager.Instance.Enqueue(gameJob);
         }
 
         public override void OnSend(int bytes)

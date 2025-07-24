@@ -1,83 +1,93 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 
 namespace ServerCore
 {
+    public interface IJobOwner
+    {
+        ConcurrentQueue<IJob> JobQueue { get; }
+    }
+
     public class JobQueueManager
     {
         public static JobQueueManager Instance { get; } = new JobQueueManager();
 
-        private readonly PriorityQueue<GameJob, JobPriority> _jobQueue = new PriorityQueue<GameJob, JobPriority>();
-        private readonly object _lock = new object();
-
-        private readonly SemaphoreSlim _jobSemaphore = new SemaphoreSlim(0);
-
-        private Thread _workerThread;
-        private bool _isRunning = false;
+        private List<Thread> _threads = new List<Thread>();
+        // TODO : GaemSession 대신 IJobOwner를 사용하도록 변경하면 확장성이 좋아집니다.
+        private ConcurrentQueue<IJobOwner> _pendingOwners = new ConcurrentQueue<IJobOwner>();
+        private volatile bool _isShuttingDown = false;
 
         private JobQueueManager() { }
 
-        public void Start()
+        public void Start(int threadCount)
         {
-            if (_isRunning) return;
+            _isShuttingDown = false;
 
-            _isRunning = true;
-            _workerThread = new Thread(ProcessJobs);
-            _workerThread.Name = "JobQueue Worker";
-            _workerThread.IsBackground = true;
-            _workerThread.Start();
-            LogManager.Info("JobQueueManager started.");
+            for(int i = 0; i < threadCount; i++)
+            {
+                Thread t = new Thread(WorkerThread);
+                t.Name = $"Job Worker Thread_{i}";
+                t.Start();
+                _threads.Add( t );
+            }
+
+            LogManager.Info($"JobQueueManager started with {threadCount} threads.");
         }
 
         public void Stop()
         {
-            if (!_isRunning) return;
+            _isShuttingDown=true;
 
-            _isRunning = false;
-            _jobSemaphore.Release(1); 
-            _workerThread.Join();
-            LogManager.Info("JobQueueManager stopped.");
-        }
+            LogManager.Info("JobQueueManager stopping... Waiting for threads to finish.");
 
-        public void Enqueue(GameJob job)
-        {
-            lock (_lock)
+            foreach(Thread t in _threads)
             {
-                _jobQueue.Enqueue(job, job.Priority);
+                t.Join();
             }
-            _jobSemaphore.Release();
-            LogManager.Debug("Job enqueued. Priority: {Priority}", job.Priority);
+            _threads.Clear();
+
+            while(_pendingOwners.TryDequeue(out _)) ;
+
+            LogManager.Info( "All Job Threads Stopped." );
         }
 
-        private void ProcessJobs()
+        public void Push(IJobOwner jobOwner)
         {
-            while (_isRunning)
+			_pendingOwners.Enqueue(jobOwner);
+        }
+
+        private void WorkerThread()
+        {
+            while(!_isShuttingDown)
             {
-                _jobSemaphore.Wait();
-
-                if (!_isRunning) break;
-
-                GameJob jobToProcess;
-                lock (_lock)
+                if(_pendingOwners.TryDequeue( out IJobOwner jobOwner ))
                 {
-                    if(!_jobQueue.TryDequeue(out jobToProcess, out _))
+                    // IJobOwner 인터페이스를 통해 JobQueue에 접근
+                    if(jobOwner.JobQueue.TryDequeue( out IJob job ))
                     {
-                        continue; // 큐가 비어있을 수 있음 (스레드 종료 신호 등)
+                        try
+                        {
+                            job.Execute();
+                        }
+                        catch(Exception ex)
+                        {
+                            LogManager.Error( "Job Execution Failed", ex );
+                        }
+                    }
+
+                    if(0 < jobOwner.JobQueue.Count)
+                    {
+                        _pendingOwners.Enqueue( jobOwner );
                     }
                 }
-                
-                try
+                else
                 {
-                    LogManager.Debug("Processing job. Priority: {Priority}", jobToProcess.Priority);
-                    jobToProcess.Action.Invoke();
-                }
-                catch (Exception ex)
-                {
-                    LogManager.Error(ex, "An unhandled exception occurred while processing a job.");
+                    // 작업이 없을 때는 CPU 점유율을 낮추기 위해 잠시 대기.
+                    Thread.Sleep( 1 );
                 }
             }
-            LogManager.Info("JobQueueManager worker thread finished.");
         }
     }
 }

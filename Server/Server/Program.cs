@@ -18,6 +18,8 @@ namespace Server
 	{
 		static Listener _listener = new Listener();
 		public static PacketManager PacketManagerInstance { get; private set; }
+
+		static ManualResetEvent _shutdownEvent = new ManualResetEvent(false);
 		static void Main( string[] args )
 		{
 			// 로거 초기화
@@ -52,18 +54,27 @@ namespace Server
 
 				IPEndPoint endPoint = new IPEndPoint(ipAddr, settings.Port);
 
+				// job queue 시스템 초기화 및 worker 스레드 실행
+				int threadCount = Environment.ProcessorCount;
+				JobQueueManager.Instance.Start( threadCount );
+
+				// 안전한 종료를 위한 이벤트 핸들러 등록
+				Console.CancelKeyPress += ( sender, e ) =>
+				{
+					LogManager.Info( "Stopping server... (Ctrl+C pressed)" );
+					//JobQueueManager.Instance.Stop();
+					_shutdownEvent.Set();
+					e.Cancel = true;    // 기본 종료 동작을 막습니다.
+				};
+
 				IPacketHandler handler = new ServerPacketHandler();
 				PacketManagerInstance = new PacketManager( handler );
 
 				_listener.Init( endPoint, () => new GameSession(), settings.ListenBacklog );
-				JobQueueManager.Instance.Start();
 
 				LogManager.Info( "Listening..." );
 
-				while(true)
-				{
-					Thread.Sleep( 1000 );
-				}
+				_shutdownEvent.WaitOne();
 			}
 			catch ( Exception ex )
 			{
@@ -71,6 +82,7 @@ namespace Server
 			}
 			finally
 			{
+				JobQueueManager.Instance.Stop();
 				LogManager.CloseAndFlush();
 			}
 		}
