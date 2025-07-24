@@ -35,7 +35,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="../../Common/Protobuf/Protocol.cs" Link="Packet/Protocol.cs"/>
+    <Compile Include="../../Common/Protobuf/Protocol.cs" Link="Packet/Protocol.cs" />
   </ItemGroup>
 
 </Project>

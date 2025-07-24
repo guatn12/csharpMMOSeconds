@@ -20,45 +20,58 @@ namespace Server
 		public static PacketManager PacketManagerInstance { get; private set; }
 		static void Main( string[] args )
 		{
-			// 환경 변수 가져오기
-			var environmentName = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
+			// 로거 초기화
+			LogManager.Init();
+			try
+			{
+				// 환경 변수 가져오기
+				var environmentName = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
 
-			var builder = new ConfigurationBuilder()
+				var builder = new ConfigurationBuilder()
 				.SetBasePath(AppDomain.CurrentDomain.BaseDirectory) // 실행 파일 기준 경로 설정
                 .AddJsonFile("appsettings.json", optional:false, reloadOnChange: true)
 				.AddJsonFile($"appsettings.{environmentName}.json", optional:true, reloadOnChange: true) // 현재 환경에 맞는 appsettings.json 로드(덮어쓰기)
 				.AddEnvironmentVariables();
 
-			IConfiguration configuration = builder.Build();
+				IConfiguration configuration = builder.Build();
 
-			ServerSettings settings = configuration.GetSection("ServerSettings").Get<ServerSettings>();
+				ServerSettings settings = configuration.GetSection("ServerSettings").Get<ServerSettings>();
 
-			if(settings == null)
-			{
-				Console.WriteLine( "Not find ServerSettings in appsettings.json" );
-				return;
+				if(settings == null)
+				{
+					LogManager.Error( "Not find ServerSettings in appsettings.json" );
+					return;
+				}
+
+				IPAddress ipAddr;
+				if(!IPAddress.TryParse( settings.Host, out ipAddr ))
+				{
+					LogManager.Error( null, "Invalid Host IP Address in appsettings.json: {Host}", settings.Host );
+					return;
+				}
+
+				IPEndPoint endPoint = new IPEndPoint(ipAddr, settings.Port);
+
+				IPacketHandler handler = new ServerPacketHandler();
+				PacketManagerInstance = new PacketManager( handler );
+
+				_listener.Init( endPoint, () => new GameSession(), settings.ListenBacklog );
+				JobQueueManager.Instance.Start();
+
+				LogManager.Info( "Listening..." );
+
+				while(true)
+				{
+					Thread.Sleep( 1000 );
+				}
 			}
-
-			IPAddress ipAddr;
-			if (!IPAddress.TryParse(settings.Host, out ipAddr))
+			catch ( Exception ex )
 			{
-				Console.WriteLine( "Invalid Host IP Address in appsettings.json" );
-				return;
+				LogManager.Fatal( "Server start-up failed.", ex );
 			}
-
-			IPEndPoint endPoint = new IPEndPoint(ipAddr, settings.Port);
-
-			IPacketHandler handler = new ServerPacketHandler();
-			PacketManagerInstance = new PacketManager( handler );
-
-			_listener.Init( endPoint, () => new GameSession(), settings.ListenBacklog );
-
-			
-			Console.WriteLine( "Linstening..." );
-
-			while(true)
+			finally
 			{
-				Thread.Sleep( 1000 );
+				LogManager.CloseAndFlush();
 			}
 		}
 	}
