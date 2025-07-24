@@ -140,3 +140,4 @@ Common/Protobuf/*.cs
 Common/Protobuf/*.h
 Common/Generated/*.cs
 Common/Generated/*.h
+Priority.txt
