@@ -15,9 +15,9 @@ namespace ServerCore
 			Log.Logger = new LoggerConfiguration()
 				.MinimumLevel.Debug()				//최소 로그 레벨
 				.WriteTo.Console(outputTemplate:
-				"[{Timestamp:HH:mm:ss} {Level:u3} {Message:lj}{Exception}]{NewLine}" )					// 콘솔에 로그 출력, 콘솔 출력 템플릿 지정
+				"[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{Exception}{NewLine}" )					// 콘솔에 로그 출력, 콘솔 출력 템플릿 지정
 				.WriteTo.File( "logs/log-.txt", rollingInterval: RollingInterval.Day,
-				outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3} {Message:lj}{Exception}]{NewLine}" )	// 파일에 로그 출력, 파일 출력 템플릿 지정
+				outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{Exception}{NewLine}" )	// 파일에 로그 출력, 파일 출력 템플릿 지정
 				.CreateLogger();					// 로그 생성.
 		}
 
