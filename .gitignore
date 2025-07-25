@@ -141,3 +141,6 @@ Common/Protobuf/*.h
 Common/Generated/*.cs
 Common/Generated/*.h
 Priority.txt
+GEMINI.md
+JobQueue_System_Design.md
+CLAUDE.md
