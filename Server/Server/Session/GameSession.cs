@@ -1,4 +1,5 @@
 ﻿using Google.Protobuf;
+using Microsoft.Extensions.Logging;
 using ServerCore;
 using System;
 using System.Collections.Concurrent;
@@ -8,8 +9,14 @@ namespace Server
 {
     public class GameSession : Session, IJobOwner
     {
+        private readonly ILogger<GameSession> _logger;
         public int SessionId { get; private set; }
         public ConcurrentQueue<IJob> JobQueue { get; } = new ConcurrentQueue<IJob>();
+
+        public GameSession(ILogger<GameSession> logger)
+        {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
 
         public void Send(IMessage packet)
         {
@@ -20,13 +27,15 @@ namespace Server
         public override void OnConnected(EndPoint endPoint)
         {
             this.SessionId = GetHashCode(); // 임시 세션 ID 발급
-            LogManager.Info("Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
+            //LogManager.Info("Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
+            _logger.LogInformation( "Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint );
             // TODO : 클라이언트에게 입장 패킷 전송.
         }
 
         public override void OnDisConnected(EndPoint endPoint)
         {
-            LogManager.Info("Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
+            //LogManager.Info("Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
+            _logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint );
         }
 
         public override void OnRecvPacket(ArraySegment<byte> buffer)
@@ -34,8 +43,10 @@ namespace Server
             ushort packetIdValue = BitConverter.ToUInt16(buffer.Array, buffer.Offset + 2);
             PacketID packetId = (PacketID)packetIdValue;
 
-            LogManager.Debug("Packet Received. SessionId: {SessionId}, PacketID: {PacketID}, Size: {Size}",
-                this.SessionId, packetId, buffer.Count);
+            //LogManager.Debug("Packet Received. SessionId: {SessionId}, PacketID: {PacketID}, Size: {Size}",
+            //    this.SessionId, packetId, buffer.Count);
+            _logger.LogDebug( "Packet Received. SessionId: {SessionId}, PacketID: {PacketID}, Size: {Size}",
+                this.SessionId, packetId, buffer.Count );
 
             // JobQueue에 작업을 넣기 전 작업 개수
             int prevJobCount = JobQueue.Count;
@@ -56,7 +67,8 @@ namespace Server
 
         public override void OnSend(int bytes)
         {
-            LogManager.Debug("Packet Sent. SessionId: {SessionId}, Size: {Size}", this.SessionId, bytes);
+            //LogManager.Debug("Packet Sent. SessionId: {SessionId}, Size: {Size}", this.SessionId, bytes);
+            _logger.LogDebug( "Packet Sent. SessionId: {SessionId}, Size: {Size}", this.SessionId, bytes );
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using System;
 using System.Net;
 using System.Net.Sockets;
 
@@ -8,6 +9,12 @@ namespace ServerCore
     {
         private Socket _listenSocket;
         private Func<Session> _sessionFactory;
+        private ILogger<Listener> _logger;
+
+        public Listener(ILogger<Listener> logger)
+        {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
 
         public void Init(IPEndPoint endPoint, Func<Session> sessionFactory, int listenBacklog = 10)
         {
@@ -38,7 +45,8 @@ namespace ServerCore
             }
             catch (Exception e)
             {
-                LogManager.Error(e, "RegisterAccept failed.");
+                //LogManager.Error(e, "RegisterAccept failed.");
+                _logger.LogError( e, "RegisterAccept failed." );
             }
         }
 
@@ -52,7 +60,8 @@ namespace ServerCore
             }
             else
             {
-                LogManager.Error(null, "Accept failed with SocketError: {SocketError}", args.SocketError);
+                //LogManager.Error(null, "Accept failed with SocketError: {SocketError}", args.SocketError);
+                _logger.LogError( "Accept failed with SocketError: {SocketError}", args.SocketError );
             }
             
             RegisterAccept(args);
