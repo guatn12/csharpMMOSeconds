@@ -58,7 +58,7 @@ namespace Server.Configuration.Validators
 				failures.Add($"ConnectionTimeSeconds {options.ConnectionTimeoutSeconds}는 1-300 범위여야 합니다.");
 			}
 
-			if (options.CommandTimeoutSeconds < 1 || options.CommandTimeoutSeconds < 3600)
+			if (options.CommandTimeoutSeconds < 1 || 3600 < options.CommandTimeoutSeconds)
 			{
 				failures.Add($"CommandTimeoutSeconds {options.CommandTimeoutSeconds}는 1-3600 범위여야 합니다.");
 			}

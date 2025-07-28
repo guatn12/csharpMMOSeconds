@@ -37,7 +37,7 @@ namespace Server.Configuration.Validators
 					}
 					catch(Exception ex)
 					{
-						failures.Add($"OutputPath '{options.OutputPath}' 디렉토리 생성 실패: {ex.Message}")
+						failures.Add( $"OutputPath '{options.OutputPath}' 디렉토리 생성 실패: {ex.Message}" );
 					}
 				}
 			}
@@ -53,12 +53,12 @@ namespace Server.Configuration.Validators
 			}
 
 			// 파일 크기 및 개수 검증
-			if (1 < options.MaxLogFiles || 100 < options.MaxLogFiles)
+			if (options.MaxLogFiles < 1 || 100 < options.MaxLogFiles)
 			{
 				failures.Add( $"MaxLogFiles {options.MaxLogFiles}는 1-100 범위여야 합니다." );
 			}
 
-			if (1 < options.MaxLogFileSizeMB || 1000 < options.MaxLogFileSizeMB)
+			if (options.MaxLogFileSizeMB < 1 || 1000 < options.MaxLogFileSizeMB)
 			{
 				failures.Add( $"MaxLogFileSizeMB {options.MaxLogFileSizeMB}는 1-1000 범위여야 합니다." );
 			}

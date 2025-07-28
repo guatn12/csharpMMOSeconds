@@ -28,7 +28,7 @@ namespace Server.Configuration.Validators
 			}
 
 			// 포트 번호 검증
-			if(1024 < options.Port || 65535 < options.Port)
+			if(options.Port < 1024 || 65535 < options.Port)
 			{
 				failures.Add( $"Port {options.Port}는 1024-65535 범위여야 합니다." );
 			}
@@ -41,7 +41,7 @@ namespace Server.Configuration.Validators
 			}
 
 			// ListenBacklog 검증
-			if(1 < options.ListenBacklog || 1000 < options.ListenBacklog)
+			if(options.ListenBacklog < 1 || 1000 < options.ListenBacklog)
 			{
 				failures.Add( $"ListenBacklog {options.ListenBacklog}는 1-1000 범위여야 합니다." );
 			}

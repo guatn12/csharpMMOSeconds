@@ -41,7 +41,7 @@ namespace Server.Configuration.Services
 			ILogger<ConfigurationService> logger )
 		{
 			_serverConfigMonitor = serverConfigMonitor;
-			_networkMonitor = networkMonitor;
+			 _networkMonitor = networkMonitor;
 			_loggingMonitor = loggingMonitor;
 			_securityMonitor = securityMonitor;
 			_databaseMonitor = databaseMonitor;
@@ -133,7 +133,7 @@ namespace Server.Configuration.Services
 			var databaseSub = _databaseMonitor.OnChange((config, name) =>
 			{
 				var oldDatabase = _currentSnapshot?.Database;
-				HandleConfigurationChange("SecuritySettings", oldDatabase, config);
+				HandleConfigurationChange("DatabaseSettings", oldDatabase, config);
 			});
 			_changeSubscriptions.Add( databaseSub );
 
@@ -141,7 +141,7 @@ namespace Server.Configuration.Services
 			var jobQueueSub = _jobQueueMonitor.OnChange((config, name) =>
 			{
 				var oldJobQueue = _currentSnapshot?.JobQueue;
-				HandleConfigurationChange("SecuritySettings", oldJobQueue, config);
+				HandleConfigurationChange("JobQueueSettings", oldJobQueue, config);
 			});
 			_changeSubscriptions.Add( jobQueueSub );
 		}
