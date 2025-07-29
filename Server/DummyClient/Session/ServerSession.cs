@@ -1,4 +1,5 @@
 ﻿using Google.Protobuf;
+using Microsoft.Extensions.Logging;
 using ServerCore;
 using System;
 using System.Collections.Generic;
@@ -12,6 +13,12 @@ namespace DummyClient
 	public class ServerSession : Session
 	{
 		public int DummyId { get; private set; }
+		private readonly ILogger<ServerSession> _logger;
+
+		public ServerSession(ILogger<ServerSession> logger)
+		{
+			_logger = logger;
+		}
 
 		public void Send( IMessage packet )
 		{
@@ -22,13 +29,15 @@ namespace DummyClient
 
 		public override void OnConnected( EndPoint endPoint )
 		{
-			Console.WriteLine( $"OnConnected: {endPoint}" );
+			//Console.WriteLine( $"OnConnected: {endPoint}" );
+			_logger.LogInformation( "OnConnected: {endPoint}", endPoint );
 			Program.Session = this;
 		}
 
 		public override void OnDisConnected( EndPoint endPoint )
 		{
-			Console.WriteLine( $"OnDisConnected: {endPoint}" );
+			//Console.WriteLine( $"OnDisConnected: {endPoint}" );
+			_logger.LogInformation( "OnDisConnected: {endPoint}", endPoint );
 			Program.Session = null;
 		}
 

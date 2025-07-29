@@ -7,6 +7,12 @@ using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
 using ServerCore;
 using Protocol;
+using Microsoft.Extensions.Logging;
+using Serilog;
+using Microsoft.Extensions.DependencyInjection;
+using DummyClient.Configuration;
+using Microsoft.Extensions.Options;
+using DummyClient.Configuration.Services;
 
 namespace DummyClient
 {
@@ -20,6 +26,8 @@ namespace DummyClient
 	{
 		public static ServerSession Session;
 		public static PacketManager PacketManagerInstance { get; private set; }
+		private static IServiceProvider _serviceProvider;
+		private static ILogger<Program> _logger;
 
 		static void Main( string[] args )
 		{
@@ -31,16 +39,90 @@ namespace DummyClient
 				.AddEnvironmentVariables();
 
 			IConfiguration configuration = builder.Build();
-			ConnectionSettings settings = configuration.GetSection("ConnectionSettings").Get<ConnectionSettings>();
 
-			IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse(settings.Host), settings.Port);
+			// Serilog 설정
+			Log.Logger = new LoggerConfiguration()
+				.ReadFrom.Configuration(configuration)
+				.CreateLogger();
+
+			try
+			{
+				// DI 컨테이너 설정
+				ServiceCollection services = new ServiceCollection();
+				ConfigureServices( services, configuration );
+				_serviceProvider = services.BuildServiceProvider();
+				_logger = _serviceProvider.GetRequiredService<ILogger<Program>>();
+
+				RunClient();
+			}
+			catch ( Exception ex )
+			{
+				Log.Fatal( ex, "DummyClient 실행 중 치명적 오류 발생" );
+			}
+			finally
+			{
+				Log.CloseAndFlush();
+				//_serviceProvider?.Dispose();
+			}
+		}
+
+		private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+		{
+			// Configuration 등록
+			services.Configure<ClientConfiguration>( configuration.GetSection( "ClientConfiguration" ) );
+
+			// Validator 등록
+			services.AddSingleton<IValidateOptions<ClientConfiguration>, ClientConfigurationValidator>();
+
+			// Services 등록
+			services.AddSingleton<IClientConfigurationService, ClientConfigurationService>();
+
+			// Logger 등록
+			services.AddLogging( builder =>
+			{
+				builder.ClearProviders();
+				builder.AddSerilog();
+			} );
+
+			// Packet Handlers 등록
+			services.AddSingleton<IMovementPacketHandler, MovementPacketHandler>();
+			services.AddSingleton<IChatPacketHandler, ChatPacketHandler>();
+			services.AddSingleton<ISystemPacketHandler, SystemPacketHandler>();
+			services.AddSingleton<IGamePlayPacketHandler, GamePlayPacketHandler>();
+
+			// ClientPacketHandler도 DI에서 관리
+			services.AddSingleton<IPacketHandler, ClientPacketHandler>();
+		}
+
+		private static void RunClient()
+		{
+			IClientConfigurationService configService = _serviceProvider.GetRequiredService<IClientConfigurationService>();
+			ClientConfiguration config = configService.Current;
+
+			// 설정 변경 감지 등록
+			configService.RegisterChangeCallBack( newConfig =>
+			{
+				_logger.LogInformation( "클라이언트 설정이 변경되었습니다: {ServerHost}:{ServerPort}", newConfig.Connection.ServerHost,
+					newConfig.Connection.ServerPort );
+			} );
+
+			IPEndPoint endPoint = new IPEndPoint(
+				IPAddress.Parse(config.Connection.ServerHost),
+				config.Connection.ServerPort);
+
 			Connector connector = new Connector();
-
-			IPacketHandler packetHandler = new ClientPacketHandler();
+			IPacketHandler packetHandler = _serviceProvider.GetRequiredService<IPacketHandler>();
 			PacketManagerInstance = new PacketManager( packetHandler );
 
-			connector.Connect( endPoint, () => new ServerSession() );
+			_logger.LogInformation( "서버 연결 시도: {EndPoint}", endPoint );
+			connector.Connect( endPoint, () => new ServerSession( _serviceProvider.GetRequiredService<ILogger<ServerSession>>() ) );
 
+			// 메인 루프는 기존과 동일...
+			MainLoop();
+		}
+
+		private static void MainLoop()
+		{
 			while(true)
 			{
 				if(Session == null)
@@ -75,7 +157,7 @@ namespace DummyClient
 
 				case "3":
 					Random rand = new Random();
-					Console.WriteLine( "\n'전체 테스트'를 랜덤하게 반복합니다. 중지하려면 아무 키나 누르세요..." );
+					_logger.LogInformation( "\n'전체 테스트'를 랜덤하게 반복합니다. 중지하려면 아무 키나 누르세요..." );
 					while(!Console.KeyAvailable)
 					{
 						// 0 또는 1을 랜덤하게 생성하여 테스트 선택
@@ -91,17 +173,18 @@ namespace DummyClient
 					}
 					// 입력 버퍼 비우기
 					while(Console.KeyAvailable) Console.ReadKey( true );
-					Console.WriteLine( "반복 테스트를 중지했습니다." );
+					_logger.LogInformation( "반복 테스트를 중지했습니다." );
 					break;
 
 				default:
-					Console.WriteLine( "잘못된 입력입니다." );
+					_logger.LogWarning( "잘못된 입력입니다." );
 					break;
 				}
 				Thread.Sleep( 200 );
 			}
-			Console.WriteLine( "클라이언트를 종료합니다." );
+			_logger.LogInformation( "클라이언트를 종료합니다." );
 		}
+		
 
 		enum TestScenario
 		{
@@ -120,21 +203,21 @@ namespace DummyClient
 					PosInfo = new PosInfo() {PosX = 1, PosY = 2, PosZ = 3},
 				};
 				Session.Send( movePacket );
-				Console.WriteLine( "[Send] C_Move" );
+				_logger.LogInformation( "[Send] C_Move" );
 				break;
 
 			case TestScenario.C_CHAT:
-				Console.WriteLine( "채팅 메시지 입력: " );
+				_logger.LogInformation( "채팅 메시지 입력: " );
 				string message = Console.ReadLine();
 				if(string.IsNullOrEmpty( message ))
 				{
-					Console.WriteLine( "메시지가 비어있습니다." );
+					_logger.LogWarning( "메시지가 비어있습니다." );
 					return;
 				}
 
 				C_Chat chat = new C_Chat() { Message = message };
 				Session.Send( chat );
-				Console.WriteLine( $"[Send] C_Chat: {message}" );
+				_logger.LogInformation( $"[Send] C_Chat: {message}" );
 				break;
 			case TestScenario.RANDOMCHAT:
 				Random rand = new Random();
@@ -142,7 +225,7 @@ namespace DummyClient
 				string randomchat = rand.NextInt64().ToString();
 				C_Chat ranChat = new C_Chat() {Message = randomchat};
 				Session.Send( ranChat );
-				Console.WriteLine($"[Send] C_Chat: {ranChat}");
+				_logger.LogInformation($"[Send] C_Chat: {ranChat}");
 				break;
 			}
 		}
