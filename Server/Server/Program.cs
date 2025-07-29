@@ -72,6 +72,11 @@ namespace Server
 					.ReadFrom.Configuration( configuration )
 					.CreateLogger();
 
+				// packet 핸들러 등록
+				services.AddSingleton<IMovementPacketHandler, MovementPacketHandler>();
+				services.AddSingleton<IChatPacketHandler, ChatPacketHandler>();
+				services.AddSingleton<IPacketHandler, ServerPacketHandler>();
+
 				var serviceProvider = services.BuildServiceProvider();
 
 				var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
@@ -140,7 +145,7 @@ namespace Server
 					e.Cancel = true;    // 기본 종료 동작을 막습니다.
 				};
 
-				IPacketHandler handler = new ServerPacketHandler();
+				IPacketHandler handler = serviceProvider.GetRequiredService<IPacketHandler>();
 				PacketManagerInstance = new PacketManager( handler );
 
 				_listener.Init( endPoint, () => serviceProvider.GetRequiredService<GameSession>(), serverConfig.Network.ListenBacklog );

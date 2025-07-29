@@ -114,8 +114,9 @@ public class ChatPacketHandler : IChatPacketHandler
 
 	public void On_S_Chat( Session session, S_Chat packet )
 	{
-		if(Program.Session != null && Program.Session.DummyId != packet.PlayerId)
-			_logger.LogInformation( "[FromServer] Player({PlayerId}): {Message}", packet.PlayerId, packet.Message );
+		// TODO : 테스트를 위해 예외처리 제거(활성화 필요)
+		//if(Program.Session != null && Program.Session.DummyId != packet.PlayerId)
+		_logger.LogInformation( "[FromServer] Player({PlayerId}): {Message}", packet.PlayerId, packet.Message );
 			//Console.WriteLine( $"[FromServer] Player({packet.PlayerId}): {packet.Message}" );
 	}
 }

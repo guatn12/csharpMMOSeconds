@@ -175,7 +175,6 @@ namespace DummyClient
 					while(Console.KeyAvailable) Console.ReadKey( true );
 					_logger.LogInformation( "반복 테스트를 중지했습니다." );
 					break;
-
 				default:
 					_logger.LogWarning( "잘못된 입력입니다." );
 					break;
