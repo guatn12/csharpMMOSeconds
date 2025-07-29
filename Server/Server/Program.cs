@@ -31,32 +31,13 @@ namespace Server
 
 			try
 			{
-				// 환경 변수 가져오기
-				var environmentName = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
-				Log.Information($"현재 환경: {environmentName}");
-
-				// 보안 환경변수 설정 (개발용 기본값 포함)
-				Environment.SetEnvironmentVariable("ENCRYPTION_KEY", 
-					SecurityHelper.GetSecureValue("ENCRYPTION_KEY", "dev-encryption-key-change-in-production"));
-				Environment.SetEnvironmentVariable("TOKEN_SECRET", 
-					SecurityHelper.GetSecureValue("TOKEN_SECRET", "dev-token-secret-change-in-production"));
-				Environment.SetEnvironmentVariable("DATABASE_CONNECTION_STRING", 
-					SecurityHelper.GetSecureValue("DATABASE_CONNECTION_STRING", ""));
-
-				var basePath = AppDomain.CurrentDomain.BaseDirectory;
-				Log.Information($"기본 경로: {basePath}");
-				Log.Information($"로드할 환경 파일: appsettings.{environmentName}.json");
-
-				var builder = new ConfigurationBuilder()
-				.SetBasePath(basePath) // 실행 파일 기준 경로 설정
-                .AddJsonFile("appsettings.json", optional:false, reloadOnChange: true)
-				.AddJsonFile($"appsettings.{environmentName}.json", optional:true, reloadOnChange: true) // 현재 환경에 맞는 appsettings.json 로드(덮어쓰기)
-				.AddEnvironmentVariables();
-
-				IConfiguration configuration = builder.Build();
+				IConfiguration configuration = BuildConfiguration(args);
 				
 				// 실제 로드된 설정값 확인
 				Log.Information($"로드된 MaxQueueSize: {configuration["ServerConfiguration:JobQueue:MaxQueueSize"]}");
+
+				// 민감정보 필수 검증
+				ValidateSecrets( configuration );
 
 				// DI 컨테이너 설정
 				ServiceCollection services = new ServiceCollection();
@@ -178,6 +159,54 @@ namespace Server
 				await JobQueueManager.Instance.StopAsync();
 				Log.CloseAndFlush();
 			}
+		}
+
+		private static void ValidateSecrets(IConfiguration configuration)
+		{
+			var security = configuration.GetSection("ServerConfiguration:Security").Get<SecuritySettings>();
+			var database = configuration.GetSection("ServerConfiguration:Database").Get<DatabaseSettings>();
+
+			if(string.IsNullOrWhiteSpace( security?.EncryptionKey ))
+				throw new InvalidOperationException( "EncryptionKey가 설정되지 않았습니다. User Secrets를 확인하세요" );
+
+			if(string.IsNullOrWhiteSpace(security?.TokenSecret))
+				throw new InvalidOperationException( "TokenSecret 설정되지 않았습니다. User Secrets를 확인하세요" );
+
+			if(string.IsNullOrWhiteSpace(database?.ConnectionString))
+				throw new InvalidOperationException( "Database ConnectionString 설정되지 않았습니다. User Secrets를 확인하세요" );
+
+			Log.Information( "필수 민감정보 검증 완료" );
+		}
+
+		private static IConfiguration BuildConfiguration( string[] args )
+		{
+			var environmentName = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
+			Log.Information( $"현재 환경: {environmentName}" );
+
+			var basePath = AppDomain.CurrentDomain.BaseDirectory;
+			Log.Information( $"기본 경로: {basePath}" );
+			Log.Information( $"로드할 환경 파일: appsettings.{environmentName}.json" );
+			var builder = new ConfigurationBuilder()
+				.SetBasePath(basePath)
+				.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+				.AddJsonFile($"appsettings.{environmentName}.json", optional: true, reloadOnChange: true);
+
+			// 개발 환경에서만 User Secrets 적용
+			if(environmentName.Equals( "Development", StringComparison.OrdinalIgnoreCase ))
+			{
+				builder.AddUserSecrets<Program>();
+			}
+
+			// 환경변수가 최우선 (운영 환경에서 사용)
+			builder.AddEnvironmentVariables();
+
+			// 명령줄 인수가 최고 우선 순위
+			if(0 < args?.Length)
+			{
+				builder.AddCommandLine( args );
+			}
+
+			return builder.Build();
 		}
 	}
 }

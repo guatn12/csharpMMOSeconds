@@ -4,7 +4,10 @@ namespace Server.Configuration
 {
 	public class DatabaseSettings
 	{
+		[Required(ErrorMessage = "ConnectionString은 필수입니다")]
 		public string ConnectionString { get; set; } = string.Empty;
+
+		public string RedisConnectionString { get; set; } = string.Empty;
 
 		[Range( 1, 1000, ErrorMessage = "최대 연결 풀 크기는 1-1000개여야 합니다" )]
 		public int MaxPoolSize { get; set; } = 100;
