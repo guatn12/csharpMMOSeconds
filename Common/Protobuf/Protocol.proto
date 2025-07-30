@@ -90,3 +90,18 @@ message PosInfo {
 	float posY = 2;
 	float posZ = 3;
 }
+
+message Item {
+	int32 id = 1;
+	string name = 2;
+}
+
+message Monster {
+	int32 id = 1;
+	string name = 2;
+}
+
+message Skill {
+	int32 id = 1;
+	string name = 2;
+}

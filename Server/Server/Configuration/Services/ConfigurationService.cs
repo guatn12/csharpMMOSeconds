@@ -60,6 +60,7 @@ namespace Server.Configuration.Services
 		public SecuritySettings SecuritySettings => _securityMonitor.CurrentValue;
 		public DatabaseSettings DatabaseSettings => _databaseMonitor.CurrentValue;
 		public JobQueueSettings JobQueueSettings => _jobQueueMonitor.CurrentValue;
+		public GameDataSettings GameData { get; set; } = new();
 
 		// 초기화
 		public async Task InitializeAsync()
