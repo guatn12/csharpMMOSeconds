@@ -12,6 +12,8 @@ using Server.Configuration.Security;
 using ServerCore;
 using Serilog;
 using Microsoft.Extensions.Logging;
+using Server.Data.Storage;
+using Server.Data.HotReload;
 
 namespace Server
 {
@@ -24,7 +26,6 @@ namespace Server
 		static async Task Main( string[] args )
 		{
 			// 로거 초기화
-			//LogManager.Init();
 			Log.Logger = new LoggerConfiguration()
 				.WriteTo.Console()
 				.CreateLogger();
@@ -77,6 +78,10 @@ namespace Server
 				services.AddSingleton<IChatPacketHandler, ChatPacketHandler>();
 				services.AddSingleton<IPacketHandler, ServerPacketHandler>();
 
+				// 데이터 관리 제공자 등록
+				services.AddSingleton<IDataStorageProvider, DataStorageProvider>();
+				services.AddSingleton<IHotReloadHandler, HotReloadHandler>();
+
 				var serviceProvider = services.BuildServiceProvider();
 
 				var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
@@ -128,7 +133,6 @@ namespace Server
 
 				IPEndPoint endPoint = new IPEndPoint(ipAddr, serverConfig.Network.Port);
 
-				//LogManager.Info($"port:{serverConfig.Network.Port}");
 				logger.LogInformation($"port:{serverConfig.Network.Port}");
 
 				// job queue 시스템 초기화 및 worker 스레드 실행
@@ -150,7 +154,6 @@ namespace Server
 
 				_listener.Init( endPoint, () => serviceProvider.GetRequiredService<GameSession>(), serverConfig.Network.ListenBacklog );
 
-				//LogManager.Info( "Listening..." );
 				logger.LogInformation( "Listening..." );
 
 				_shutdownEvent.WaitOne();

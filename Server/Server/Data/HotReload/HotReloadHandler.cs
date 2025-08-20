@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using Server.Data.Models;
 using Server.Data.Storage;
 using System;
 using System.Collections.Generic;
@@ -13,17 +14,17 @@ namespace Server.Data.HotReload
 {
 	public class HotReloadHandler : IHotReloadHandler
 	{
-		private readonly IThreadSafeDataStorage _storage;
+		private readonly IDataStorageProvider _storageProvider;
 		private readonly ILogger<HotReloadHandler> _logger;
 		private readonly SemaphoreSlim _reloadSemaphore = new SemaphoreSlim(1,1);
 
 		public event EventHandler<DataReloadedEventArgs> DataReloaded;
 
 		public HotReloadHandler(
-			IThreadSafeDataStorage storage,
+			IDataStorageProvider storageProvider,
 			ILogger<HotReloadHandler> logger )
 		{
-			_storage = storage;
+			_storageProvider = storageProvider;
 			_logger = logger;
 		}
 
@@ -47,7 +48,7 @@ namespace Server.Data.HotReload
 
 				// 파일이 사용 중 일 수 있으므로 재시도 로직
 				var content = await ReadFileWithRetryAsync(filePath);
-				if(content == null )
+				if(content == null)
 				{
 					var error = "Failed to read file after retries";
 					_logger.LogError( error );
@@ -64,16 +65,22 @@ namespace Server.Data.HotReload
 					_ => false
 				};
 
-				if (success)
+				if(success)
 				{
-					var count = _storage.GetRecordCount(tableName);
+					var count = tableName.ToLower() switch
+					{
+						"items"=>_storageProvider.Items.Count,
+						"monsters"=>_storageProvider.Monsters.Count,
+						"skills"=>_storageProvider.Skills.Count,
+						_ => 0
+					};
 					_logger.LogInformation( "Hot reload completed for {TableName}: {Count} records", tableName, count );
 					OnDataReloaded( tableName, count, true, null );
 				}
 
 				return success;
 			}
-			catch ( Exception ex )
+			catch(Exception ex)
 			{
 				_logger.LogError( ex, "Hot reload failed for table: {TableName}", tableName );
 				OnDataReloaded( tableName, 0, false, ex.Message );
@@ -85,9 +92,9 @@ namespace Server.Data.HotReload
 			}
 		}
 
-		private async Task<string> ReadFileWithRetryAsync(string filePath, int maxRetries = 3)
+		private async Task<string> ReadFileWithRetryAsync( string filePath, int maxRetries = 3 )
 		{
-			for (int i = 0; i < maxRetries; i++)
+			for(int i = 0; i < maxRetries; i++)
 			{
 				try
 				{
@@ -96,7 +103,7 @@ namespace Server.Data.HotReload
 					using var reader = new StreamReader(stream);
 					return await reader.ReadToEndAsync();
 				}
-				catch (IOException) when (i < maxRetries - 1)
+				catch(IOException) when(i < maxRetries - 1)
 				{
 					await Task.Delay( 100 *(i+1) ); // 점진적 지연
 				}
@@ -105,12 +112,19 @@ namespace Server.Data.HotReload
 			return null;
 		}
 
-		private async Task<bool> ReloadItemsAsync(string jsonContent)
+		private async Task<bool> ReloadItemsAsync( string jsonContent )
 		{
 			try
 			{
-				var items = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonContent);
-				return _storage.ReplaceItems( items );
+				var items = JsonSerializer.Deserialize<ItemData[]>(jsonContent);
+				if(items == null) return false;
+
+				var itemDict = items.ToDictionary(item => item.Id);
+				_storageProvider.Items.Update( itemDict );
+
+				_logger.LogInformation("Items reloaded: {Count} items", itemDict.Count);
+				
+				return true;
 			}
 			catch(JsonException ex)
 			{
@@ -123,8 +137,15 @@ namespace Server.Data.HotReload
 		{
 			try
 			{
-				var monsters = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonContent);
-				return _storage.ReplaceItems( monsters );
+				var monsters = JsonSerializer.Deserialize<MonsterData[]>(jsonContent);
+				if(monsters == null) return false;
+
+				var monsterDict = monsters.ToDictionary(monster => monster.Id);
+				_storageProvider.Monsters.Update( monsterDict );
+
+				_logger.LogInformation( "Monsters reloaded: {Count} monsters", monsterDict.Count );
+
+				return true;
 			}
 			catch(JsonException ex)
 			{
@@ -137,8 +158,15 @@ namespace Server.Data.HotReload
 		{
 			try
 			{
-				var skills = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonContent);
-				return _storage.ReplaceItems( skills );
+				var skills = JsonSerializer.Deserialize<SkillData[]>(jsonContent);
+				if(skills == null) return false;
+
+				var skilldict = skills.ToDictionary(skill => skill.Id);
+				_storageProvider.Skills.Update( skilldict );
+
+				_logger.LogInformation( "Skills reloaded: {Count} skills", skilldict.Count );
+
+				return true;
 			}
 			catch(JsonException ex)
 			{

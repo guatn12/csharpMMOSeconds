@@ -49,8 +49,6 @@
 
   <ItemGroup>
     <Folder Include="Data\Extensions\" />
-    <Folder Include="Data\Models\" />
-    <Folder Include="GameData\" />
   </ItemGroup>
 
 </Project>
