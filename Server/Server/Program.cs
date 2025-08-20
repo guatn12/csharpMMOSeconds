@@ -14,6 +14,8 @@ using Serilog;
 using Microsoft.Extensions.Logging;
 using Server.Data.Storage;
 using Server.Data.HotReload;
+using Server.Data;
+using Server.Data.FileWatcher;
 
 namespace Server
 {
@@ -52,7 +54,8 @@ namespace Server
 				services.Configure<SecuritySettings>( configuration.GetSection( "ServerConfiguration:Security" ) );
 				services.Configure<DatabaseSettings>( configuration.GetSection( "ServerConfiguration:Database" ) );
 				services.Configure<JobQueueSettings>( configuration.GetSection( "ServerConfiguration:JobQueue" ) );
-				
+				services.Configure<GameDataSettings>( configuration.GetSection( "ServerConfiguration:GameData" ) );
+
 				services.AddSingleton<IValidateOptions<NetworkSettings>, NetworkSettingsValidator>();
 				services.AddSingleton<IValidateOptions<LoggingSettings>, LoggingSettingsValidator>();
 				services.AddSingleton<IValidateOptions<SecuritySettings>, SecuritySettingsValidator>();
@@ -81,6 +84,8 @@ namespace Server
 				// 데이터 관리 제공자 등록
 				services.AddSingleton<IDataStorageProvider, DataStorageProvider>();
 				services.AddSingleton<IHotReloadHandler, HotReloadHandler>();
+				services.AddSingleton<IFileWatcher, GameDataFileWatcher>();
+				services.AddSingleton<IDataManager, DataManager>();
 
 				var serviceProvider = services.BuildServiceProvider();
 
@@ -95,6 +100,38 @@ namespace Server
 
 				// ConfigurationService 초기화 (Hot Reload 활성화)
 				await configService.InitializeAsync();
+
+				// 게임 데이터 로딩 및 검증
+				var dataManager = serviceProvider.GetRequiredService<IDataManager>();
+				logger.LogInformation( "Starting game data loading..." );
+
+				bool dataLoadSuccess = await dataManager.LoadAllDataAsync();
+				if(!dataLoadSuccess)
+				{
+					logger.LogError( "Failed to load game data. Server startup aborted." );
+					return;
+				}
+
+				bool dataValidateionSuccess = dataManager.ValidateAllData();
+				if(!dataValidateionSuccess)
+				{
+					logger.LogError( "Game data validation failed. Server startup aborted." );
+					return;
+				}
+
+				logger.LogInformation( "Game data loaded and validated successfully." );
+
+				// json 데이터 파일 변경 확인 시작.
+				var fileWatcher = serviceProvider.GetRequiredService<IFileWatcher>();
+				fileWatcher.StartWatching();
+
+				var hotReloadHandler = serviceProvider.GetService<IHotReloadHandler>();
+				fileWatcher.FileChanged += async ( sender, args ) =>
+				{
+					logger.LogInformation( "Hot reload triggered: {TableName}", args.TableName );
+					bool success = await hotReloadHandler.ReloadDataAsync(args.TableName, args.FilePath);
+					logger.LogInformation( success ? "Hoit reload success: {TableName}" : "Hot reload failed: {TableName}", args.TableName );
+				};
 
 				// 설정 변경 이벤트 등록
 				configService.ConfigurationChanged += ( sender, args ) =>

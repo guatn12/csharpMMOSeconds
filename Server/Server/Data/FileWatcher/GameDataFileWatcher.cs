@@ -16,7 +16,6 @@ namespace Server.Data.FileWatcher
 	{
 		private readonly GameDataSettings _settings;
 		private readonly ILogger<GameDataFileWatcher> _logger;
-		private readonly IHostEnvironment _environment;
 		private FileSystemWatcher _watcher;
 		private readonly Timer _debounceTimer;
 		private readonly Dictionary<string, DateTime> _pendingChanges = new();
@@ -26,18 +25,20 @@ namespace Server.Data.FileWatcher
 
 		public GameDataFileWatcher(
 			IOptions<GameDataSettings> options,
-			ILogger<GameDataFileWatcher> logger,
-			IHostEnvironment environment)
+			ILogger<GameDataFileWatcher> logger)
 		{
 			_settings = options.Value;
 			_logger = logger;
-			_environment = environment;
+
+			_debounceTimer = new Timer( ProcessPendingChanges, null, Timeout.Infinite, Timeout.Infinite );
 		}
 
 		public void StartWatching()
 		{
 			// 개발 환경이고, Hot Reload가 활성화된 경우만
-			if(!_settings.EnableHotReload || !_environment.IsDevelopment())
+			var environmnetName = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")??"Production";
+			bool isDevelopment = environmnetName.Equals("Development", StringComparison.OrdinalIgnoreCase);
+			if(!_settings.EnableHotReload || !isDevelopment)
 			{
 				_logger.LogInformation( "File watching disabled" );
 				return;
