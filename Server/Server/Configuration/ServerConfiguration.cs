@@ -21,5 +21,7 @@ namespace Server.Configuration
 
 		[Required]
 		public JobQueueSettings JobQueue { get; set; } = new();
+
+		public RoomSettings Room { get; set; } = new();
 	}
 }
