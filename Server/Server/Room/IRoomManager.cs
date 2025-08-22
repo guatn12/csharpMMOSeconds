@@ -54,6 +54,7 @@ namespace Server.Room
 		public int ActiveRoomCount { get; set; }
 		public int TotalPlayerCount { get; set; }
 		public Dictionary<RoomType, int> RoomCountByType { get; set; } = new Dictionary<RoomType, int>();
+		public DateTime LastCleanupTime { get; set; }
 	}
 
 	public class RoomCreatedEventArgs : EventArgs

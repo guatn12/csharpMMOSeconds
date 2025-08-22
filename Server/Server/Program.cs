@@ -55,12 +55,15 @@ namespace Server
 				services.Configure<DatabaseSettings>( configuration.GetSection( "ServerConfiguration:Database" ) );
 				services.Configure<JobQueueSettings>( configuration.GetSection( "ServerConfiguration:JobQueue" ) );
 				services.Configure<GameDataSettings>( configuration.GetSection( "ServerConfiguration:GameData" ) );
+				services.Configure<RoomSettings>( configuration.GetSection( "ServerConfiguration:Room" ) );
 
+				// 개별 설정 검증자 등록.
 				services.AddSingleton<IValidateOptions<NetworkSettings>, NetworkSettingsValidator>();
 				services.AddSingleton<IValidateOptions<LoggingSettings>, LoggingSettingsValidator>();
 				services.AddSingleton<IValidateOptions<SecuritySettings>, SecuritySettingsValidator>();
 				services.AddSingleton<IValidateOptions<DatabaseSettings>, DatabaseSettingsValidator>();
 				services.AddSingleton<IValidateOptions<JobQueueSettings>, JobQueueSettingsValidator>();
+				services.AddSingleton<IValidateOptions<RoomSettings>, RoomSettingsValidator>();
 
 				// ConfigurationService 등록
 				services.AddSingleton<IConfigurationService, ConfigurationService>();

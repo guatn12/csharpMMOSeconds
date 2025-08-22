@@ -39,6 +39,15 @@ namespace Server.Configuration
 		public string DefaultLobbyName { get; set; } = "Main Lobby";
 
 		public bool AutoCreateLobby { get; set; } = true;
+
+		public bool EnableWelcomMessage { get; set; } = true;
+
+		public bool EnalbeJoinLeaveNotifications { get; set; } = true;
+
+		public bool ShowLobbyStatus { get; set; } = true;
+
+		[Range( 10, 500 )]
+		public int MaxChatMessageLength { get; set; } = 200;
 	}
 
 	public class BattleRoomSettings
