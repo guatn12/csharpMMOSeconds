@@ -123,65 +123,41 @@ namespace DummyClient
 
 		private static void MainLoop()
 		{
+			int moveCount = 0;
 			while(true)
 			{
-				if(Session == null)
+				try
 				{
-					Thread.Sleep( 100 );
-					continue;
-				}
-
-				Console.WriteLine( "\n------------------------------------" );
-				Console.WriteLine( "전송할 패킷을 선택하세요:" );
-				Console.WriteLine( "1. 이동 (C_Move)" );
-				Console.WriteLine( "2. 채팅 (C_Chat)" );
-				Console.WriteLine( "3. ALL 랜덤 테스트" );
-				Console.WriteLine( "Q. 종료" );
-				Console.Write( "> " );
-
-				string input = Console.ReadLine();
-				if(string.Equals( input, "q", StringComparison.OrdinalIgnoreCase ))
-				{
-					break;
-				}
-
-				switch(input)
-				{
-				case "1":
-					RunTest( TestScenario.C_MOVE );
-					break;
-
-				case "2":
-					RunTest( TestScenario.C_CHAT );
-					break;
-
-				case "3":
-					Random rand = new Random();
-					_logger.LogInformation( "\n'전체 테스트'를 랜덤하게 반복합니다. 중지하려면 아무 키나 누르세요..." );
-					while(!Console.KeyAvailable)
+					if(Session == null)
 					{
-						// 0 또는 1을 랜덤하게 생성하여 테스트 선택
-						if(rand.Next( 0, 2 ) == 0)
-						{
-							RunTest( TestScenario.C_MOVE );
-						}
-						else
-						{
-							RunTest( TestScenario.RANDOMCHAT );
-						}
-						Thread.Sleep( 100 ); // 0.1초 간격
+						Thread.Sleep( 300 );
+						continue;
 					}
-					// 입력 버퍼 비우기
-					while(Console.KeyAvailable) Console.ReadKey( true );
-					_logger.LogInformation( "반복 테스트를 중지했습니다." );
-					break;
-				default:
-					_logger.LogWarning( "잘못된 입력입니다." );
+
+					// 1초마다 이동
+					C_Move movePacket = new C_Move()
+					{
+						PosInfo = new PosInfo() {PosX = moveCount++, PosY = 2, PosZ = 3 },
+					};
+					Session.Send( movePacket );
+					_logger.LogInformation( $"[Send] C_Move: posX={movePacket.PosInfo.PosX}" );
+
+					// 5초마다 채팅
+					if(moveCount % 5 == 0)
+					{
+						C_Chat chatPacket = new C_Chat() {Message = $"안녕하세요! {moveCount / 5}번째 채팅입니다." };
+						Session.Send( chatPacket );
+						_logger.LogInformation( $"[Send] C_Chat: {chatPacket.Message}" );
+					}
+
+					Thread.Sleep( 1000 );
+				}
+				catch( Exception ex )
+				{
+					_logger.LogError( ex, "MainLoop 중 오류 발생" );
 					break;
 				}
-				Thread.Sleep( 200 );
 			}
-			_logger.LogInformation( "클라이언트를 종료합니다." );
 		}
 		
 

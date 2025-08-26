@@ -46,6 +46,8 @@ public class SystemPacketHandler : ISystemPacketHandler
 
 	public void On_S_EnterGame( Session session, S_EnterGame packet )
 	{
+		Program.Session.DummySessionId = packet.Player.PlayerId;
+
 		//Console.WriteLine( $"[FromServer] {packet.Player.Name}님이 게임에 입장했습니다." );
 		_logger.LogInformation( "[FromServer] {Name}님이 게임에 입장했습니다.", packet.Player.Name );
 	}
@@ -115,8 +117,8 @@ public class ChatPacketHandler : IChatPacketHandler
 	public void On_S_Chat( Session session, S_Chat packet )
 	{
 		// TODO : 테스트를 위해 예외처리 제거(활성화 필요)
-		//if(Program.Session != null && Program.Session.DummyId != packet.PlayerId)
-		_logger.LogInformation( "[FromServer] Player({PlayerId}): {Message}", packet.PlayerId, packet.Message );
+		if(Program.Session != null && Program.Session.DummyId != packet.PlayerId)
+			_logger.LogInformation( "[FromServer] Player({PlayerId}): {Message}", packet.PlayerId, packet.Message );
 			//Console.WriteLine( $"[FromServer] Player({packet.PlayerId}): {packet.Message}" );
 	}
 }

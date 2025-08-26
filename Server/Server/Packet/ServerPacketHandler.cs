@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
 using Protocol;
 using Server;
+using Server.Room;
+using Server.Room.Jobs;
 using ServerCore;
 using System;
 using System.Collections.Generic;
@@ -41,7 +43,18 @@ public class MovementPacketHandler : IMovementPacketHandler
 
 		_logger.LogInformation( "[C_Move] Player({SessionId}) -> PosInfo:{PosX}, {PosY}, {PosZ}", gameSession.SessionId,
 			packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ );
-		//Console.WriteLine( $"[C_Move] Player({gameSession.SessionId}) -> PosInfo:{packet.PosInfo.PosX}, {packet.PosInfo.PosY}, {packet.PosInfo.PosZ}" );
+
+		// TODO : 플레이어 상태 체크
+
+		IRoom room = gameSession.CurrentRoom;
+		int prevJobCount = room.JobQueue.Count;
+		room.JobQueue.Enqueue( new MoveJob( gameSession, gameSession.CurrentRoom, packet, _logger ) );
+
+		if(prevJobCount == 0)
+		{
+			_ = JobQueueManager.Instance.PushAsync( room );
+		}
+		
 	}
 }
 
@@ -61,15 +74,22 @@ public class ChatPacketHandler : IChatPacketHandler
 			return;
 
 		_logger.LogInformation( "[C_Chat] Player({SessionId}): {Message}", gameSession.SessionId, packet.Message );
-		//Console.WriteLine( $"[C_Chat] Player({gameSession.SessionId}): {packet.Message}" );
 
+		IRoom room = gameSession.CurrentRoom;
+		int prevJobCount = room.JobQueue.Count;
+		room.JobQueue.Enqueue( new ChatJob( gameSession, gameSession.CurrentRoom, packet, _logger ) );
 
-		S_Chat chat = new S_Chat
+		if(prevJobCount == 0)
 		{
-			PlayerId = gameSession.SessionId,
-			Message = $"Echo: {packet.Message}",
-		};
+			_ = JobQueueManager.Instance.PushAsync( room );
+		}
 
-		gameSession.Send( chat );
+		//S_Chat chat = new S_Chat
+		//{
+		//	PlayerId = gameSession.SessionId,
+		//	Message = $"Echo: {packet.Message}",
+		//};
+
+		//gameSession.Send( chat );
 	}
 }

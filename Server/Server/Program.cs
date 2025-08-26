@@ -16,6 +16,8 @@ using Server.Data.Storage;
 using Server.Data.HotReload;
 using Server.Data;
 using Server.Data.FileWatcher;
+using Server.Room;
+using Microsoft.Extensions.Hosting;
 
 namespace Server
 {
@@ -68,7 +70,13 @@ namespace Server
 				// ConfigurationService 등록
 				services.AddSingleton<IConfigurationService, ConfigurationService>();
 				services.AddSingleton<Listener>();
-				services.AddTransient<GameSession>();
+				// GameSession을 팩토리 패턴으로 등록 (IRoomManager 의존성 주입 포함
+				services.AddTransient<GameSession>(provider =>
+				{
+					var logger = provider.GetRequiredService<ILogger<GameSession>>();
+					var roomManager = provider.GetRequiredService<IRoomManager>();
+					return new GameSession( logger, roomManager );
+				});
 				services.AddLogging(loggingBuilder =>
 				{
 					loggingBuilder.ClearProviders();		// 기본 공급자 제거
@@ -90,6 +98,10 @@ namespace Server
 				services.AddSingleton<IFileWatcher, GameDataFileWatcher>();
 				services.AddSingleton<IDataManager, DataManager>();
 
+				// room 관련 서비스 등록
+				services.AddSingleton<IRoomFactory, RoomFactory>();
+				services.AddSingleton<IRoomManager, RoomManager>();
+
 				var serviceProvider = services.BuildServiceProvider();
 
 				var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
@@ -97,6 +109,11 @@ namespace Server
 				_listener = serviceProvider.GetRequiredService<Listener>();
 				var jobQueueLogger = serviceProvider.GetRequiredService<ILogger<JobQueueManager>>();
 				JobQueueManager.Initialize(jobQueueLogger);
+				IRoomManager roomManager = serviceProvider.GetRequiredService<IRoomManager>();
+				if(roomManager is IHostedService hostedRoomManager)
+				{
+					await hostedRoomManager.StartAsync( CancellationToken.None );
+				}
 
 				// 설정 검증 및 로드
 				var configService = serviceProvider.GetRequiredService<IConfigurationService>();

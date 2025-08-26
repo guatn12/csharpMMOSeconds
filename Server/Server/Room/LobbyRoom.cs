@@ -43,7 +43,8 @@ namespace Server.Room
 		{
 			await base.OnInitializeAsync();
 
-			_lobbyLogger.LogInformation( "LobbyRoom '{RoomName}' (ID: {RoomId}) initialized successfully" );
+			_lobbyLogger.LogInformation( "LobbyRoom '{RoomName}' (ID: {RoomId}) initialized successfully",
+				RoomName, RoomId);
 
 			// 로비 특화 초기화 로직 (필요시)
 			await SetUpLobbyEnvironmentAsync();

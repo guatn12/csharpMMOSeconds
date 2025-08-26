@@ -92,10 +92,21 @@ namespace Server.Room
 					return null;
 				}
 
-				// 플레이어 수 검증
-				if(maxPlayers <= 0 || _roomSettings.CurrentValue.Default.MaxPlayers < maxPlayers)
+				// 룸 타입별 플레이어 수 검증
+				int maxAllowedPlayers = roomType switch
 				{
-					_logger.LogWarning( "Invalid max players: {MaxPlayers}", maxPlayers );
+					RoomType.Lobby => _roomSettings.CurrentValue.Lobby.MaxPlayers,
+					RoomType.Battle => _roomSettings.CurrentValue.Battle.MaxPlayers,
+					RoomType.Dungeon => _roomSettings.CurrentValue.Default.MaxPlayers, // 아직 미구현
+					RoomType.Guild => _roomSettings.CurrentValue.Default.MaxPlayers,   // 아직 미구현
+					RoomType.Private => _roomSettings.CurrentValue.Default.MaxPlayers, // 아직 미구현
+					_ => _roomSettings.CurrentValue.Default.MaxPlayers
+				};
+
+				if(maxPlayers <= 0 || maxAllowedPlayers < maxPlayers)
+				{
+					_logger.LogWarning( "Invalid max players: {MaxPlayers} for room type {RoomType} (limit: {MaxAllowedPlayers})", 
+						maxPlayers, roomType, maxAllowedPlayers );
 					return null;
 				}
 

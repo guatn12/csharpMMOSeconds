@@ -14,6 +14,8 @@ namespace DummyClient
 	{
 		public int DummyId { get; private set; }
 		private readonly ILogger<ServerSession> _logger;
+		public long DummySessionId { get; set; }
+
 
 		public ServerSession(ILogger<ServerSession> logger)
 		{
@@ -29,9 +31,9 @@ namespace DummyClient
 
 		public override void OnConnected( EndPoint endPoint )
 		{
+			Program.Session = this;
 			//Console.WriteLine( $"OnConnected: {endPoint}" );
 			_logger.LogInformation( "OnConnected: {endPoint}", endPoint );
-			Program.Session = this;
 		}
 
 		public override void OnDisConnected( EndPoint endPoint )
