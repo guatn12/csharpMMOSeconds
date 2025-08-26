@@ -166,6 +166,7 @@ namespace Server.Room
 
 			foreach(var player in currentPlayers)
 			{
+				// TODO : Send 호출 플레이어 제외 임시 주석 처리. 주석 다시 해제
 				if(player != excludeSession)
 				{
 					tasks.Add( SendToPlayerAsync( player, packet ) );

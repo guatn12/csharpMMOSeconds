@@ -20,9 +20,22 @@ namespace ServerCore
 		private readonly Queue<ArraySegment<byte>> _sendQueue = new Queue<ArraySegment<byte>>();
 		private readonly object _lock = new object();
 		private bool _isSending = false;
+		private bool _isClosed = false;
 		private readonly List<ArraySegment<byte>> _pendingList = new List<ArraySegment<byte>>();
-
+		
 		private const int HeaderSize = 2;
+
+		public bool IsConnected()
+		{
+			lock (_lock)
+			{
+				try
+				{
+					return _socket != null && _socket.Connected && !(_socket.Poll( 1, SelectMode.SelectRead ) && _socket.Available == 0);
+				}
+				catch { return false; }
+			}
+		}
 
 		public void Start( Socket socket, int recvBufferSize = 4096 )
 		{
@@ -198,20 +211,26 @@ namespace ServerCore
 
 		public void Close()
 		{
-			if(_socket == null)
-				return;
+			lock( _lock )
+			{
+				if( _isClosed || _socket == null)
+					return;
 
-			try
-			{
-				OnDisConnected( _socket.RemoteEndPoint );
-				_socket.Shutdown( SocketShutdown.Both );
-			}
-			catch(Exception ex)
-			{
-				// 이미 종료된 오류는 무시.
+				_isClosed = true;
+
+				try
+				{
+					OnDisConnected( _socket.RemoteEndPoint );
+					_socket.Shutdown( SocketShutdown.Both );
+				}
+				catch(Exception ex)
+				{
+					// 이미 종료된 오류는 무시.
+				}
+
+				_socket.Close();
 			}
 			
-			_socket.Close();
 			Clear();
 		}
 

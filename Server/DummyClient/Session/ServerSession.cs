@@ -16,15 +16,17 @@ namespace DummyClient
 		private readonly ILogger<ServerSession> _logger;
 		public long DummySessionId { get; set; }
 
+		private readonly PacketManager _packetManager;
 
-		public ServerSession(ILogger<ServerSession> logger)
+		public ServerSession(ILogger<ServerSession> logger, IPacketHandler packetHandler )
 		{
 			_logger = logger;
+			_packetManager = new PacketManager( packetHandler );
 		}
 
 		public void Send( IMessage packet )
 		{
-			ArraySegment<byte> segment = Program.PacketManagerInstance.MakeSendPacket(packet);
+			ArraySegment<byte> segment = _packetManager.MakeSendPacket( packet );
 
 			base.Send( segment );
 		}
@@ -46,7 +48,7 @@ namespace DummyClient
 		public override void OnRecvPacket( ArraySegment<byte> buffer )
 		{
 			// 서버 패킷 처리.
-			Program.PacketManagerInstance.HandlePacket( this, buffer );
+			_packetManager.HandlePacket( this, buffer );
 		}
 
 		public override void OnSend( int bytes )
