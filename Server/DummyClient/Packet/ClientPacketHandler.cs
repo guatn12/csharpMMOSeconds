@@ -1,124 +1,58 @@
-﻿using DummyClient;
-using Microsoft.Extensions.Logging;
-using Protocol;
+using DummyClient.Packet;
 using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Protocol; // Added for packet types
+using Microsoft.Extensions.Logging; // Added for ILogger
 
-public class ClientPacketHandler : IPacketHandler
+namespace DummyClient.Packet
 {
-	private readonly ILogger<ClientPacketHandler> _logger;
-	private readonly IMovementPacketHandler _movementPacketHandler;
-	private readonly IChatPacketHandler _chatPacketHandler;
-	private readonly ISystemPacketHandler _systemPacketHandler;
-	private readonly IGamePlayPacketHandler _gamePlayPacketHandler;
+    public class ClientPacketHandler : BaseClientPacketHandler
+    {
+        private readonly ILogger<ClientPacketHandler> _logger;
 
-	public ClientPacketHandler( ILogger<ClientPacketHandler> logger,
-		IMovementPacketHandler movementPacketHandler,
-		IChatPacketHandler chatPacketHandler,
-		ISystemPacketHandler systemPacketHandler,
-		IGamePlayPacketHandler gamePlayPacketHandler )
-	{
-		_logger = logger;
-		_movementPacketHandler=movementPacketHandler;
-		_chatPacketHandler=chatPacketHandler;
-		_systemPacketHandler=systemPacketHandler;
-		_gamePlayPacketHandler=gamePlayPacketHandler;
-	}
+        public ClientPacketHandler(ILogger<ClientPacketHandler> logger)
+        {
+            _logger = logger;
+        }
 
-	public IMovementPacketHandler MovementPacketHandler => _movementPacketHandler;
-	public IChatPacketHandler ChatPacketHandler => _chatPacketHandler;
-	public ISystemPacketHandler SystemPacketHandler => _systemPacketHandler;
-	public IGamePlayPacketHandler GamePlayPacketHandler => _gamePlayPacketHandler;
-}
+        public override ValueTask On_S_EnterGame(Session session, S_EnterGame packet)
+        {
+            _logger.LogInformation("[Client] Received S_EnterGame. PlayerId: {PlayerId}", packet.Player.PlayerId);
+            return ValueTask.CompletedTask;
+        }
 
-public class SystemPacketHandler : ISystemPacketHandler
-{
-	private readonly ILogger<SystemPacketHandler> _logger;
+        public override ValueTask On_S_LeaveGame(Session session, S_LeaveGame packet)
+        {
+            _logger.LogInformation("[Client] Received S_LeaveGame. PlayerId: {PlayerId}", packet.PlayerId);
+            return ValueTask.CompletedTask;
+        }
 
-	public SystemPacketHandler( ILogger<SystemPacketHandler> logger )
-	{
-		_logger = logger;
-	}
+        public override ValueTask On_S_Spawn(Session session, S_Spawn packet)
+        {
+            _logger.LogInformation("[Client] Received S_Spawn. Players: {PlayersCount}", packet.Players.Count);
+            return ValueTask.CompletedTask;
+        }
 
-	public void On_S_EnterGame( Session session, S_EnterGame packet )
-	{
-		Program.Session.DummySessionId = packet.Player.PlayerId;
+        public override ValueTask On_S_Despawn(Session session, S_Despawn packet)
+        {
+            _logger.LogInformation("[Client] Received S_Despawn. ObjectIds: {ObjectIds}", string.Join(", ", packet.ObjectIds));
+            return ValueTask.CompletedTask;
+        }
 
-		//Console.WriteLine( $"[FromServer] {packet.Player.Name}님이 게임에 입장했습니다." );
-		_logger.LogInformation( "[FromServer] {Name}님이 게임에 입장했습니다.", packet.Player.Name );
-	}
+        public override ValueTask On_S_Move(Session session, S_Move packet)
+        {
+            _logger.LogInformation("[Client] Received S_Move. PlayerId: {PlayerId}, Pos: ({PosX}, {PosY}, {PosZ})", packet.PlayerId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ);
+            return ValueTask.CompletedTask;
+        }
 
-	public void On_S_LeaveGame( Session session, S_LeaveGame packet )
-	{
-		//Console.WriteLine( $"[FromServer] Player({packet.PlayerId})님이 게임을 떠났습니다." );
-		_logger.LogInformation( "[FromServer] Player({PlayerId})님이 게임을 떠났습니다.", packet.PlayerId );
-	}
-}
-
-public class GamePlayPacketHandler : IGamePlayPacketHandler
-{
-	private readonly ILogger<GamePlayPacketHandler> _logger;
-
-	public GamePlayPacketHandler( ILogger<GamePlayPacketHandler> logger )
-	{
-		_logger = logger;
-	}
-
-	public void On_S_Spawn( Session session, S_Spawn packet )
-	{
-		foreach(var p in packet.Players)
-		{
-			//Console.WriteLine( $"[FromServer] Player({p.PlayerId})가 스폰되었습니다. PosInfo ({p.PosInfo.PosX}, {p.PosInfo.PosY}, {p.PosInfo.PosZ})" );
-			_logger.LogInformation( "[FromServer] Player({PlayerId})가 스폰되었습니다. PosInfo({PosX}, {PosY}, {PosZ})",
-				p.PlayerId, p.PosInfo.PosX, p.PosInfo.PosY, p.PosInfo.PosZ );
-		}
-	}
-
-	public void On_S_Despawn( Session session, S_Despawn packet )
-	{
-		foreach(var p in packet.ObjectIds)
-		{
-			//Console.WriteLine( $"[FromServer] Player({p})가 사라졌습니다." );
-			_logger.LogInformation( "[FromServer] Player({p})가 사라졌습니다.", p );
-		}
-	}
-}
-
-public class MovementPacketHandler : IMovementPacketHandler
-{
-	private readonly ILogger<MovementPacketHandler> _logger;
-
-	public MovementPacketHandler( ILogger<MovementPacketHandler> logger )
-	{
-		_logger = logger;
-	}
-
-	public void On_S_Move( Session session, S_Move packet )
-	{
-		//Console.WriteLine( $"[FromServer] Player({packet.PlayerId})가 이동했습니다. PosInfo ({packet.PosInfo.PosX}, {packet.PosInfo.PosY}, {packet.PosInfo.PosZ})" );
-		_logger.LogInformation( "[FromServer] Player({PlayerId})가 이동했습니다. PosInfo({PosX}, {PosY}, {PosZ})",
-			packet.PlayerId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ );
-	}
-}
-
-public class ChatPacketHandler : IChatPacketHandler
-{
-	private readonly ILogger<ChatPacketHandler> _logger;
-
-	public ChatPacketHandler( ILogger<ChatPacketHandler> logger )
-	{
-		_logger = logger;
-	}
-
-	public void On_S_Chat( Session session, S_Chat packet )
-	{
-		// TODO : 테스트를 위해 예외처리 제거(활성화 필요)
-		if(Program.Session != null && Program.Session.DummyId != packet.PlayerId)
-			_logger.LogInformation( "[FromServer] Player({PlayerId}): {Message}", packet.PlayerId, packet.Message );
-			//Console.WriteLine( $"[FromServer] Player({packet.PlayerId}): {packet.Message}" );
-	}
+        public override ValueTask On_S_Chat(Session session, S_Chat packet)
+        {
+            _logger.LogInformation("[Client] Received S_Chat. PlayerId: {PlayerId}, Message: {Message}", packet.PlayerId, packet.Message);
+            return ValueTask.CompletedTask;
+        }
+    }
 }

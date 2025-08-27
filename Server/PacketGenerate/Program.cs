@@ -133,7 +133,7 @@ namespace PacketGenerator
 			}
 			else // client
 			{
-				GenerateOldClientPacketManager( matches, sb, packetInfoList );
+				GenerateNewClientPacketManager( matches, sb, packetInfoList );
 			}
 		}
 
@@ -317,103 +317,123 @@ namespace PacketGenerator
 			sb.AppendLine( "}" );
 		}
 
-		private static void GenerateOldClientPacketManager(MatchCollection matches, StringBuilder sb, List<Tuple<string, string, string>> packetInfoList)
+		private static void GenerateNewClientPacketManager(MatchCollection matches, StringBuilder sb, List<Tuple<string, string, string>> packetInfoList)
 		{
-			// 기존 GeneratePacketManager 로직을 그대로 유지
-			sb.AppendLine( "// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다." );
-			sb.AppendLine( "// Target: Client (기존 구조 유지 - DummyClient 호환성)" );
+			sb.AppendLine("// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다.");
+			sb.AppendLine("// Target: Client (신규 구조 - Inheritance Model)");
 			sb.AppendLine();
-			sb.AppendLine( "using ServerCore;" );
-			sb.AppendLine( "using System;" );
-			sb.AppendLine( "using System.Collections.Generic;" );
-			sb.AppendLine( "using Google.Protobuf;" );
-			sb.AppendLine( "using Protocol;" );
+			sb.AppendLine("using ServerCore;");
+			sb.AppendLine("using System;");
+			sb.AppendLine("using System.Collections.Generic;");
+			sb.AppendLine("using System.Threading.Tasks;");
+			sb.AppendLine("using Google.Protobuf;");
+			sb.AppendLine("using Protocol;");
+			sb.AppendLine("using Microsoft.Extensions.Logging;");
 			sb.AppendLine();
-			sb.AppendLine( "public class PacketManager" );
-			sb.AppendLine( "{" );
-			sb.AppendLine( "    IPacketHandler _handler;" );
-			sb.AppendLine( "    Dictionary<ushort, Action<Session, ArraySegment<byte>>> _onRecv = new Dictionary<ushort, Action<Session, ArraySegment<byte>>>(); ");
-			sb.AppendLine( "    Dictionary<ushort, Func<IMessage, ArraySegment<byte>>> _makePacket = new Dictionary<ushort, Func<IMessage, ArraySegment<byte>>>(); ");
-			sb.AppendLine( "    Dictionary<Type, PacketID> _packetTypeToId = new Dictionary<Type, PacketID>();" );
-			sb.AppendLine();
-			sb.AppendLine( "    public PacketManager(IPacketHandler handler)" );
-			sb.AppendLine( "    {" );
-			sb.AppendLine( "        _handler = handler;" );
-			sb.AppendLine( "        Register();" );
-			sb.AppendLine( "    }" );
-			sb.AppendLine();
-			sb.AppendLine( "    // 핸들러 자동 등록" );
-			sb.AppendLine( "    public void Register()" );
-			sb.AppendLine( "    {" );
+			sb.AppendLine("namespace DummyClient.Packet");
+			sb.AppendLine("{");
+			sb.AppendLine("    public abstract class BaseClientPacketHandler");
+			sb.AppendLine("    {");
 
+			// Generate handler method stubs
 			foreach(Match match in matches)
 			{
 				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
-
-				// Find packet info for the current packet
-				Tuple<string, string, string> currentPacketInfo = packetInfoList.Find(p => p.Item1 == pName);
-				string handlerName = currentPacketInfo?.Item2;
-				string packetType = currentPacketInfo?.Item3;
-
-				// 클라이언트는 S_로 시작하는 패킷을 생성하고, C_로 시작하는 패킷을 받음
-				if(pName.StartsWith( "C_" ))
+				if(pName.StartsWith( "S_" ))
 				{
-					sb.AppendLine( $"        _makePacket.Add((ushort)PacketID.{pName}, MakeSendPacket);" );
-					sb.AppendLine( $"        _packetTypeToId.Add(typeof(Protocol.{pName}), PacketID.{pName});" );
-				}
-				else if(pName.StartsWith( "S_" ))
-				{
-					sb.AppendLine( $"        _onRecv.Add((ushort)PacketID.{pName}, (s, b) => HandlePacket<Protocol.{pName}>(s, b, _handler.{ handlerName}.On_{ pName})); ");
-	  
+					sb.AppendLine( $"        public virtual ValueTask On_{pName}(Session session, {pName} packet) {{ Console.WriteLine(\"Received but not handled: {pName}\"); return ValueTask.CompletedTask; }}" );
 				}
 			}
 
-			sb.AppendLine( "    }" );
+			sb.AppendLine("    }");
 			sb.AppendLine();
 
-			// 기존 HandlePacket, MakeSendPacket 메서드들 유지
-			sb.AppendLine( "    // 패킷 진입 처리점" );
-			sb.AppendLine( "    public void HandlePacket(Session session, ArraySegment<byte> buffer)" );
-			sb.AppendLine( "    {" );
-			sb.AppendLine( "        ushort count = 0;" );
-			sb.AppendLine( "        ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);" );
-			sb.AppendLine( "        count += 2;" );
-			sb.AppendLine( "        ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + count);" );
-			sb.AppendLine( "        count += 2;" );
+			sb.AppendLine("    public class PacketManager");
+			sb.AppendLine("    {");
+			sb.AppendLine("        private readonly ILogger<PacketManager> _logger;");
+			sb.AppendLine("        private readonly BaseClientPacketHandler _handler;");
+			sb.AppendLine("        private readonly Dictionary<ushort, Func<Session, ArraySegment<byte>, ValueTask>> _onRecv;");
+			sb.AppendLine("        private readonly Dictionary<Type, PacketID> _packetTypeToId;");
 			sb.AppendLine();
-			sb.AppendLine( "        if (_onRecv.TryGetValue(id, out var action))" );
-			sb.AppendLine( "        {" );
-			sb.AppendLine( "            action.Invoke(session, new ArraySegment<byte>(buffer.Array, buffer.Offset + count, size - count));" );
-			sb.AppendLine( "        }" );
-			sb.AppendLine( "    }" );
+			sb.AppendLine("        public PacketManager(ILogger<PacketManager> logger, BaseClientPacketHandler handler)");
+			sb.AppendLine("        {");
+			sb.AppendLine("            _logger = logger ?? throw new ArgumentNullException(nameof(logger));");
+			sb.AppendLine("            _handler = handler ?? throw new ArgumentNullException(nameof(handler));");
+			sb.AppendLine("            _onRecv = new Dictionary<ushort, Func<Session, ArraySegment<byte>, ValueTask>>();");
+			sb.AppendLine("            _packetTypeToId = new Dictionary<Type, PacketID>();");
+			sb.AppendLine("            Register();");
+			sb.AppendLine("        }");
 			sb.AppendLine();
+			sb.AppendLine("        private void Register()");
+			sb.AppendLine("        {");
 
-			sb.AppendLine( "    // 패킷 처리 로직" );
-			sb.AppendLine( "    private void HandlePacket<T>(Session session, ArraySegment<byte> buffer, Action<Session, T> handler) where T : IMessage, new()");
-	  
-			sb.AppendLine( "    {" );
-			sb.AppendLine( "        T pkt = new T();" );
-			sb.AppendLine( "        pkt.MergeFrom(buffer);" );
-			sb.AppendLine( "        handler.Invoke(session, pkt);" );
-			sb.AppendLine( "    }" );
-			sb.AppendLine();
+			foreach (Match match in matches)
+			{
+				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
+				if (pName.StartsWith("S_"))
+				{
+					sb.AppendLine($"            _onRecv.Add((ushort)PacketID.{pName}, HandlePacket<{pName}>(_handler.On_{pName}));");
+				}
+				else if (pName.StartsWith("C_"))
+				{
+					sb.AppendLine($"            _packetTypeToId.Add(typeof(Protocol.{pName}), PacketID.{pName});");
+				}
+			}
 
-			sb.AppendLine( "    // 신규 패킷 생성 로직" );
-			sb.AppendLine( "    public ArraySegment<byte> MakeSendPacket(IMessage Packet)" );
-			sb.AppendLine( "    {" );
-			sb.AppendLine( "        PacketID packetId;" );
-			sb.AppendLine( "        bool getValue = _packetTypeToId.TryGetValue(Packet.GetType(), out packetId);" );
-			sb.AppendLine( "        if (!getValue)" );
-			sb.AppendLine( "            return new ArraySegment<byte>();" );
-			sb.AppendLine( "        ushort size = (ushort)Packet.CalculateSize();" );
-			sb.AppendLine( "        byte[] buffer = new byte[size+4];" );
-			sb.AppendLine( "        Array.Copy(BitConverter.GetBytes((ushort)(size + 4)), 0, buffer, 0, sizeof(ushort));" );
-			sb.AppendLine( "        Array.Copy(BitConverter.GetBytes((ushort)packetId), 0, buffer, 2, sizeof(ushort));" );
-			sb.AppendLine( "        Packet.WriteTo(new System.IO.MemoryStream(buffer, 4, size));" );
-			sb.AppendLine( "        return new ArraySegment<byte>(buffer);" );
-			sb.AppendLine( "    }" );
+			sb.AppendLine("        }");
 			sb.AppendLine();
-			sb.AppendLine( "}" );
+			sb.AppendLine("        public async ValueTask HandlePacket(Session session, ArraySegment<byte> buffer)");
+			sb.AppendLine("        {");
+			sb.AppendLine("            ushort count = 0;");
+			sb.AppendLine("            ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);");
+			sb.AppendLine("            count += 2;");
+			sb.AppendLine("            ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + count);");
+			sb.AppendLine("            count += 2;");
+			sb.AppendLine();
+			sb.AppendLine("            if (_onRecv.TryGetValue(id, out var handler))");
+			sb.AppendLine("            {");
+			sb.AppendLine("                await handler(session, new ArraySegment<byte>(buffer.Array, buffer.Offset + count, size - count));");
+			sb.AppendLine("            }");
+			sb.AppendLine("            else");
+			sb.AppendLine("            {");
+			sb.AppendLine("                _logger.LogWarning(\"Unknown packet ID: {PacketId}\", id);");
+			sb.AppendLine("            }");
+			sb.AppendLine("        }");
+			sb.AppendLine();
+			sb.AppendLine("        private Func<Session, ArraySegment<byte>, ValueTask> HandlePacket<T>(Func<Session, T, ValueTask> handler) where T : IMessage, new()");
+			sb.AppendLine("        {");
+			sb.AppendLine("            return async (session, buffer) =>");
+			sb.AppendLine("            {");
+			sb.AppendLine("                try");
+			sb.AppendLine("                {");
+			sb.AppendLine("                    var packet = new T();");
+			sb.AppendLine("                    packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);");
+			sb.AppendLine("                    await handler(session, packet);");
+			sb.AppendLine("                }");
+			sb.AppendLine("                catch (Exception ex)");
+			sb.AppendLine("                {");
+			sb.AppendLine("                    _logger.LogError(ex, \"Error handling packet {PacketType}\", typeof(T).Name);");
+			sb.AppendLine("                }");
+			sb.AppendLine("            };");
+			sb.AppendLine("        }");
+			sb.AppendLine();
+			sb.AppendLine("        public ArraySegment<byte> MakeSendPacket(IMessage packet)");
+			sb.AppendLine("        {");
+			sb.AppendLine("            if (!_packetTypeToId.TryGetValue(packet.GetType(), out var packetId))");
+			sb.AppendLine("            {");
+			sb.AppendLine("                _logger.LogWarning(\"Unknown packet type for MakeSendPacket: {PacketType}\", packet.GetType().Name);");
+			sb.AppendLine("                return new ArraySegment<byte>();");
+			sb.AppendLine("            }");
+			sb.AppendLine();
+			sb.AppendLine("            ushort size = (ushort)packet.CalculateSize();");
+			sb.AppendLine("            byte[] buffer = new byte[size + 4];");
+			sb.AppendLine("            Array.Copy(BitConverter.GetBytes((ushort)(size + 4)), 0, buffer, 0, sizeof(ushort));");
+			sb.AppendLine("            Array.Copy(BitConverter.GetBytes((ushort)packetId), 0, buffer, 2, sizeof(ushort));");
+			sb.AppendLine("            packet.WriteTo(new System.IO.MemoryStream(buffer, 4, size));");
+			sb.AppendLine("            return new ArraySegment<byte>(buffer);");
+			sb.AppendLine("        }");
+			sb.AppendLine("    }");
+			sb.AppendLine("}");
 		}
 
 		static void GenerateUnrealHeader(MatchCollection matches, StringBuilder sb)

@@ -14,6 +14,7 @@ using DummyClient.Configuration;
 using Microsoft.Extensions.Options;
 using DummyClient.Configuration.Services;
 using System.Threading.Tasks;
+using DummyClient.Packet;
 
 namespace DummyClient
 {
@@ -85,14 +86,9 @@ namespace DummyClient
 				builder.AddSerilog();
 			} );
 
-			// Packet Handlers 등록
-			services.AddSingleton<IMovementPacketHandler, MovementPacketHandler>();
-			services.AddSingleton<IChatPacketHandler, ChatPacketHandler>();
-			services.AddSingleton<ISystemPacketHandler, SystemPacketHandler>();
-			services.AddSingleton<IGamePlayPacketHandler, GamePlayPacketHandler>();
-
-			// ClientPacketHandler도 DI에서 관리
-			services.AddSingleton<IPacketHandler, ClientPacketHandler>();
+			// New PacketManager and Handler Registration
+			services.AddSingleton<BaseClientPacketHandler, ClientPacketHandler>();
+			services.AddSingleton<PacketManager>();
 		}
 
 		private static void RunClient()
@@ -172,17 +168,16 @@ namespace DummyClient
 				var logger = _serviceProvider.GetRequiredService<ILogger<Program>>();
 				logger.LogInformation( "클라이언트 {ClientId} 시작", clientId );
 
-				// 각 클라이언트별 고유한 PacketHandler 생성
-				IPacketHandler packetHandler = _serviceProvider.GetRequiredService<IPacketHandler>();
-				PacketManager packetManager = new PacketManager(packetHandler);
+				// PacketManager를 DI 컨테이너에서 직접 가져옴
+				var packetManager = _serviceProvider.GetRequiredService<PacketManager>();
 
 				Connector connector = new Connector();
 
 				connector.Connect( endPoint, () =>
 				{
-					ILogger<ServerSession> sessionLogger = _serviceProvider.GetRequiredService<ILogger<ServerSession>>();
-					IPacketHandler sessionPacketHandler = _serviceProvider.GetRequiredService<IPacketHandler>();
-					session = new ServerSession( sessionLogger, sessionPacketHandler );
+					var sessionLogger = _serviceProvider.GetRequiredService<ILogger<ServerSession>>();
+					// ServerSession 생성자에 DI에서 관리되는 PacketManager 인스턴스 주입
+					session = new ServerSession( sessionLogger, packetManager );
 					return session;
 				} );
 
@@ -291,9 +286,9 @@ namespace DummyClient
 
 			connector.Connect( endPoint, () =>
 			{
-				ILogger<ServerSession> sessionLogger = _serviceProvider.GetRequiredService<ILogger<ServerSession>>();
-				IPacketHandler sessionPacketHandler = _serviceProvider.GetRequiredService<IPacketHandler>();
-				return new ServerSession( sessionLogger, sessionPacketHandler );
+				var sessionLogger = _serviceProvider.GetRequiredService<ILogger<ServerSession>>();
+				var packetManager = _serviceProvider.GetRequiredService<PacketManager>();
+				return new ServerSession( sessionLogger, packetManager );
 			} );
 
 			// 메인 루프는 기존과 동일...

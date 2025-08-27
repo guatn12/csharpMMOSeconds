@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using DummyClient.Packet;
 
 namespace DummyClient
 {
@@ -18,10 +19,10 @@ namespace DummyClient
 
 		private readonly PacketManager _packetManager;
 
-		public ServerSession(ILogger<ServerSession> logger, IPacketHandler packetHandler )
+		public ServerSession(ILogger<ServerSession> logger, PacketManager packetManager )
 		{
 			_logger = logger;
-			_packetManager = new PacketManager( packetHandler );
+			_packetManager = packetManager;
 		}
 
 		public void Send( IMessage packet )
@@ -48,7 +49,7 @@ namespace DummyClient
 		public override void OnRecvPacket( ArraySegment<byte> buffer )
 		{
 			// 서버 패킷 처리.
-			_packetManager.HandlePacket( this, buffer );
+			_ = _packetManager.HandlePacket( this, buffer );
 		}
 
 		public override void OnSend( int bytes )
