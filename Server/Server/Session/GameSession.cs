@@ -263,45 +263,44 @@ namespace Server
             };
         }
 
-        // 패킷을 Room Job Queue로 라우팅
-        private void RoutePacketToRoom(PacketID packetId, ArraySegment<byte> buffer)
+        // Generic 패킷을 Room Job Queue로 라우팅
+        public void RouteToRoom<TPacket>(TPacket packet) where TPacket : IMessage
         {
             IRoom room = CurrentRoom;
-            if(room == null )
+            if(room == null)
             {
-				_logger.LogWarning( "Player {SessionId} received room packet {PacketID} but is not in any room",
-                    SessionId, packetId );
-				return;
-			}
+                _logger.LogWarning("Player {SessionId} tried to route {PacketType} but not in any room",
+                    SessionId, typeof(TPacket).Name);
+                return;
+            }
 
             try
             {
-                // 패킷 타입별 room job 생성
-                IJob roomJob = CreateRoomJob(packetId, buffer, room);
-                if(roomJob == null )
+                // Generic Job 생성
+                IJob roomJob = CreateRoomJob(packet, room);
+                if(roomJob == null)
                 {
-					_logger.LogWarning( "Failed to create room job for packet {PacketID} from Player {SessionId}",
-                        packetId, SessionId );
+                    _logger.LogWarning("No handler found for packet type {PacketType} from Player {SessionId}",
+                        typeof(TPacket).Name, SessionId);
                     return;
-				}
-
-                int prevJobCount = room.JobQueue.Count;
-                room.JobQueue.Enqueue( roomJob );
-
-                // Room Job Queue가 비어있었다면 JobQueueManager에 알림
-                if(prevJobCount == 0)
-                {
-                    _ = JobQueueManager.Instance.PushAsync( room );
                 }
 
-				_logger.LogDebug( "Packet {PacketID} routed to Room {RoomId} for Player {SessionId}",
-                    packetId, room.RoomId, SessionId );
-			}
+                if(!room.TryEnqueueJobSafely(roomJob))
+                {
+                    _logger.LogCritical("CRITICAL: Failed to enqueue {PacketType} for Player {SessionId} - Room job system failure",
+                        typeof(TPacket).Name, SessionId);
+                    throw new InvalidOperationException($"Room job queue failed for {typeof(TPacket).Name}");
+                }
+
+                _logger.LogDebug("Packet {PacketType} routed to Room {RoomId} for Player {SessionId}",
+                    typeof(TPacket).Name, room.RoomId, SessionId);
+            }
             catch(Exception ex)
             {
-				_logger.LogError( ex, "Error routing packet {PacketID} to room for Player {SessionId}",
-                    packetId, SessionId );
-			}
+                _logger.LogError(ex, "Error routing packet {PacketType} to room for Player {SessionId}",
+                    typeof(TPacket).Name, SessionId);
+                throw; // Critical 이슈는 서버 다운
+            }
         }
 
         // 패킷을 GameSesion Job Queue로 라우팅
@@ -334,59 +333,27 @@ namespace Server
 			}
         }
 
-        // 패킷 타입에 따른 Room Job 생성
-        private IJob CreateRoomJob(PacketID packetId, ArraySegment<byte> buffer, IRoom room)
+        // Generic 패킷 타입에 따른 Room Job 생성
+        private IJob CreateRoomJob<TPacket>(TPacket packet, IRoom room) where TPacket : IMessage
         {
             try
             {
-                return packetId switch
+                return packet switch
                 {
-                    PacketID.C_Move => CreateMoveJob( buffer, room ),
-                    PacketID.C_Chat => CreateChatJob( buffer, room ),
+                    Protocol.C_Move movePacket => new Server.Room.Jobs.MoveJob(this, room, movePacket, _logger),
+                    Protocol.C_Chat chatPacket => new Server.Room.Jobs.ChatJob(this, room, chatPacket, _logger),
                     _ => null
                 };
             }
             catch(Exception ex)
             {
-				_logger.LogError( ex, "Error creating room job for packet {PacketID} from Player {SessionId}",
-                    packetId, SessionId );
-				return null;
-			}
-        }
-
-        // Move Job 생성
-        private IJob CreateMoveJob(ArraySegment<byte> buffer, IRoom room)
-        {
-            try
-            {
-                Protocol.C_Move movePacket = new Protocol.C_Move();
-                movePacket.MergeFrom( buffer.Array, buffer.Offset + 4, buffer.Count - 4 );
-
-                return new Server.Room.Jobs.MoveJob( this, room, movePacket, _logger );
+                _logger.LogError(ex, "Error creating room job for packet {PacketType} from Player {SessionId}",
+                    typeof(TPacket).Name, SessionId);
+                return null;
             }
-            catch(Exception ex)
-            {
-				_logger.LogError( ex, "Failed to create MoveJob for Player {SessionId}", SessionId );
-				return null;
-			}
         }
 
-        // Chat Job 생성
-        private IJob CreateChatJob(ArraySegment<byte> buffer, IRoom room)
-        {
-            try
-            {
-                Protocol.C_Chat chatPacket = new Protocol.C_Chat();
-                chatPacket.MergeFrom( buffer.Array, buffer.Offset + 4, buffer.Count - 4 );
-
-                return new Server.Room.Jobs.ChatJob( this, room, chatPacket, _logger );
-            }
-            catch (Exception ex)
-            {
-				_logger.LogError( ex, "Failed to create ChatJob for Player {SessionId}", SessionId );
-				return null;
-			}
-        }
+        // 기존 바이트 배열 기반 메서드들 제거됨 - Generic 방식으로 대체
 	}
 
     public class GameSessionInfo

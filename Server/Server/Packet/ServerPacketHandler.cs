@@ -39,21 +39,28 @@ public class MovementPacketHandler : IMovementPacketHandler
 	public void On_C_Move( Session session, C_Move packet )
 	{
 		GameSession gameSession = session as GameSession;
-		if(gameSession == null) return;
+		if(gameSession == null) 
+		{
+			_logger.LogCritical("CRITICAL: Received C_Move from non-GameSession - Server integrity compromised");
+			throw new InvalidOperationException("Non-GameSession sent C_Move packet");
+		}
+
+		// 룸 검증 - Critical 이슈
+		IRoom room = gameSession.CurrentRoom;
+		if(room == null)
+		{
+			_logger.LogCritical("CRITICAL: Player({SessionId}) sent C_Move but not in any room - State desync detected", 
+				gameSession.SessionId);
+			throw new InvalidOperationException($"Player {gameSession.SessionId} not in room but sent move packet");
+		}
 
 		_logger.LogInformation( "[C_Move] Player({SessionId}) -> PosInfo:{PosX}, {PosY}, {PosZ}", gameSession.SessionId,
 			packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ );
 
 		// TODO : 플레이어 상태 체크
 
-		IRoom room = gameSession.CurrentRoom;
-		int prevJobCount = room.JobQueue.Count;
-		room.JobQueue.Enqueue( new MoveJob( gameSession, gameSession.CurrentRoom, packet, _logger ) );
-
-		if(prevJobCount == 0)
-		{
-			_ = JobQueueManager.Instance.PushAsync( room );
-		}
+		// Generic 라우팅 사용
+		gameSession.RouteToRoom(packet);
 		
 	}
 }
@@ -71,25 +78,23 @@ public class ChatPacketHandler : IChatPacketHandler
 	{
 		GameSession gameSession = session as GameSession;
 		if(gameSession == null)
-			return;
+		{
+			_logger.LogCritical("CRITICAL: Received C_Chat from non-GameSession - Server integrity compromised");
+			throw new InvalidOperationException("Non-GameSession sent C_Chat packet");
+		}
+
+		// 룸 검증 - Critical 이슈
+		IRoom room = gameSession.CurrentRoom;
+		if(room == null)
+		{
+			_logger.LogCritical("CRITICAL: Player({SessionId}) sent C_Chat but not in any room - State desync detected", 
+				gameSession.SessionId);
+			throw new InvalidOperationException($"Player {gameSession.SessionId} not in room but sent chat packet");
+		}
 
 		_logger.LogInformation( "[C_Chat] Player({SessionId}): {Message}", gameSession.SessionId, packet.Message );
 
-		IRoom room = gameSession.CurrentRoom;
-		int prevJobCount = room.JobQueue.Count;
-		room.JobQueue.Enqueue( new ChatJob( gameSession, gameSession.CurrentRoom, packet, _logger ) );
-
-		if(prevJobCount == 0)
-		{
-			_ = JobQueueManager.Instance.PushAsync( room );
-		}
-
-		//S_Chat chat = new S_Chat
-		//{
-		//	PlayerId = gameSession.SessionId,
-		//	Message = $"Echo: {packet.Message}",
-		//};
-
-		//gameSession.Send( chat );
+		// Generic 라우팅 사용
+		gameSession.RouteToRoom(packet);
 	}
 }

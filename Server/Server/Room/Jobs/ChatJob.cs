@@ -13,7 +13,7 @@ namespace Server.Room.Jobs
 
 		public override string JobType => "PlayerChat";
 		public override int Priority => RoomJobPriority.Normal;
-		public override int TimeoutMs => 2000;
+		public override int TimeoutMs => 2000; // TODO: 설정에서 읽어오도록 개선
 
 		public ChatJob(GameSession session, IRoom room, Protocol.C_Chat chatPacket, ILogger logger)
 			: base(session, room, logger)
@@ -25,7 +25,7 @@ namespace Server.Room.Jobs
 		{
 			try
 			{
-				_logger.LogInformation( "Processing chat from Player {SessionId} in Room {RoomId}: '{Message}'",
+				_logger.LogDebug( "Processing chat from Player {SessionId} in Room {RoomId}: '{Message}'",
 					  _session.SessionId, _room.RoomId, _chatPacket.Message );
 
 				// Room의 HandlePlayerChatAsync 호출
@@ -38,7 +38,8 @@ namespace Server.Room.Jobs
 			{
 				_logger.LogError( ex, "Failed to process chat for Player {SessionId} in Room {RoomId}: '{Message}'",
 					 _session.SessionId, _room.RoomId, _chatPacket.Message );
-				throw; // 예외를 다시 던져서 기반 클래스에서 처리
+				// Job 실행 실패 시 로깅만 하고 계속 진행 (서버 안정성 우선)
+				// Critical 하지 않은 개별 Job 실패로 전체 시스템을 다운시키지 않음
 			}
 		}
 
@@ -64,7 +65,8 @@ namespace Server.Room.Jobs
 			}
 
 			// 메시지 길이 검증 (기본 제한)
-			if(_chatPacket.Message.Length > 500)
+			const int MAX_MESSAGE_LENGTH = 500; // TODO: 설정에서 읽어오도록 개선
+			if(_chatPacket.Message.Length > MAX_MESSAGE_LENGTH)
 			{
 				_logger.LogWarning( "Chat message too long from Player {SessionId} in Room {RoomId}: {Length} characters",
 					_session.SessionId, _room.RoomId, _chatPacket.Message.Length );
@@ -139,7 +141,8 @@ namespace Server.Room.Jobs
 				if(message[ i ] == previousChar)
 				{
 					consecutiveCount++;
-					if(consecutiveCount >= 6) // 6개 이상 연속 문자
+					const int MAX_REPEATING_CHARS = 6; // TODO: 설정에서 읽어오도록 개선
+					if(consecutiveCount >= MAX_REPEATING_CHARS)
 					{
 						return true;
 					}
@@ -159,7 +162,8 @@ namespace Server.Room.Jobs
 		/// </summary>
 		private bool HasExcessiveCaps( string message )
 		{
-			if(string.IsNullOrEmpty( message ) || message.Length < 10)
+			const int MIN_LENGTH_FOR_CAPS_CHECK = 10; // TODO: 설정에서 읽어오도록 개선
+			if(string.IsNullOrEmpty( message ) || message.Length < MIN_LENGTH_FOR_CAPS_CHECK)
 				return false;
 
 			int capsCount = 0;
@@ -178,7 +182,8 @@ namespace Server.Room.Jobs
 			}
 
 			// 전체 글자의 70% 이상이 대문자인 경우
-			return letterCount > 0 && (double)capsCount / letterCount > 0.7;
+			const double MAX_CAPS_PERCENTAGE = 0.7; // TODO: 설정에서 읽어오도록 개선
+			return letterCount > 0 && (double)capsCount / letterCount > MAX_CAPS_PERCENTAGE;
 		}
 
 		public override string ToString()

@@ -314,6 +314,28 @@ namespace Server.Room
 			}
 		}
 
+		// 스레드 세이프 Job 추가 및 WorkerManager 통지
+		public bool TryEnqueueJobSafely(IJob job)
+		{
+			if(job == null || _dispose)
+				return false;
+
+			bool wasEmpty;
+			lock( _lock )
+			{
+				wasEmpty = JobQueue.IsEmpty;
+				JobQueue.Enqueue( job );
+			}
+
+			// 큐가 비어있었다면 WorkerManager에 알림
+			if( wasEmpty )
+			{
+				_ = JobQueueManager.Instance.PushAsync( this );
+			}
+
+			return true;
+		}
+
 		public void Dispose()
 		{
 			Dispose( true );

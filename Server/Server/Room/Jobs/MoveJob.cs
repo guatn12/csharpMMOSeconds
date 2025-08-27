@@ -14,7 +14,7 @@ namespace Server.Room.Jobs
 
 		public override string JobType => "PlayerMove";
 		public override int Priority => RoomJobPriority.Normal;
-		public override int TimeoutMs => 3000;	// 이동 처리 타임아웃 3초
+		public override int TimeoutMs => 3000;	// 이동 처리 타임아웃 3초 // TODO: 설정에서 읽어오도록 개선
 
 		public MoveJob(GameSession session, IRoom room, Protocol.C_Move movePacket, ILogger logger)
 			:base(session, room, logger)
@@ -26,7 +26,7 @@ namespace Server.Room.Jobs
 		{
 			try
 			{
-				_logger.LogDebug( "Processing move for Player {SessionId} in Room {RoomId} to position ({X}, {Y}. {Z})",
+				_logger.LogDebug( "Processing move for Player {SessionId} in Room {RoomId} to position ({X}, {Y}, {Z})",
 					_session.SessionId, _room.RoomId,
 					_movePacket.PosInfo.PosX, _movePacket.PosInfo.PosY, _movePacket.PosInfo.PosZ );
 
@@ -40,7 +40,8 @@ namespace Server.Room.Jobs
 			{
 				_logger.LogError( ex, "Failed to process move for Player {SessionId} in Room {RoomId}",
 					 _session.SessionId, _room.RoomId );
-				throw; // 예외를 다시 던져서 기반 클래스에서 처리
+				// Job 실행 실패 시 로깅만 하고 계속 진행 (서버 안정성 우선)
+				// Critical 하지 않은 개별 Job 실패로 전체 시스템을 다운시키지 않음
 			}
 		}
 

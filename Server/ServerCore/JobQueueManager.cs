@@ -76,6 +76,10 @@ namespace ServerCore
 
 			await Task.WhenAll( _workerTasks );
 			_workerTasks.Clear();
+			
+			// Channel 리소스 정리
+			_pendingOwners = null;
+			
 			_cancellationTokenSource.Dispose();
 			_cancellationTokenSource = null;
 
@@ -135,7 +139,7 @@ namespace ServerCore
 								job.Execute();
 								stopwatch.Stop();
 
-								_logger.LogInformation("Job complted in {ElapsedMs}ms for {OwnerType}", 
+								_logger.LogInformation("Job completed in {ElapsedMs}ms for {OwnerType}", 
 									stopwatch.ElapsedMilliseconds, jobOwner.GetType().Name);
 							}
 							catch(Exception ex)
