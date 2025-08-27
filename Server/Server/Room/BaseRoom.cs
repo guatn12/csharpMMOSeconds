@@ -25,8 +25,6 @@ namespace Server.Room
 		public abstract RoomType RoomType { get; }
 		public RoomState State { get; protected set; } = RoomState.Created;
 
-		public ConcurrentQueue<IJob> JobQueue { get; } = new ConcurrentQueue<IJob>();
-
 		public IReadOnlyList<GameSession> Players => _players.Values.ToList();
 		public bool IsEmpty => _players.IsEmpty;
 		public bool IsFull => MaxPlayers <= _players.Count;
@@ -195,7 +193,7 @@ namespace Server.Room
 			}
 		}
 
-		public virtual async Task HandlePlayerMoveAsync(GameSession session, Protocol.C_Move packet)
+		public virtual async Task HandlePlayerMoveAsync(GameSession session, Protocol.C_Move packet, ILogger logger )
 		{
 			if(!ContainsPlayer( session ) || packet?.PosInfo == null)
 				return;
@@ -218,17 +216,17 @@ namespace Server.Room
 
 				await BroadcastAsync( moveResponse, session );
 
-				_logger.LogDebug( "Player {SessionId} moved in room {RoomId} to ({X}, {Y}, {Z})",
+				logger.LogDebug( "Player {SessionId} moved in room {RoomId} to ({X}, {Y}, {Z})",
 					session.SessionId, RoomId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ );
 			}
 			catch (Exception e)
 			{
-				_logger.LogError( e, "Failed to handle move for player {SessionId} in room {RoomId}",
+				logger.LogError( e, "Failed to handle move for player {SessionId} in room {RoomId}",
 					session.SessionId, RoomId );
 			}
 		}
 
-		public virtual async Task HandlePlayerChatAsync(GameSession session, Protocol.C_Chat packet)
+		public virtual async Task HandlePlayerChatAsync(GameSession session, Protocol.C_Chat packet, ILogger logger)
 		{
 			if(!ContainsPlayer( session ) || string.IsNullOrWhiteSpace( packet?.Message ))
 				return;
@@ -251,12 +249,12 @@ namespace Server.Room
 
 				await BroadcastAsync( chatResponse, session );
 
-				_logger.LogDebug( "Player {SessionId} chatted in room {RoomId}: '{Message}'",
+				logger.LogDebug( "Player {SessionId} chatted in room {RoomId}: '{Message}'",
 					session.SessionId, RoomId, packet.Message);
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError( ex, "Failed to handle chat for player {SessionId} in room {RoomId}",
+				logger.LogError( ex, "Failed to handle chat for player {SessionId} in room {RoomId}",
 					session.SessionId, RoomId );
 			}
 		}
@@ -312,28 +310,6 @@ namespace Server.Room
 				_logger.LogError(ex, "Failed to remove Player {SessionId} from room {RoomId}", session.SessionId, RoomId );
 				return false;
 			}
-		}
-
-		// 스레드 세이프 Job 추가 및 WorkerManager 통지
-		public bool TryEnqueueJobSafely(IJob job)
-		{
-			if(job == null || _dispose)
-				return false;
-
-			bool wasEmpty;
-			lock( _lock )
-			{
-				wasEmpty = JobQueue.IsEmpty;
-				JobQueue.Enqueue( job );
-			}
-
-			// 큐가 비어있었다면 WorkerManager에 알림
-			if( wasEmpty )
-			{
-				_ = JobQueueManager.Instance.PushAsync( this );
-			}
-
-			return true;
 		}
 
 		public void Dispose()

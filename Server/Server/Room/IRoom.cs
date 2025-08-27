@@ -1,4 +1,5 @@
 ﻿using Google.Protobuf;
+using Microsoft.Extensions.Logging;
 using ServerCore;
 using System;
 using System.Collections.Generic;
@@ -8,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace Server.Room
 {
-	public interface IRoom : IJobOwner
+	public interface IRoom
 	{
 		#region 기본 정보
 		int RoomId { get; }
@@ -35,8 +36,8 @@ namespace Server.Room
 		// 룸 내 특정 플레이어에게 전달
 		Task SendToPlayerAsync( GameSession session, IMessage packet );
 		// 플레이어 이동 / 채팅 처리.
-		Task HandlePlayerMoveAsync( GameSession session, Protocol.C_Move packet );
-		Task HandlePlayerChatAsync(GameSession session, Protocol.C_Chat packet );
+		Task HandlePlayerMoveAsync( GameSession session, Protocol.C_Move packet, ILogger logger );
+		Task HandlePlayerChatAsync(GameSession session, Protocol.C_Chat packet, ILogger logger );
 		//룸 초기화
 		Task InitializeAsync();
 		// 룸 정리 및 종료

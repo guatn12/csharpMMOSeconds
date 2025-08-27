@@ -9,6 +9,7 @@ using Server.Configuration;
 using Server.Configuration.Services;
 using Server.Configuration.Validators;
 using Server.Configuration.Security;
+using Server.Packet;
 using ServerCore;
 using Serilog;
 using Microsoft.Extensions.Logging;
@@ -18,6 +19,7 @@ using Server.Data;
 using Server.Data.FileWatcher;
 using Server.Room;
 using Microsoft.Extensions.Hosting;
+using Server.Jobs;
 
 namespace Server
 {
@@ -87,10 +89,13 @@ namespace Server
 					.ReadFrom.Configuration( configuration )
 					.CreateLogger();
 
-				// packet 핸들러 등록
-				services.AddSingleton<IMovementPacketHandler, MovementPacketHandler>();
-				services.AddSingleton<IChatPacketHandler, ChatPacketHandler>();
-				services.AddSingleton<IPacketHandler, ServerPacketHandler>();
+				// jobPool 서비스 등록.
+				services.AddSingleton<JobPool>();
+
+				// JobQueueManager의 정적 인스턴스를 DI 컨테이너에 등록
+				services.AddSingleton( JobQueueManager.Instance );
+				// 새로운 PacketManager 등록
+				services.AddSingleton<PacketManager>();
 
 				// 데이터 관리 제공자 등록
 				services.AddSingleton<IDataStorageProvider, DataStorageProvider>();
@@ -206,8 +211,7 @@ namespace Server
 					e.Cancel = true;    // 기본 종료 동작을 막습니다.
 				};
 
-				IPacketHandler handler = serviceProvider.GetRequiredService<IPacketHandler>();
-				PacketManagerInstance = new PacketManager( handler );
+				PacketManagerInstance = serviceProvider.GetRequiredService<PacketManager>();
 
 				_listener.Init( endPoint, () => serviceProvider.GetRequiredService<GameSession>(), serverConfig.Network.ListenBacklog );
 

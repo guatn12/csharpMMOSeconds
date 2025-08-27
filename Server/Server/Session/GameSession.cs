@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace Server
 {
-    public class GameSession : Session, IJobOwner
+    public class GameSession : Session
     {
         private readonly ILogger<GameSession> _logger;
         private readonly IRoomManager _roomManager;
@@ -18,7 +18,6 @@ namespace Server
         private readonly object _roomLock = new object();
 
         public int SessionId { get; private set; }
-        public ConcurrentQueue<IJob> JobQueue { get; } = new ConcurrentQueue<IJob>();
 
         public IRoom CurrentRoom
         {
@@ -81,21 +80,7 @@ namespace Server
             _logger.LogDebug( "Packet Received. SessionId: {SessionId}, PacketID: {PacketID}, Size: {Size}",
                 this.SessionId, packetId, buffer.Count );
 
-            // JobQueue에 작업을 넣기 전 작업 개수
-            int prevJobCount = JobQueue.Count;
-
-            JobQueue.Enqueue( new Job( () =>
-            {
-                Program.PacketManagerInstance.HandlePacket( this, buffer );
-            } ) );
-
-            // 큐에 작업을 넣은 후, 만약 큐가 비어있다가(0개) 처음으로 작업이 추가된(1개) 상황이라면
-            // JobQueueManager에게 "이 세션에서 처리할 작업이 생겼다"고 알려줍니다.
-            if(prevJobCount == 0)
-            {
-                //JobQueueManager.Instance.Push( this );
-                _ = JobQueueManager.Instance.PushAsync( this );
-            }
+            Program.PacketManagerInstance.HandlePacket( this, buffer );
         }
 
         public override void OnSend( int bytes )
@@ -234,126 +219,15 @@ namespace Server
                 PlayerName = PlayerName,
                 IsInRoom = IsInRoom,
                 CurrentRoomId = CurrentRoom?.RoomId,
-                CurrentRoomName = CurrentRoom?.RoomName,
-                JobQueueCount = JobQueue.Count
+                CurrentRoomName = CurrentRoom?.RoomName
             };
         }
 
 		// 디버깅용
 		public override string ToString()
 		{
-			return $"GameSession(Id: {SessionId}, Room: {CurrentRoom?.RoomId}, Jobs: {JobQueue.Count})";
+			return $"GameSession(Id: {SessionId}, Room: {CurrentRoom?.RoomId})";
 		}
-
-        private bool ShouldRouteToRoom(PacketID packetId)
-        {
-            return packetId switch
-            {
-                PacketID.C_Move => true,
-                PacketID.C_Chat => true,
-
-                PacketID.S_EnterGame => false,
-                PacketID.S_LeaveGame => false,
-                PacketID.S_Spawn => false,
-                PacketID.S_Despawn => false,
-                PacketID.S_Move => false,
-                PacketID.S_Chat => false,
-
-                _ => false
-            };
-        }
-
-        // Generic 패킷을 Room Job Queue로 라우팅
-        public void RouteToRoom<TPacket>(TPacket packet) where TPacket : IMessage
-        {
-            IRoom room = CurrentRoom;
-            if(room == null)
-            {
-                _logger.LogWarning("Player {SessionId} tried to route {PacketType} but not in any room",
-                    SessionId, typeof(TPacket).Name);
-                return;
-            }
-
-            try
-            {
-                // Generic Job 생성
-                IJob roomJob = CreateRoomJob(packet, room);
-                if(roomJob == null)
-                {
-                    _logger.LogWarning("No handler found for packet type {PacketType} from Player {SessionId}",
-                        typeof(TPacket).Name, SessionId);
-                    return;
-                }
-
-                if(!room.TryEnqueueJobSafely(roomJob))
-                {
-                    _logger.LogCritical("CRITICAL: Failed to enqueue {PacketType} for Player {SessionId} - Room job system failure",
-                        typeof(TPacket).Name, SessionId);
-                    throw new InvalidOperationException($"Room job queue failed for {typeof(TPacket).Name}");
-                }
-
-                _logger.LogDebug("Packet {PacketType} routed to Room {RoomId} for Player {SessionId}",
-                    typeof(TPacket).Name, room.RoomId, SessionId);
-            }
-            catch(Exception ex)
-            {
-                _logger.LogError(ex, "Error routing packet {PacketType} to room for Player {SessionId}",
-                    typeof(TPacket).Name, SessionId);
-                throw; // Critical 이슈는 서버 다운
-            }
-        }
-
-        // 패킷을 GameSesion Job Queue로 라우팅
-        private void RoutePacketToSession(PacketID packetId, ArraySegment<byte> buffer)
-        {
-            try
-            {
-                // JobQueue에 작업을 넣기 전 작업 개수
-                int prevJobCount = JobQueue.Count;
-
-                JobQueue.Enqueue( new Job( () =>
-                {
-                    Program.PacketManagerInstance.HandlePacket( this, buffer );
-                } ) );
-
-                // 큐에 작업을 넣은 후, 만약 큐가 비어있다가(0개) 처음으로 작업이 추가된(1개) 상황이라면,
-                // JobQueueManager에게 "이 세션에서 처리할 작업이 생겼다"고 알려줍니다.
-                if(prevJobCount == 0)
-                {
-                    _ = JobQueueManager.Instance.PushAsync( this );
-                }
-
-				_logger.LogDebug( "Packet {PacketID} routed to Session for Player {SessionId}",
-                    packetId, SessionId );
-			}
-            catch(Exception ex)
-            {
-				_logger.LogError( ex, "Error routing packet {PacketID} to session for Player {SessionId}",
-                    packetId, SessionId );
-			}
-        }
-
-        // Generic 패킷 타입에 따른 Room Job 생성
-        private IJob CreateRoomJob<TPacket>(TPacket packet, IRoom room) where TPacket : IMessage
-        {
-            try
-            {
-                return packet switch
-                {
-                    Protocol.C_Move movePacket => new Server.Room.Jobs.MoveJob(this, room, movePacket, _logger),
-                    Protocol.C_Chat chatPacket => new Server.Room.Jobs.ChatJob(this, room, chatPacket, _logger),
-                    _ => null
-                };
-            }
-            catch(Exception ex)
-            {
-                _logger.LogError(ex, "Error creating room job for packet {PacketType} from Player {SessionId}",
-                    typeof(TPacket).Name, SessionId);
-                return null;
-            }
-        }
-
-        // 기존 바이트 배열 기반 메서드들 제거됨 - Generic 방식으로 대체
 	}
 
     public class GameSessionInfo
@@ -363,6 +237,5 @@ namespace Server
         public bool IsInRoom { get; set; }
         public int? CurrentRoomId { get; set; }
         public string CurrentRoomName { get; set; }
-        public int JobQueueCount { get; set; }
     }
 }
