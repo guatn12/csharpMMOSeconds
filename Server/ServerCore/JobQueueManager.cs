@@ -8,11 +8,6 @@ using Microsoft.Extensions.Logging;
 
 namespace ServerCore
 {
-	//public interface IJobOwner
-	//{
-	//	ConcurrentQueue<IJob> JobQueue { get; }
-	//}
-
 	public class JobQueueManager
 	{
 		public static JobQueueManager Instance { get; } = new JobQueueManager();
