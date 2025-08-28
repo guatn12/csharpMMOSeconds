@@ -19,6 +19,11 @@ namespace DummyClient.Packet
         public virtual ValueTask On_S_Despawn(Session session, S_Despawn packet) { Console.WriteLine("Received but not handled: S_Despawn"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_Move(Session session, S_Move packet) { Console.WriteLine("Received but not handled: S_Move"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_Chat(Session session, S_Chat packet) { Console.WriteLine("Received but not handled: S_Chat"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_PlayerUpdate(Session session, S_PlayerUpdate packet) { Console.WriteLine("Received but not handled: S_PlayerUpdate"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_PlayerStat(Session session, S_PlayerStat packet) { Console.WriteLine("Received but not handled: S_PlayerStat"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_Damage(Session session, S_Damage packet) { Console.WriteLine("Received but not handled: S_Damage"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_Heal(Session session, S_Heal packet) { Console.WriteLine("Received but not handled: S_Heal"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_LevelUp(Session session, S_LevelUp packet) { Console.WriteLine("Received but not handled: S_LevelUp"); return ValueTask.CompletedTask; }
     }
 
     public class PacketManager
@@ -47,6 +52,13 @@ namespace DummyClient.Packet
             _onRecv.Add((ushort)PacketID.S_Move, HandlePacket<S_Move>(_handler.On_S_Move));
             _packetTypeToId.Add(typeof(Protocol.C_Chat), PacketID.C_Chat);
             _onRecv.Add((ushort)PacketID.S_Chat, HandlePacket<S_Chat>(_handler.On_S_Chat));
+            _onRecv.Add((ushort)PacketID.S_PlayerUpdate, HandlePacket<S_PlayerUpdate>(_handler.On_S_PlayerUpdate));
+            _onRecv.Add((ushort)PacketID.S_PlayerStat, HandlePacket<S_PlayerStat>(_handler.On_S_PlayerStat));
+            _packetTypeToId.Add(typeof(Protocol.C_PlayerInfo), PacketID.C_PlayerInfo);
+            _packetTypeToId.Add(typeof(Protocol.C_UseSkill), PacketID.C_UseSkill);
+            _onRecv.Add((ushort)PacketID.S_Damage, HandlePacket<S_Damage>(_handler.On_S_Damage));
+            _onRecv.Add((ushort)PacketID.S_Heal, HandlePacket<S_Heal>(_handler.On_S_Heal));
+            _onRecv.Add((ushort)PacketID.S_LevelUp, HandlePacket<S_LevelUp>(_handler.On_S_LevelUp));
         }
 
         public async ValueTask HandlePacket(Session session, ArraySegment<byte> buffer)

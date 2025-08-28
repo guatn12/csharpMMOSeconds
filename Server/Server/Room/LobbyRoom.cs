@@ -195,7 +195,7 @@ namespace Server.Room
 				string joinMessage = $"Player_{session.SessionId}님이 로비에 입장했습니다.";
 				Protocol.S_Chat joinPacket = new Protocol.S_Chat
 				{
-					PlayerId = 0, // 시스템 메시지
+					PlayerId = session.Player.PlayerId,
 					Message = joinMessage,
 				};
 

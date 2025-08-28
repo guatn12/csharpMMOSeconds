@@ -1,6 +1,7 @@
 ﻿using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Protocol;
+using Server.Game;
 using Server.Room;
 using ServerCore;
 using System;
@@ -16,8 +17,6 @@ namespace Server
         private readonly IRoomManager _roomManager;
         private IRoom _currentRoom;
         private readonly object _roomLock = new object();
-
-        public int SessionId { get; private set; }
 
         public IRoom CurrentRoom
         {
@@ -36,9 +35,14 @@ namespace Server
                 }
             }
         }
+		public bool IsInRoom => _currentRoom != null;
 
-        public bool IsInRoom => _currentRoom != null;
-        public string PlayerName => $"Player_{SessionId}";
+		public int SessionId { get; private set; }
+        public Player Player { get; private set; }
+        public string PlayerName => Player.PlayerName ?? $"Player_{Player.PlayerId}";
+        public long PlayerId => Player.PlayerId;
+
+        private static int _nextSessionId = 1;
 
         public GameSession( ILogger<GameSession> logger, IRoomManager roomManager )
         {
@@ -46,33 +50,18 @@ namespace Server
             _roomManager = roomManager ?? throw new ArgumentNullException( nameof( _roomManager ) );
         }
 
-        public void Send( IMessage packet )
+        private static int GenerateNextSessionId()
         {
-            ArraySegment<byte> segment = Program.PacketManagerInstance.MakeSendPacket(packet);
-            base.Send( segment );
+            return System.Threading.Interlocked.Increment( ref _nextSessionId );
         }
 
-        public override void OnConnected( EndPoint endPoint )
-        {
-            this.SessionId = GetHashCode(); // 임시 세션 ID 발급
-            //LogManager.Info("Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
-            _logger.LogInformation( "Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint );
-            // TODO : 클라이언트에게 입장 패킷 전송.
+		public void Send( IMessage packet )
+		{
+			ArraySegment<byte> segment = Program.PacketManagerInstance.MakeSendPacket(packet);
+			base.Send( segment );
+		}
 
-            // 기본 로비에 자동 입장 시도.
-            _ = Task.Run( async () => await TryJoinDefaultLobbyAsync() );
-        }
-
-        public override void OnDisConnected( EndPoint endPoint )
-        {
-            //LogManager.Info("Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
-            _logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint );
-
-            // 모든 룸에서 퇴장 처리
-            _ = Task.Run( async () => await LeaveAllRoomsAsync() );
-        }
-
-        public override void OnRecvPacket( ArraySegment<byte> buffer )
+		public override void OnRecvPacket( ArraySegment<byte> buffer )
         {
             ushort packetIdValue = BitConverter.ToUInt16(buffer.Array, buffer.Offset + 2);
             PacketID packetId = (PacketID)packetIdValue;
@@ -80,7 +69,15 @@ namespace Server
             _logger.LogDebug( "Packet Received. SessionId: {SessionId}, PacketID: {PacketID}, Size: {Size}",
                 this.SessionId, packetId, buffer.Count );
 
-            Program.PacketManagerInstance.HandlePacket( this, buffer );
+            if(Program.PacketManagerInstance != null)
+            {
+                Task.Run( async () =>
+                {
+                    await Program.PacketManagerInstance.HandlePacket( this, buffer );
+                } );
+            }
+
+            //Program.PacketManagerInstance.HandlePacket( this, buffer );
         }
 
         public override void OnSend( int bytes )
@@ -89,8 +86,39 @@ namespace Server
             _logger.LogDebug( "Packet Sent. SessionId: {SessionId}, Size: {Size}", this.SessionId, bytes );
         }
 
-        // 기본 로비 입장 시도
-        public async Task<bool> TryJoinDefaultLobbyAsync()
+		// 비동기 패킷 전송
+		public async Task SendAsync( IMessage packet )
+		{
+			await Task.Run( () => Send( packet ) );
+		}
+
+		public override void OnConnected( EndPoint endPoint )
+		{
+            this.SessionId = GenerateNextSessionId();
+            //LogManager.Info("Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
+			_logger.LogInformation( "Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint );
+
+            // 플레이어 정보 초기화.
+            InitializePlayer();
+
+			// 기본 로비에 자동 입장 시도.
+			_ = Task.Run( async () => await TryJoinDefaultLobbyAsync() );
+		}
+
+		public override void OnDisConnected( EndPoint endPoint )
+		{
+			//LogManager.Info("Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
+			_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint );
+
+			// 플레이어 상태를 Disconnected상태로 처리
+			Player?.Disconnect();
+
+			// 모든 룸에서 퇴장 처리
+			_ = Task.Run( async () => await LeaveAllRoomsAsync() );
+		}
+
+		// 기본 로비 입장 시도
+		public async Task<bool> TryJoinDefaultLobbyAsync()
         {
             try
             {
@@ -105,7 +133,7 @@ namespace Server
 
                     S_EnterGame enterPacket = new S_EnterGame
                     {
-                        Player = new PlayerInfo {PlayerId = this.SessionId, Name = PlayerName},
+                        Player = Player.Info
                     };
                     
                     await SendAsync( enterPacket );
@@ -204,10 +232,50 @@ namespace Server
             }
         }
 
-        // 비동기 패킷 전송
-        public async Task SendAsync( IMessage packet )
+        // 플레이어 초기화
+        private void InitializePlayer()
         {
-            await Task.Run( () => Send( packet ) );
+			Player = new Player( SessionId, null );
+
+            _logger.LogInformation( "Player initialized: {PlayerInfo}", Player.ToString() );
+        }
+
+        // 플레이어 상태 업데이트
+        public void UpdatePosition(PosInfo newPosition)
+        {
+            if(Player == null) return;
+
+            Player.UpdatePosition(newPosition);
+        }
+
+        public bool TakeDamage( int damage)
+        {
+            if(Player == null) return false;
+
+            bool result = Player.TakeDamage(damage);
+            if(result)
+            {
+                if(Player.State == PlayerState.Dead)
+                {
+                    // TODO : 플레이어 Dead 상태 전달 필요.
+                }
+            }
+
+            return result;
+        }
+
+        public bool Heal(int amount)
+        {
+            if(Player == null) return false;
+
+            return Player.Heal(amount);
+        }
+
+        public bool GainExperience(long exp)
+        {
+            if(Player == null) return false;
+
+            return Player.GainExperience(exp);
         }
 
         // 현재 상태 정보 조회
@@ -221,6 +289,12 @@ namespace Server
                 CurrentRoomId = CurrentRoom?.RoomId,
                 CurrentRoomName = CurrentRoom?.RoomName
             };
+        }
+
+        // 전체 플레이어 정보 반환 메서드
+        public PlayerInfo GetPlayerFullInfo()
+        {
+            return Player?.Info;
         }
 
 		// 디버깅용

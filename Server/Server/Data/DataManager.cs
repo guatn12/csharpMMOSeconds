@@ -204,6 +204,10 @@ namespace Server.Data
 				string monsterFilePath = _gameDataSettings.GetDataFilePath("monsters");
 				string skillsFilePath = _gameDataSettings.GetDataFilePath("skills");
 
+				// 경로 확인 (필요시 디버그 용도)
+				_logger.LogDebug("Current working directory: {WorkingDir}", Directory.GetCurrentDirectory());
+				_logger.LogDebug("Resolved items file path: {ItemsPath}", itemsFilePath);
+
 				// 모든 파일 존재 확인
 				if(!File.Exists( itemsFilePath ))
 				{

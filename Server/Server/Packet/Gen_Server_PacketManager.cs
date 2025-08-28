@@ -30,6 +30,10 @@ namespace Server.Packet
                     await (room?.HandlePlayerMoveAsync(session, (C_Move)packet, logger) ?? Task.CompletedTask),
                 [typeof(C_Chat)] = async (session, room, packet, logger) =>
                     await (room?.HandlePlayerChatAsync(session, (C_Chat)packet, logger) ?? Task.CompletedTask),
+                [typeof(C_PlayerInfo)] = async (session, room, packet, logger) =>
+                    await (room?.HandlePlayerPlayerInfoAsync(session, (C_PlayerInfo)packet, logger) ?? Task.CompletedTask),
+                [typeof(C_UseSkill)] = async (session, room, packet, logger) =>
+                    await (room?.HandlePlayerUseSkillAsync(session, (C_UseSkill)packet, logger) ?? Task.CompletedTask),
             };
         }
 
@@ -47,12 +51,19 @@ namespace Server.Packet
         {
             _onRecv.Add((ushort)PacketID.C_Move, HandleC_MoveAsync);
             _onRecv.Add((ushort)PacketID.C_Chat, HandleC_ChatAsync);
+            _onRecv.Add((ushort)PacketID.C_PlayerInfo, HandleC_PlayerInfoAsync);
+            _onRecv.Add((ushort)PacketID.C_UseSkill, HandleC_UseSkillAsync);
             _packetTypeToId.Add(typeof(S_EnterGame), PacketID.S_EnterGame);
             _packetTypeToId.Add(typeof(S_LeaveGame), PacketID.S_LeaveGame);
             _packetTypeToId.Add(typeof(S_Spawn), PacketID.S_Spawn);
             _packetTypeToId.Add(typeof(S_Despawn), PacketID.S_Despawn);
             _packetTypeToId.Add(typeof(S_Move), PacketID.S_Move);
             _packetTypeToId.Add(typeof(S_Chat), PacketID.S_Chat);
+            _packetTypeToId.Add(typeof(S_PlayerUpdate), PacketID.S_PlayerUpdate);
+            _packetTypeToId.Add(typeof(S_PlayerStat), PacketID.S_PlayerStat);
+            _packetTypeToId.Add(typeof(S_Damage), PacketID.S_Damage);
+            _packetTypeToId.Add(typeof(S_Heal), PacketID.S_Heal);
+            _packetTypeToId.Add(typeof(S_LevelUp), PacketID.S_LevelUp);
         }
 
         private async ValueTask HandleC_MoveAsync(GameSession session, ArraySegment<byte> buffer)
@@ -67,6 +78,20 @@ namespace Server.Packet
             var packet = new C_Chat();
             packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
             await HandlePacketLogic<C_Chat>(session, packet);
+        }
+
+        private async ValueTask HandleC_PlayerInfoAsync(GameSession session, ArraySegment<byte> buffer)
+        {
+            var packet = new C_PlayerInfo();
+            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+            await HandlePacketLogic<C_PlayerInfo>(session, packet);
+        }
+
+        private async ValueTask HandleC_UseSkillAsync(GameSession session, ArraySegment<byte> buffer)
+        {
+            var packet = new C_UseSkill();
+            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+            await HandlePacketLogic<C_UseSkill>(session, packet);
         }
 
         private async ValueTask HandlePacketLogic<T>(GameSession session, T packet) where T : IMessage

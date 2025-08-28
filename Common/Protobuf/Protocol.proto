@@ -19,6 +19,13 @@ enum MsgId {
 	S_MOVE = 5;
 	C_CHAT = 6;
 	S_CHAT = 7;
+	S_PLAYER_UPDATE = 8;	// 플레이어 상태 변경 알림
+	S_PLAYER_STAT = 9;		// 플레이어 스탯 정보
+	C_PLAYER_INFO = 10;		// 플레이어 정보 요청
+	C_USE_SKILL = 11;		// 플레이어 스킬 사용
+	S_DAMAGE = 12;			// 데미지 처리
+	S_HEAL = 13;			// 회복 처리
+	S_LEVEL_UP = 14;		// 레벨업 알림
 }
 
 // 서버 -> 클라이언트
@@ -77,12 +84,72 @@ message S_Chat {
 	string message = 2;
 }
 
+message S_PlayerUpdate {
+	option (handler_name) = "GamePlayPacketHandler";
+	PlayerInfo player = 1;
+}
+
+message S_PlayerStat {
+	option (handler_name) = "GamePlayPacketHandler";
+	PlayerInfo player = 1;
+}
+
+message C_PlayerInfo {
+	option (handler_name) = "GamePlayPacketHandler";
+	int64 targetPlayerId = 1;	// 조회할 플레이어 ID (0이면 자신)
+}
+
+message C_UseSkill {
+	option (handler_name) = "GamePlayPacketHandler";
+	int32 skillId = 1;
+	int64 targetId = 2;	// 타겟 Id (0이면 자기 자신)
+}
+
+message S_Damage {
+	option (handler_name) = "GamePlayPacketHandler";
+	int64 attackerId = 1;
+	int64 targetId = 2;
+	int32 damage = 3;
+	int32 currentHP = 4;	// 데미지 처리 후 현재 HP
+}
+
+message S_Heal {
+	option (handler_name) = "GamePlayPacketHandler";
+	int64 healerId = 1;
+	int64 targetId = 2;
+	int32 healAmount = 3;
+	int32 currentHP = 4;	// 힐 처리 후 현재 HP
+}
+
+message S_LevelUp {
+	option (handler_name) = "GamePlayPacketHandler";
+	int64 playerId = 1;
+	int32 newLevel = 2;
+	int32 newMaxHP = 3;
+	int32 newMaxMP = 4;
+}
+
 // --------- 공용 데이터 구조 --------- 
+
+enum PlayerState {
+	IDLE = 0;
+	MOVING = 1;
+	COMBAT = 2;
+	DEAD = 3;
+	DISCONNECTED = 4;
+}
 
 message PlayerInfo {
 	int64 playerId = 1;
 	string name = 2;
 	PosInfo posInfo = 3;
+	int32 level = 4;
+	int32 currentHP = 5;
+	int32 maxHP = 6;
+	int32 currentMP = 7;
+	int32 maxMP = 8;
+	int64 experience = 9;
+	PlayerState state = 10;
 }
 
 message PosInfo {

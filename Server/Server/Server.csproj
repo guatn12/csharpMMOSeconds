@@ -50,6 +50,7 @@
 
   <ItemGroup>
     <Folder Include="Data\Extensions\" />
+    <Folder Include="Extensions\" />
   </ItemGroup>
 
 </Project>

@@ -25,12 +25,16 @@ namespace Server.Room
 		IReadOnlyList<GameSession> Players { get; }
 		// 플레이어 확인
 		bool ContainsPlayer(GameSession session);
+		// playerId를 통한 플레이어 확인
+		bool ContainsPlayerToPlayerId(long playerId);
 		// 플레이어 룸 입장 시도
 		Task<RoomEnterResult> TryEnterAsync(GameSession session);
 		// 플레이어 룸 퇴장 시도
 		Task<bool> TryLeaveAsync(GameSession session);
 		// sessionId를 통해 플레이어 확인
 		GameSession FindPlayer( int sessionId );
+		// playerId를 통한 플레이어 확인
+		GameSession FindPlayerToPlayerId(long playerId);
 		// 룸 내 모든 플레이어에게 브로드캐스트
 		Task BroadcastAsync( IMessage packet, GameSession excludeSession = null );
 		// 룸 내 특정 플레이어에게 전달
@@ -38,6 +42,8 @@ namespace Server.Room
 		// 플레이어 이동 / 채팅 처리.
 		Task HandlePlayerMoveAsync( GameSession session, Protocol.C_Move packet, ILogger logger );
 		Task HandlePlayerChatAsync(GameSession session, Protocol.C_Chat packet, ILogger logger );
+		Task HandlePlayerPlayerInfoAsync(GameSession session, Protocol.C_PlayerInfo packet, ILogger logger );
+		Task HandlePlayerUseSkillAsync(GameSession session, Protocol.C_UseSkill packet, ILogger logger );
 		//룸 초기화
 		Task InitializeAsync();
 		// 룸 정리 및 종료

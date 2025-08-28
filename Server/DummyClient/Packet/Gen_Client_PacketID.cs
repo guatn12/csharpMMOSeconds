@@ -11,4 +11,11 @@ public enum PacketID
 	S_Move = 5,
 	C_Chat = 6,
 	S_Chat = 7,
+	S_PlayerUpdate = 8,
+	S_PlayerStat = 9,
+	C_PlayerInfo = 10,
+	C_UseSkill = 11,
+	S_Damage = 12,
+	S_Heal = 13,
+	S_LevelUp = 14,
 }

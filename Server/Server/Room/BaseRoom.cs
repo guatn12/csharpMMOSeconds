@@ -1,5 +1,6 @@
 ﻿using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Protocol;
 using ServerCore;
 using System;
 using System.Collections.Concurrent;
@@ -90,10 +91,20 @@ namespace Server.Room
 			return session != null && _players.ContainsKey( session.SessionId );
 		}
 
+		public bool ContainsPlayerToPlayerId( long playerId )
+		{
+			return 0 < playerId && _players.Values.Where( p => p.Player.PlayerId == playerId ).Any();
+		}
+
 		public GameSession FindPlayer( int sessionId )
 		{
 			_players.TryGetValue( sessionId, out var session );
 			return session;
+		}
+
+		public GameSession FindPlayerToPlayerId( long playerId )
+		{
+			return _players.Values.Where( p => p.Player.PlayerId == playerId ).FirstOrDefault();
 		}
 
 		public virtual async Task<RoomEnterResult> TryEnterAsync( GameSession session )
@@ -154,7 +165,7 @@ namespace Server.Room
 			return await InternalLeaveAsync( session, false );
 		}
 
-		public virtual async Task BroadcastAsync(IMessage packet, GameSession excludeSession = null)
+		public virtual async Task BroadcastAsync( IMessage packet, GameSession excludeSession = null )
 		{
 			if(packet == null)
 				return;
@@ -177,7 +188,7 @@ namespace Server.Room
 			}
 		}
 
-		public virtual async Task SendToPlayerAsync(GameSession session, IMessage packet)
+		public virtual async Task SendToPlayerAsync( GameSession session, IMessage packet )
 		{
 			if(session == null || packet == null)
 				return;
@@ -193,7 +204,7 @@ namespace Server.Room
 			}
 		}
 
-		public virtual async Task HandlePlayerMoveAsync(GameSession session, Protocol.C_Move packet, ILogger logger )
+		public virtual async Task HandlePlayerMoveAsync( GameSession session, Protocol.C_Move packet, ILogger logger )
 		{
 			if(!ContainsPlayer( session ) || packet?.PosInfo == null)
 				return;
@@ -203,6 +214,9 @@ namespace Server.Room
 				// 이동 검증 (하위 클래스에서 재정의 가능)
 				if(!await ValidatePlayerMoveAsync( session, packet ))
 					return;
+
+				// 공용 처리
+				session.UpdatePosition( packet.PosInfo );
 
 				// 룸별 이동 처리
 				await OnPlayerMoveAsync( session, packet );
@@ -219,14 +233,14 @@ namespace Server.Room
 				logger.LogDebug( "Player {SessionId} moved in room {RoomId} to ({X}, {Y}, {Z})",
 					session.SessionId, RoomId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ );
 			}
-			catch (Exception e)
+			catch(Exception e)
 			{
 				logger.LogError( e, "Failed to handle move for player {SessionId} in room {RoomId}",
 					session.SessionId, RoomId );
 			}
 		}
 
-		public virtual async Task HandlePlayerChatAsync(GameSession session, Protocol.C_Chat packet, ILogger logger)
+		public virtual async Task HandlePlayerChatAsync( GameSession session, Protocol.C_Chat packet, ILogger logger )
 		{
 			if(!ContainsPlayer( session ) || string.IsNullOrWhiteSpace( packet?.Message ))
 				return;
@@ -250,36 +264,114 @@ namespace Server.Room
 				await BroadcastAsync( chatResponse, session );
 
 				logger.LogDebug( "Player {SessionId} chatted in room {RoomId}: '{Message}'",
-					session.SessionId, RoomId, packet.Message);
+					session.SessionId, RoomId, packet.Message );
 			}
-			catch (Exception ex)
+			catch(Exception ex)
 			{
 				logger.LogError( ex, "Failed to handle chat for player {SessionId} in room {RoomId}",
 					session.SessionId, RoomId );
 			}
 		}
 
+		public virtual async Task HandlePlayerPlayerInfoAsync( GameSession session, C_PlayerInfo packet, ILogger logger )
+		{
+			if(!ContainsPlayer( session ) || packet?.TargetPlayerId < 0 ||
+				!ContainsPlayerToPlayerId( packet.TargetPlayerId ))
+				return;
+
+			try
+			{
+				// 플레이어 정보를 찾는데 검증이 필요할지 의문.
+				if(!await ValidatePlayerInfoAsync( session, packet ))
+					return;
+
+				GameSession targetSession = FindPlayerToPlayerId(packet.TargetPlayerId);
+				if(targetSession == null)
+				{
+					logger.LogWarning( "TargetPlayer {PlayerId} Not Found int Room {RoomId}",
+						packet.TargetPlayerId, RoomId );
+
+					Protocol.S_PlayerStat errorResponse = new Protocol.S_PlayerStat();
+					await SendToPlayerAsync( session, errorResponse );
+					return;
+				}
+
+				// 데이터 탐색 및 전달.
+				Protocol.S_PlayerStat response = new Protocol.S_PlayerStat
+				{
+					Player = targetSession.Player.Info
+				};
+
+				await SendToPlayerAsync ( session, response );
+
+				logger.LogDebug( "TargetPlayer (Id: {PlayerId}, Name: {PlayerName}) Find in Room {RoomId}",
+					targetSession.Player.PlayerId, targetSession.Player.PlayerName, RoomId );
+			}
+			catch(Exception e)
+			{
+				logger.LogError( e, "Failed to handle PlayerInfo Find player {TargetPlayerId} in room {RoomId}",
+					packet.TargetPlayerId, RoomId );
+			}
+		}
+
+		public virtual async Task HandlePlayerUseSkillAsync( GameSession session, C_UseSkill packet, ILogger logger )
+		{
+			if(!ContainsPlayer( session ) || !ContainsPlayerToPlayerId(packet.TargetId))
+				return;
+
+			try
+			{
+				// 스킬 사용 검증 (하위 클래스에서 재정의 가능)
+				if(!await ValidatePlayerUseSkillAsync( session, packet ))
+					return;
+
+				// 스킬 사용 실행
+				bool skillUsed = session.Player.UseSkill(packet.SkillId);
+				if(!skillUsed)
+				{
+					logger.LogWarning("Player {PlayerId} failed to use skill {SkillId} - insufficient resources or invalid state", 
+						session.Player.PlayerId, packet.SkillId);
+					return;
+				}
+
+				// 룸별 스킬 사용 처리. - 스킬 사용만으로 힐, 데미지 버프등을 판단하여 브로드캐스트 할 수 없음.
+				// 내부에서 판단하여 주변 유저들에게 전파해야 한다.
+				await OnPlayerUseSkillAsync( session, packet );
+
+				logger.LogDebug( "Player {PlayerId} Use Skill ({SkillId}) Success, To Target Player {PlayerId} In Room {RoomId}",
+					session.Player.PlayerId, packet.SkillId, packet.TargetId, RoomId );
+			}
+			catch(Exception e)
+			{
+				logger.LogError( e, "Failed to Use Skill (PlayerId: {PlayerId}, SkillId: {SkillId}, TargetId: {TargetId}) in room {RoomId}",
+					session.Player.PlayerId, packet.SkillId, packet.TargetId, RoomId );
+			}
+		}
+
 		protected virtual Task OnInitializeAsync() => Task.CompletedTask;
 		protected virtual Task OnCleanupAsync() => Task.CompletedTask;
-		protected virtual Task OnPlayerEnterAsync(GameSession session) => Task.CompletedTask;
-		protected virtual Task OnPlayerLeaveAsync(GameSession session) => Task.CompletedTask;
-		protected virtual Task OnPlayerMoveAsync(GameSession session, Protocol.C_Move packet) => Task.CompletedTask;
-		protected virtual Task OnPlayerChatAsync(GameSession session, Protocol.C_Chat packet) => Task.CompletedTask;
+		protected virtual Task OnPlayerEnterAsync( GameSession session ) => Task.CompletedTask;
+		protected virtual Task OnPlayerLeaveAsync( GameSession session ) => Task.CompletedTask;
+		protected virtual Task OnPlayerMoveAsync( GameSession session, Protocol.C_Move packet ) => Task.CompletedTask;
+		protected virtual Task OnPlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.CompletedTask;
+		protected virtual Task OnPlayerUseSkillAsync(GameSession session, Protocol.C_UseSkill packet ) => Task.CompletedTask;
 
 		protected virtual Task<bool> ValidatePlayerMoveAsync( GameSession session, Protocol.C_Move packet ) => Task.FromResult( true );
 		protected virtual Task<bool> ValidatePlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.FromResult( true );
+		protected virtual Task<bool> ValidatePlayerInfoAsync( GameSession session, Protocol.C_PlayerInfo packet ) => Task.FromResult( true );
+		protected virtual Task<bool> ValidatePlayerUseSkillAsync( GameSession session, Protocol.C_UseSkill packet ) => Task.FromResult( true );
 
 		private static int GenerateNextRoomId()
 		{
 			return System.Threading.Interlocked.Increment( ref _nextRoomId );
 		}
 
-		private async Task<bool> ForceLeaveAsync(GameSession session)
+		private async Task<bool> ForceLeaveAsync( GameSession session )
 		{
 			return await InternalLeaveAsync( session, true );
 		}
 
-		private async Task<bool> InternalLeaveAsync(GameSession session, bool isForced)
+		private async Task<bool> InternalLeaveAsync( GameSession session, bool isForced )
 		{
 			if(!_players.TryRemove( session.SessionId, out var removedSession ))
 				return false;
@@ -305,9 +397,9 @@ namespace Server.Room
 
 				return true;
 			}
-			catch( Exception ex )
+			catch(Exception ex)
 			{
-				_logger.LogError(ex, "Failed to remove Player {SessionId} from room {RoomId}", session.SessionId, RoomId );
+				_logger.LogError( ex, "Failed to remove Player {SessionId} from room {RoomId}", session.SessionId, RoomId );
 				return false;
 			}
 		}
@@ -326,5 +418,7 @@ namespace Server.Room
 				_dispose = true;
 			}
 		}
+
+
 	}
 }
