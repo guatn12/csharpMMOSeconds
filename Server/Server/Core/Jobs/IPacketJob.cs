@@ -1,5 +1,6 @@
 ﻿using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Server.Core.Session;
 using Server.Room;
 using ServerCore;
 using System;
@@ -8,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Server.Jobs
+namespace Server.Core.Jobs
 {
 	public interface IPacketJob<T> : IJob where T : IMessage
 	{

@@ -3,15 +3,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Server.Configuration;
 using Server.Data;
-using Server.Data.Storage;
-using Server.Jobs;
 using Server.Packet;
 using Server.Room;
 using ServerCore;
 using Serilog;
-using Server.Configuration.Validators;
+using Server.Config;
+using Server.Core.Session;
+using Server.Core.Jobs;
 
 namespace Server.Extensions
 {
@@ -84,7 +83,6 @@ namespace Server.Extensions
 		private static IServiceCollection AddGameServices(this IServiceCollection services )
 		{
 			// Room 시스템
-			services.AddSingleton<IRoomFactory, RoomFactory>();
 			services.AddSingleton<IRoomManager, RoomManager>();
 
 			return services;
@@ -96,7 +94,6 @@ namespace Server.Extensions
 		private static IServiceCollection AddDataServices(this IServiceCollection services)
 		{
 			// 기본 데이터 관리
-			services.AddSingleton<IDataStorageProvider, DataStorageProvider>();
 			services.AddSingleton<DataManager>();
 
 			return services;

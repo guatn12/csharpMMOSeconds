@@ -9,9 +9,9 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Threading.Tasks;
 
-namespace Server
+namespace Server.Core.Session
 {
-    public class GameSession : Session
+    public class GameSession : ServerCore.Session
     {
         private readonly ILogger<GameSession> _logger;
         private readonly IRoomManager _roomManager;
@@ -67,7 +67,7 @@ namespace Server
             PacketID packetId = (PacketID)packetIdValue;
 
             _logger.LogDebug( "Packet Received. SessionId: {SessionId}, PacketID: {PacketID}, Size: {Size}",
-                this.SessionId, packetId, buffer.Count );
+                SessionId, packetId, buffer.Count );
 
             if(Program.PacketManagerInstance != null)
             {
@@ -83,7 +83,7 @@ namespace Server
         public override void OnSend( int bytes )
         {
             //LogManager.Debug("Packet Sent. SessionId: {SessionId}, Size: {Size}", this.SessionId, bytes);
-            _logger.LogDebug( "Packet Sent. SessionId: {SessionId}, Size: {Size}", this.SessionId, bytes );
+            _logger.LogDebug( "Packet Sent. SessionId: {SessionId}, Size: {Size}", SessionId, bytes );
         }
 
 		// 비동기 패킷 전송
@@ -94,9 +94,9 @@ namespace Server
 
 		public override void OnConnected( EndPoint endPoint )
 		{
-            this.SessionId = GenerateNextSessionId();
+            SessionId = GenerateNextSessionId();
             //LogManager.Info("Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
-			_logger.LogInformation( "Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint );
+			_logger.LogInformation( "Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
 
             // 플레이어 정보 초기화.
             InitializePlayer();
@@ -108,7 +108,7 @@ namespace Server
 		public override void OnDisConnected( EndPoint endPoint )
 		{
 			//LogManager.Info("Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
-			_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint );
+			_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
 
 			// 플레이어 상태를 Disconnected상태로 처리
 			Player?.Disconnect();

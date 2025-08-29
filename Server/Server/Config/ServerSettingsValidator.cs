@@ -6,7 +6,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Server.Configuration.Validators
+namespace Server.Config
 {
 	/// <summary>
 	/// 통합된 서버 설정 검증자

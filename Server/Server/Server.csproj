@@ -48,8 +48,4 @@
     <Compile Include="../../Common/Protobuf/Protocol.cs" Link="Packet/Protocol.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Data\Extensions\" />
-  </ItemGroup>
-
 </Project>

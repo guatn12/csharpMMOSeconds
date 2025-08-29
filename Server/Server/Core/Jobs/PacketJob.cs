@@ -1,5 +1,6 @@
 ﻿using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Server.Core.Session;
 using Server.Room;
 using System;
 using System.Collections.Generic;
@@ -7,7 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Server.Jobs
+namespace Server.Core.Jobs
 {
 	public class PacketJob<T> : IPacketJob<T> where T : IMessage
 	{
@@ -45,7 +46,7 @@ namespace Server.Jobs
 		{
 			_session = null;
 			_room = null;
-			_packet = default( T );
+			_packet = default;
 			_logger = null;
 			_handler = null;
 		}

@@ -141,10 +141,10 @@ namespace DummyClient
 				Thread.Sleep( 200 );
 			}
 
-			_logger.LogInformation( "모든 클라이언트 시작 완료. 종료하라면 아무 키나 누르세요..." );
+			_logger.LogInformation( "모든 클라이언트 시작 완료. 15초 후 자동 종료됩니다..." );
 
-			// 콘솔 키 입력 대기
-			Console.ReadKey();
+			// 15초 대기 (테스트를 위해)
+			Thread.Sleep( 15000 );
 
 			cancellationTokenSource.Cancel();
 

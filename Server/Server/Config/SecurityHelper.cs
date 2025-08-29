@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Server.Configuration.Security
+namespace Server.Config
 {
 	/// <summary>
 	/// 보안 관련 유틸리티 클래스

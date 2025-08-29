@@ -1,10 +1,10 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Server.Configuration;
+using Server.Config;
 using Server.Data.Models;
-using Server.Data.Storage;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -14,28 +14,26 @@ using System.Threading.Tasks;
 
 namespace Server.Data
 {
-	public class DataManager : IDataManager
+	public class DataManager
 	{
-		private readonly IDataStorageProvider _storageProvider;
 		private readonly ILogger<DataManager> _logger;
-		private readonly GameDataSettings _gameDataSettings;
+		private readonly ServerSettings _serverSettings;
+
+		private readonly ConcurrentDictionary<int, ItemData> _items = new ConcurrentDictionary<int, ItemData>();
+		private readonly ConcurrentDictionary<int, MonsterData> _monsters = new ConcurrentDictionary<int, MonsterData>();
+		private readonly ConcurrentDictionary<int, SkillData> _skills = new ConcurrentDictionary<int, SkillData>();
 
 		private bool _isDataLoaded = false;
 		private DateTime _lastLoadTime = DateTime.MinValue;
 		private readonly object _lock = new object();
 
 		public DataManager(
-			IDataStorageProvider storageProvider,
-			IOptions<GameDataSettings> gameDataOptions,
+			IOptions<ServerSettings> serverOptions,
 			ILogger<DataManager> logger )
 		{
-			_storageProvider = storageProvider ?? throw new ArgumentNullException( nameof( storageProvider ) );
-			
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-
-			_gameDataSettings = gameDataOptions.Value;
-
-			_logger.LogInformation( "DataManager initialized with data path: {DataPath}", _gameDataSettings.DataPath );
+			_serverSettings = serverOptions.Value;
+			_logger.LogInformation( "DataManager initialized with data path: {DataPath}", _serverSettings.GameData.DataPath );
 		}
 
 		public ItemData? GetItem( int itemId )
@@ -46,7 +44,7 @@ namespace Server.Data
 				return null;
 			}
 
-			return _storageProvider.Items.Get( itemId );
+			return _items.TryGetValue( itemId, out var item ) ? item : null;
 		}
 
 		public MonsterData? GetMonster( int monsterId )
@@ -57,7 +55,7 @@ namespace Server.Data
 				return null;
 			}
 
-			return _storageProvider.Monsters.Get( monsterId );
+			return _monsters.TryGetValue( monsterId, out var monster ) ? monster : null;
 		}
 
 		public SkillData? GetSkill( int skillId )
@@ -68,7 +66,7 @@ namespace Server.Data
 				return null;
 			}
 
-			return _storageProvider.Skills.Get( skillId );
+			return _skills.TryGetValue( skillId, out var skill ) ? skill : null;
 		}
 
 		public IReadOnlyDictionary<int, ItemData> GetAllItems()
@@ -79,7 +77,7 @@ namespace Server.Data
 				return new Dictionary<int, ItemData>();
 			}
 
-			return _storageProvider.Items.GetAll();
+			return _items;
 		}
 
 		public IReadOnlyDictionary<int, MonsterData> GetAllMonsters()
@@ -90,7 +88,7 @@ namespace Server.Data
 				return new Dictionary<int, MonsterData>();
 			}
 
-			return _storageProvider.Monsters.GetAll();
+			return _monsters;
 		}
 
 		public IReadOnlyDictionary<int, SkillData> GetAllSkills()
@@ -101,22 +99,22 @@ namespace Server.Data
 				return new Dictionary<int, SkillData>();
 			}
 
-			return _storageProvider.Skills.GetAll();
+			return _skills;
 		}
 
 		public int GetTotalItemCount()
 		{
-			return _isDataLoaded ? _storageProvider.Items.Count : 0;
+			return _isDataLoaded ? _items.Count : 0;
 		}
 
 		public int GetTotalMonsterCount()
 		{
-			return _isDataLoaded ? _storageProvider.Monsters.Count : 0;
+			return _isDataLoaded ? _monsters.Count : 0;
 		}
 
 		public int GetTotalSkillCount()
 		{
-			return _isDataLoaded ? _storageProvider.Skills.Count : 0;
+			return _isDataLoaded ? _skills.Count : 0;
 		}
 
 		public IEnumerable<ItemData> GetItemsByGrade( string grade )
@@ -127,7 +125,7 @@ namespace Server.Data
 				return Enumerable.Empty<ItemData>();
 			}
 
-			return _storageProvider.Items.GetAll().Values
+			return _items.Values
 				.Where( item => item.Grade.Equals( grade, StringComparison.OrdinalIgnoreCase ) );
 		}
 
@@ -139,7 +137,7 @@ namespace Server.Data
 				return Enumerable.Empty<MonsterData>();
 			}
 
-			return _storageProvider.Monsters.GetAll().Values
+			return _monsters.Values
 				.Where( monster => monster.MonsterType.Equals( monsterType, StringComparison.OrdinalIgnoreCase ) );
 		}
 
@@ -151,7 +149,7 @@ namespace Server.Data
 				return Enumerable.Empty<SkillData>();
 			}
 
-			return _storageProvider.Skills.GetAll().Values
+			return _skills.Values
 				.Where( skill => skill.SkillType.Equals( skillType, StringComparison.OrdinalIgnoreCase ) );
 		}
 
@@ -163,7 +161,7 @@ namespace Server.Data
 				return Enumerable.Empty<SkillData>();
 			}
 
-			MonsterData? monster = GetMonster(monsterId);
+			MonsterData monster = GetMonster(monsterId);
 			if(monster == null || monster.Skills == null || monster.Skills.Count == 0)
 			{
 				return Enumerable.Empty<SkillData>();
@@ -172,7 +170,7 @@ namespace Server.Data
 			var skills = new List<SkillData>();
 			foreach(int skillId in monster.Skills)
 			{
-				SkillData? skill = GetSkill(skillId);
+				SkillData skill = GetSkill(skillId);
 				if(skill != null)
 				{
 					skills.Add( skill );
@@ -200,13 +198,13 @@ namespace Server.Data
 
 			try
 			{
-				string itemsFilePath = _gameDataSettings.GetDataFilePath("items");
-				string monsterFilePath = _gameDataSettings.GetDataFilePath("monsters");
-				string skillsFilePath = _gameDataSettings.GetDataFilePath("skills");
+				string itemsFilePath = _serverSettings.GameData.GetDataFilePath("items");
+				string monsterFilePath = _serverSettings.GameData.GetDataFilePath("monsters");
+				string skillsFilePath = _serverSettings.GameData.GetDataFilePath("skills");
 
 				// 경로 확인 (필요시 디버그 용도)
-				_logger.LogDebug("Current working directory: {WorkingDir}", Directory.GetCurrentDirectory());
-				_logger.LogDebug("Resolved items file path: {ItemsPath}", itemsFilePath);
+				_logger.LogDebug( "Current working directory: {WorkingDir}", Directory.GetCurrentDirectory() );
+				_logger.LogDebug( "Resolved items file path: {ItemsPath}", itemsFilePath );
 
 				// 모든 파일 존재 확인
 				if(!File.Exists( itemsFilePath ))
@@ -249,9 +247,7 @@ namespace Server.Data
 				Dictionary<int, SkillData> skillsDict = skills.ToDictionary(skill => skill.Id);
 
 				// 스레드 안전하게 데이터 업데이트
-				_storageProvider.Items.Update( itemsDict );
-				_storageProvider.Monsters.Update( monstersDict );
-				_storageProvider.Skills.Update( skillsDict );
+				UpdateData(itemsDict, monstersDict, skillsDict);
 
 				lock(_lock)
 				{
@@ -293,7 +289,7 @@ namespace Server.Data
 			int totalErrors = 0;
 
 			// Items 검증
-			IReadOnlyDictionary<int, ItemData> items = _storageProvider.Items.GetAll();
+			IReadOnlyDictionary<int, ItemData> items = _items;
 			List<int> invalidItems = new List<int>();
 
 			foreach(var kvp in items)
@@ -319,7 +315,7 @@ namespace Server.Data
 			}
 
 			// Monsters 검증
-			IReadOnlyDictionary<int, MonsterData> monsters = _storageProvider.Monsters.GetAll();
+			IReadOnlyDictionary<int, MonsterData> monsters = _monsters;
 			List<int> invalidMonsters = new List<int>();
 
 			foreach(var kvp in monsters)
@@ -348,7 +344,7 @@ namespace Server.Data
 				{
 					foreach(int skillId in monster.Skills)
 					{
-						if(!_storageProvider.Skills.ContainsKey( skillId ))
+						if(!_skills.ContainsKey( skillId ))
 						{
 							_logger.LogError( "Monster {MonsterId} references non-existent skill {SkillId}", monster.Id, skillId );
 							isValid = false;
@@ -359,7 +355,7 @@ namespace Server.Data
 			}
 
 			// Skills 검증
-			IReadOnlyDictionary<int, SkillData> skills = _storageProvider.Skills.GetAll();
+			IReadOnlyDictionary<int, SkillData> skills = _skills;
 			List<int> invalidSkills = new List<int>();
 
 			foreach(var kvp in skills)
@@ -397,6 +393,19 @@ namespace Server.Data
 			}
 
 			return isValid;
+		}
+
+		private void UpdateData( Dictionary<int, ItemData> itemDict,
+			Dictionary<int, MonsterData> monsterDict,
+			Dictionary<int, SkillData> skillDict )
+		{
+			_items.Clear();
+			_monsters.Clear();
+			_skills.Clear();
+
+			foreach(var kvp in itemDict) _items[ kvp.Key ] = kvp.Value;
+			foreach(var kvp in monsterDict) _monsters[ kvp.Key ] = kvp.Value;
+			foreach(var kvp in skillDict) _skills[ kvp.Key ] = kvp.Value;
 		}
 	}
 }

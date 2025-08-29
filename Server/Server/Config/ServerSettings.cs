@@ -7,7 +7,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Server.Configuration
+namespace Server.Config
 {
 	public class ServerSettings
 	{
@@ -46,7 +46,7 @@ namespace Server.Configuration
 		public string Host { get; set; } = "127.0.0.1";
 
 		[Required]
-		[Range( 1024, 65535)]
+		[Range( 1024, 65535 )]
 		public int Port { get; set; } = 7777;
 
 		[Range( 1, 1000 )]
@@ -75,8 +75,8 @@ namespace Server.Configuration
 		//public int HotReloadDebounceMs { get; set; } = 500;
 
 		// 파일 경로 동적 생성 메서드
-		//public string GetDataFilePath( string tableName ) =>
-			//Path.Combine( DataPath, $"{tableName}{FileExtension}" );
+		public string GetDataFilePath( string tableName ) => 
+			Path.Combine( DataPath, $"{tableName}.json" );
 	}
 
 	/// <summary>
@@ -98,10 +98,20 @@ namespace Server.Configuration
 	/// </summary>
 	public class RoomConfig
 	{
-		[Range(1, 1000)]
+		[Range( 1, 10000 )]
 		public int MaxRooms { get; set; } = 100;
 
+		[Range( 3, 100 )]
+		public int MaxRoomNameLength { get; set; } = 50;
+
+		[Range( 5, 1440 )]
+		public int EmptyRoomCleanupIntervalMinutes { get; set; } = 30;
+
 		public LobbyConfig Lobby { get; set; } = new();
+		public BattleConfig Battle { get; set; } = new();
+		public DungeonConfig Dungeon { get; set; } = new();
+		public GuildConfig Guild { get; set; } = new();
+		public PrivateConfig Private { get; set; } = new();
 	}
 
 	public class LobbyConfig
@@ -110,5 +120,37 @@ namespace Server.Configuration
 		public int MaxPlayers { get; set; } = 100;
 
 		public string DefaultName { get; set; } = "Main Lobby";
+	}
+
+	public class BattleConfig
+	{
+		[Range( 1, 100 )]
+		public int MaxPlayers { get; set; } = 20;
+
+		public string DefaultName { get; set; } = "Main Battle";
+	}
+
+	public class DungeonConfig
+	{
+		[Range( 1, 10 )]
+		public int MaxPlayers { get; set; } = 4;
+
+		public string DefaultName { get; set; } = "Main Dungeon";
+	}
+
+	public class GuildConfig
+	{
+		[Range( 1, 100 )]
+		public int MaxPlayers { get; set; } = 50;
+
+		public string DefaultName { get; set; } = "Main Guild";
+	}
+
+	public class PrivateConfig
+	{
+		[Range( 1, 10 )]
+		public int MaxPlayers { get; set; } = 5;
+
+		public string DefaultName { get; set; } = "Main Private";
 	}
 }

@@ -1,7 +1,8 @@
 ﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Server.Configuration;
+using Server.Config;
+using Server.Core.Session;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -16,7 +17,7 @@ namespace Server.Room
 	public class RoomManager : IRoomManager, IHostedService, IDisposable
 	{
 		private readonly ILogger<RoomManager> _logger;
-		private readonly IOptionsMonitor<RoomSettings> _roomSettings;
+		private readonly IOptionsMonitor<ServerSettings> _serverSettings;
 		private readonly ILoggerFactory _loggerFactory;
 		private readonly ConcurrentDictionary<int, IRoom> _rooms;
 		private readonly object _lock = new object();
@@ -33,11 +34,11 @@ namespace Server.Room
 		public event EventHandler<RoomDestoryedEventArgs> RoomDestoryed;
 		public event EventHandler<PlayerRoomChangedEventArgs> PlayerRoomChanged;
 
-		public RoomManager( ILogger<RoomManager> logger, IOptionsMonitor<RoomSettings> roomSettings,
+		public RoomManager( ILogger<RoomManager> logger, IOptionsMonitor<ServerSettings> serverSettings,
 			ILoggerFactory loggerFactory )
 		{
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-			_roomSettings = roomSettings ?? throw new ArgumentNullException( nameof( roomSettings ) );
+			_serverSettings = serverSettings ?? throw new ArgumentNullException( nameof( serverSettings ) );
 			_loggerFactory = loggerFactory ?? throw new ArgumentNullException( nameof( loggerFactory ) );
 
 			_rooms = new ConcurrentDictionary<int, IRoom>();
@@ -52,7 +53,7 @@ namespace Server.Room
 			await InitializeAsync();
 
 			// 정리 타이머 시작
-			TimeSpan cleanupInterval = TimeSpan.FromMinutes(_roomSettings.CurrentValue.Cleanup.EmptyRoomCleanupIntervalMinutes);
+			TimeSpan cleanupInterval = TimeSpan.FromMinutes(_serverSettings.CurrentValue.Room.EmptyRoomCleanupIntervalMinutes);
 			_cleanupTimer = new Timer( async _ => await PerformCleanupAsync(), null, cleanupInterval, cleanupInterval );
 
 			_logger.LogInformation( "RoomManager started successfully with {RoomCount} rooms", _rooms.Count );
@@ -77,16 +78,16 @@ namespace Server.Room
 			try
 			{
 				// 룸 수 제한 확인
-				if(_roomSettings.CurrentValue.Performance.MaxConcurrentRooms <= _rooms.Count)
+				if(_serverSettings.CurrentValue.Room.MaxRooms <= _rooms.Count)
 				{
 					_logger.LogWarning( "Cannot create room '{RoomName}': Maximum concurrent rooms ({MaxRooms}) reached",
-						  roomName, _roomSettings.CurrentValue.Performance.MaxConcurrentRooms );
+						  roomName, _serverSettings.CurrentValue.Room.MaxRooms );
 					return null;
 				}
 
 				// 룸 이름 검증
 				if(string.IsNullOrWhiteSpace( roomName ) ||
-					_roomSettings.CurrentValue.Default.MaxRoomNameLength < roomName.Length)
+					_serverSettings.CurrentValue.Room.MaxRoomNameLength < roomName.Length)
 				{
 					_logger.LogWarning( "Invalid room name: {RoomName}", roomName );
 					return null;
@@ -95,12 +96,12 @@ namespace Server.Room
 				// 룸 타입별 플레이어 수 검증
 				int maxAllowedPlayers = roomType switch
 				{
-					RoomType.Lobby => _roomSettings.CurrentValue.Lobby.MaxPlayers,
-					RoomType.Battle => _roomSettings.CurrentValue.Battle.MaxPlayers,
-					RoomType.Dungeon => _roomSettings.CurrentValue.Default.MaxPlayers, // 아직 미구현
-					RoomType.Guild => _roomSettings.CurrentValue.Default.MaxPlayers,   // 아직 미구현
-					RoomType.Private => _roomSettings.CurrentValue.Default.MaxPlayers, // 아직 미구현
-					_ => _roomSettings.CurrentValue.Default.MaxPlayers
+					RoomType.Lobby => _serverSettings.CurrentValue.Room.Lobby.MaxPlayers,
+					RoomType.Battle => _serverSettings.CurrentValue.Room.Battle.MaxPlayers,
+					RoomType.Dungeon => _serverSettings.CurrentValue.Room.Dungeon.MaxPlayers, // 아직 미구현
+					RoomType.Guild => _serverSettings.CurrentValue.Room.Guild.MaxPlayers,   // 아직 미구현
+					RoomType.Private => _serverSettings.CurrentValue.Room.Private.MaxPlayers, // 아직 미구현
+					_ => _serverSettings.CurrentValue.Room.Lobby.MaxPlayers
 				};
 
 				if(maxPlayers <= 0 || maxAllowedPlayers < maxPlayers)
@@ -114,7 +115,7 @@ namespace Server.Room
 				{
 					RoomType.Lobby => new LobbyRoom(
 						_loggerFactory.CreateLogger<LobbyRoom>(),
-						Options.Create(_roomSettings.CurrentValue),
+						Options.Create(_serverSettings.CurrentValue),
 						roomName, false),
 					RoomType.Battle => throw new NotImplementedException("BattleRoom not implemented yet"),
 					RoomType.Dungeon => throw new NotImplementedException("DungeonRoom not implemented yet"),
@@ -155,8 +156,8 @@ namespace Server.Room
 		{
 			try
 			{
-				LobbyRoomSettings lobbySettings = _roomSettings.CurrentValue.Lobby;
-				IRoom lobby = await CreateRoomAsync(RoomType.Lobby, lobbySettings.DefaultLobbyName,
+				LobbyConfig lobbySettings = _serverSettings.CurrentValue.Room.Lobby;
+				IRoom lobby = await CreateRoomAsync(RoomType.Lobby, lobbySettings.DefaultName,
 					lobbySettings.MaxPlayers);
 
 				if(lobby is LobbyRoom lobbyRoom)
@@ -412,13 +413,14 @@ namespace Server.Room
 		{
 			try
 			{
-				// 설정 변경 모니터링 등록
-				_roomSettings.OnChange( OnRoomSettingsChanged );
-
-				// 기본 로비 생성 (설정에서 활성화된 경우)
-				if(_roomSettings.CurrentValue.Lobby.AutoCreateLobby)
+				// 기본 로비 생성
+				LobbyConfig lobbyConfig = _serverSettings.CurrentValue.Room.Lobby;
+				_defaultLobby = await CreateRoomAsync(RoomType.Lobby, lobbyConfig.DefaultName,
+					lobbyConfig.MaxPlayers);
+				
+				if( _defaultLobby == null)
 				{
-					_defaultLobby = await CreateDefaultLobbyAsync();
+					throw new InvalidOperationException( "Failed to create default lobby" );
 				}
 
 				_logger.LogInformation( "RoomManager Initialized successfully" );
@@ -453,19 +455,11 @@ namespace Server.Room
 			}
 		}
 
-		private void OnRoomSettingsChanged(RoomSettings settings)
-		{
-			_logger.LogInformation( "Room Settings Changed, applying new configuration" );
-		}
-
 		private async Task PerformCleanupAsync()
 		{
 			try
 			{
-				if(_roomSettings.CurrentValue.Cleanup.EnalbeAutoCleanup)
-				{
-					await CleanupEmptyRoomsAsync();
-				}
+				await CleanupEmptyRoomsAsync();
 			}
 			catch(Exception ex)
 			{

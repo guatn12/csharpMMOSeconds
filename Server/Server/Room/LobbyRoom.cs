@@ -1,7 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Protocol;
-using Server.Configuration;
+using Server.Config;
+using Server.Core.Session;
 using ServerCore;
 using System;
 using System.Collections.Generic;
@@ -14,7 +15,7 @@ namespace Server.Room
 {
 	public class LobbyRoom : BaseRoom
 	{
-		private readonly RoomSettings _roomSettings;
+		private readonly ServerSettings _serverSettings;
 		private readonly ILogger<LobbyRoom> _lobbyLogger;
 		private DateTime _createdAt;
 		private int _totalVisitors = 0;
@@ -26,12 +27,12 @@ namespace Server.Room
 		// 로비가 기본 로비인지 여부
 		public bool IsDefaultLobby { get; private set; }
 
-		public LobbyRoom( ILogger<LobbyRoom> logger, IOptions<RoomSettings> roomSettings,
+		public LobbyRoom( ILogger<LobbyRoom> logger, IOptions<ServerSettings> ServerSettings,
 			string roomName = null, bool isDefaultLobby = false ) 
-			: base( logger, roomName ?? "Main Lobby", roomSettings.Value.Lobby.MaxPlayers )
+			: base( logger, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers )
 		{
 			_lobbyLogger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-			_roomSettings = roomSettings?.Value ?? throw new ArgumentNullException(nameof( roomSettings ) );
+			_serverSettings = ServerSettings.Value ?? throw new ArgumentNullException(nameof( ServerSettings ) );
 			IsDefaultLobby = isDefaultLobby;
 			_createdAt = DateTime.UtcNow;
 

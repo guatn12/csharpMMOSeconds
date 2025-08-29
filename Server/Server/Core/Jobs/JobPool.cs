@@ -3,7 +3,7 @@ using ServerCore;
 using System;
 using System.Collections.Concurrent;
 
-namespace Server.Jobs
+namespace Server.Core.Jobs
 {
     public class JobPool
     {
@@ -18,7 +18,7 @@ namespace Server.Jobs
         public T Get<T>() where T : class, IJob, new()
         {
             var pool = GetOrCreatePool<T>();
-            return (T)pool.Get();
+            return pool.Get();
         }
 
         public void Return<T>(T item) where T : class, IJob, new()
