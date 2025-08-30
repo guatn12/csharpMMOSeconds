@@ -15,6 +15,7 @@ using Microsoft.Extensions.Hosting;
 using Server.Extensions;
 using Server.Core.Session;
 using Server.Config;
+using Server.Infra;
 
 namespace Server
 {
@@ -81,6 +82,10 @@ namespace Server
 			{
 				await hostedRoomManager.StartAsync( CancellationToken.None );
 			}
+
+			// Redis 서비스 연결
+			RedisService redisService = serviceProvider.GetRequiredService<RedisService>();
+			await redisService.ConnectAsync();
 
 			logger.LogInformation( "핵심 서비스 초기화 완료" );
 		}

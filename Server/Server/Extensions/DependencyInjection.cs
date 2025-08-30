@@ -11,6 +11,7 @@ using Serilog;
 using Server.Config;
 using Server.Core.Session;
 using Server.Core.Jobs;
+using Server.Infra;
 
 namespace Server.Extensions
 {
@@ -73,6 +74,9 @@ namespace Server.Extensions
 				var roomManager = provider.GetRequiredService<IRoomManager>();
 				return new GameSession( logger, roomManager );
 			} );
+
+			// Redis 서비스
+			services.AddSingleton<RedisService>();
 
 			return services;
 		}

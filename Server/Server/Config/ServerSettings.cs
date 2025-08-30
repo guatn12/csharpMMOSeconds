@@ -35,6 +35,11 @@ namespace Server.Config
 		/// Room 설정
 		/// </summary>
 		public RoomConfig Room { get; set; } = new();
+
+		/// <summary>
+		/// Redis 설정
+		/// </summary>
+		public RedisConfig Redis { get; set; } = new();
 	}
 
 	/// <summary>
@@ -152,5 +157,11 @@ namespace Server.Config
 		public int MaxPlayers { get; set; } = 5;
 
 		public string DefaultName { get; set; } = "Main Private";
+	}
+
+	public class RedisConfig
+	{
+		[Required]
+		public string ConnectionString { get; set; }
 	}
 }

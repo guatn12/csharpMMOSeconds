@@ -35,6 +35,9 @@ namespace Server.Config
 			// Room 설정 검증
 			ValidateRoom(options.Room, failures);
 
+			// Redis 설정 검증
+			ValidateRedis(options.Redis, failures);
+
 			return failures.Count == 0
 				? ValidateOptionsResult.Success
 				: ValidateOptionsResult.Fail( failures );
@@ -119,6 +122,18 @@ namespace Server.Config
 
 			if(string.IsNullOrWhiteSpace( room.Lobby?.DefaultName ))
 				failures.Add( "Room Lobby DefaultName is required" );
+		}
+
+		private void ValidateRedis(RedisConfig redis, List<string> failures)
+		{
+			if(redis == null)
+			{
+				failures.Add( "Redis configuration is required" );
+				return;
+			}
+
+			if(string.IsNullOrWhiteSpace( redis.ConnectionString ))
+				failures.Add( "Redis ConnectionString is required" );
 		}
 	}
 }
