@@ -12,6 +12,7 @@ using Server.Config;
 using Server.Core.Session;
 using Server.Core.Jobs;
 using Server.Infra;
+using Microsoft.EntityFrameworkCore;
 
 namespace Server.Extensions
 {
@@ -26,7 +27,7 @@ namespace Server.Extensions
 			services.AddConfigurationServices( configuration );
 
 			// 핵심 서비스 등록
-			services.AddCoreServices();
+			services.AddCoreServices(configuration);
 
 			// 게임 로직 서비스 등록
 			services.AddGameServices();
@@ -57,7 +58,7 @@ namespace Server.Extensions
 		///<summary>
 		/// 핵심 네트워킹 서비스 등록
 		/// </summary>
-		private static IServiceCollection AddCoreServices(this IServiceCollection services)
+		private static IServiceCollection AddCoreServices( this IServiceCollection services, IConfiguration configuration )
 		{
 			// 네트워킹 핵심
 			services.AddSingleton<Listener>();
@@ -78,13 +79,19 @@ namespace Server.Extensions
 			// Redis 서비스
 			services.AddSingleton<RedisService>();
 
+			// DB 서비스
+			string connectionString = configuration.GetSection("ServerSettings:Database:ConnectionString").Value;
+
+			services.AddDbContext<AppDbContext>( options =>
+				options.UseNpgsql( connectionString ) );
+
 			return services;
 		}
 
 		///<summary>
 		/// 게임 로직 서비스 등록
 		/// </summary>
-		private static IServiceCollection AddGameServices(this IServiceCollection services )
+		private static IServiceCollection AddGameServices( this IServiceCollection services )
 		{
 			// Room 시스템
 			services.AddSingleton<IRoomManager, RoomManager>();
@@ -95,7 +102,7 @@ namespace Server.Extensions
 		/// <summary>
 		/// 데이터 관리 서비스 등록
 		/// </summary>
-		private static IServiceCollection AddDataServices(this IServiceCollection services)
+		private static IServiceCollection AddDataServices( this IServiceCollection services )
 		{
 			// 기본 데이터 관리
 			services.AddSingleton<DataManager>();
@@ -106,7 +113,7 @@ namespace Server.Extensions
 		/// <summary>
 		/// 로깅 서비스 등록
 		/// </summary>
-		private static IServiceCollection AddLoggingServices(this IServiceCollection services, IConfiguration configuration)
+		private static IServiceCollection AddLoggingServices( this IServiceCollection services, IConfiguration configuration )
 		{
 			services.AddLogging( loggingBuilder =>
 			{

@@ -40,6 +40,11 @@ namespace Server.Config
 		/// Redis 설정
 		/// </summary>
 		public RedisConfig Redis { get; set; } = new();
+
+		/// <summary>
+		/// DB 설정
+		/// </summary>
+		public DatabaseConfig Database { get; set; } = new();
 	}
 
 	/// <summary>
@@ -160,6 +165,12 @@ namespace Server.Config
 	}
 
 	public class RedisConfig
+	{
+		[Required]
+		public string ConnectionString { get; set; }
+	}
+
+	public class DatabaseConfig
 	{
 		[Required]
 		public string ConnectionString { get; set; }

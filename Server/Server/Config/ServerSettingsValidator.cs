@@ -38,6 +38,9 @@ namespace Server.Config
 			// Redis 설정 검증
 			ValidateRedis(options.Redis, failures);
 
+			// DB 설정 검증
+			ValidateDatabase(options.Database, failures);
+
 			return failures.Count == 0
 				? ValidateOptionsResult.Success
 				: ValidateOptionsResult.Fail( failures );
@@ -134,6 +137,18 @@ namespace Server.Config
 
 			if(string.IsNullOrWhiteSpace( redis.ConnectionString ))
 				failures.Add( "Redis ConnectionString is required" );
+		}
+
+		private void ValidateDatabase(DatabaseConfig database, List<string> failures)
+		{
+			if(database == null)
+			{
+				failures.Add( "Database configuration is required" );
+				return;
+			}
+
+			if(string.IsNullOrWhiteSpace( database.ConnectionString ))
+				failures.Add( "Database ConnectionString is required" );
 		}
 	}
 }
