@@ -44,6 +44,9 @@ namespace Server
 				var serviceProvider = services.BuildServiceProvider();
 				var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
 
+				// Redis 연결 테스트 추가
+				await TestRedisConnectionAsync( serviceProvider, logger );
+
 				// 핵심 서비스 초기화
 				await InitializeCoreServicesAsync(serviceProvider, logger);
 
@@ -82,10 +85,6 @@ namespace Server
 			{
 				await hostedRoomManager.StartAsync( CancellationToken.None );
 			}
-
-			// Redis 서비스 연결
-			RedisService redisService = serviceProvider.GetRequiredService<RedisService>();
-			await redisService.ConnectAsync();
 
 			logger.LogInformation( "핵심 서비스 초기화 완료" );
 		}
@@ -167,6 +166,34 @@ namespace Server
 			}
 
 			return builder.Build();
+		}
+
+		private static async Task TestRedisConnectionAsync(IServiceProvider serviceProvider, ILogger<Program> logger)
+		{
+			try
+			{
+				RedisService redisService = serviceProvider.GetRequiredService<RedisService>();
+				logger.LogInformation( "Redis 연결 테스트를 시작합니다..." );
+
+				bool isConnected = await redisService.PingAsync();
+				if(isConnected)
+				{
+					logger.LogInformation( "Redis 연결 성공!" );
+
+					// 기본 CRUD 테스트
+					await redisService.SetAsync( "server:startup", DateTime.Now.ToString(), TimeSpan.FromMinutes( 5 ) );
+					var startupTime = await redisService.GetStringAsync("server:startup");
+					logger.LogInformation( "Redis 테스트 데이터 저장/조회 성공: {StartupTime}", startupTime );
+				}
+				else
+				{
+					logger.LogError( "Redis 연결 실패! 서버를 계속 실행하지만 Redis 기능은 사용할 수 없습니다." );
+				}
+			}
+			catch ( Exception ex )
+			{
+				logger.LogError( ex, "Redis 연결 테스트 중 오류 발생" );
+			}
 		}
 	}
 }

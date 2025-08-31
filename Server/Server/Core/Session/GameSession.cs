@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Game;
+using Server.Infra;
 using Server.Room;
 using ServerCore;
 using System;
@@ -13,6 +14,7 @@ namespace Server.Core.Session
 {
     public class GameSession : ServerCore.Session
     {
+        private readonly RedisService _redisService;
         private readonly ILogger<GameSession> _logger;
         private readonly IRoomManager _roomManager;
         private IRoom _currentRoom;
@@ -37,20 +39,21 @@ namespace Server.Core.Session
         }
 		public bool IsInRoom => _currentRoom != null;
 
-		public int SessionId { get; private set; }
+		public long SessionId { get; private set; }
         public Player Player { get; private set; }
         public string PlayerName => Player.PlayerName ?? $"Player_{Player.PlayerId}";
         public long PlayerId => Player.PlayerId;
 
-        private static int _nextSessionId = 1;
+        private static long _nextSessionId = 1;
 
-        public GameSession( ILogger<GameSession> logger, IRoomManager roomManager )
+        public GameSession( ILogger<GameSession> logger, IRoomManager roomManager, RedisService redisService )
         {
             _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
             _roomManager = roomManager ?? throw new ArgumentNullException( nameof( _roomManager ) );
+            _redisService = redisService;
         }
 
-        private static int GenerateNextSessionId()
+        private static long GenerateNextSessionId()
         {
             return System.Threading.Interlocked.Increment( ref _nextSessionId );
         }
@@ -101,6 +104,21 @@ namespace Server.Core.Session
             // 플레이어 정보 초기화.
             InitializePlayer();
 
+            // redis에 세션 정보 저장.
+            _ = Task.Run( async () =>
+            {
+                var sessionInfo = new
+                {
+                    SessionId = SessionId,
+                    ConnectedAt = DateTime.UtcNow,
+                    EndPoint = endPoint.ToString(),
+                    PlayerId = Player.Info.PlayerId
+                };
+
+                await _redisService.SetSessionAsync( SessionId, sessionInfo, TimeSpan.FromHours( 2 ) );
+                _logger.LogDebug( "Redis에 세션 정보 저장 완료: SessionId={SessionId}", SessionId );
+            } );
+
 			// 기본 로비에 자동 입장 시도.
 			_ = Task.Run( async () => await TryJoinDefaultLobbyAsync() );
 		}
@@ -109,6 +127,13 @@ namespace Server.Core.Session
 		{
 			//LogManager.Info("Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
 			_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
+
+            // Redis에서 세션 정보 삭제
+            _ = Task.Run( async () =>
+            {
+                await _redisService.DeleteSessionAsync( SessionId );
+                _logger.LogDebug( "Redis에서 세션 정보 삭제 완료: SessionId={SessionId}", SessionId );
+            } );
 
 			// 플레이어 상태를 Disconnected상태로 처리
 			Player?.Disconnect();
@@ -306,7 +331,7 @@ namespace Server.Core.Session
 
     public class GameSessionInfo
     {
-        public int SessionId {  get; set; }
+        public long SessionId {  get; set; }
         public string PlayerName { get; set; }
         public bool IsInRoom { get; set; }
         public int? CurrentRoomId { get; set; }

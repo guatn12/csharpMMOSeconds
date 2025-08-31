@@ -23,9 +23,6 @@ namespace Server.Config
 			// 네트워크 설정 검증
 			ValidateNetwork(options.Network, failures);
 
-			// 로깅 설정 검증
-			ValidateLogging(options.Logging, failures);
-
 			// 게임 데이터 설정 검증
 			ValidateGameData(options.GameData, failures);
 
@@ -64,22 +61,6 @@ namespace Server.Config
 
 			if(network.ListenBacklog < 1|| 1000 < network.ListenBacklog)
 				failures.Add( $"Network ListenBackLog must be between 1 and 1000, got : {network.ListenBacklog}" );
-		}
-
-		private void ValidateLogging(LoggingConfig logging, List<string> failures)
-		{
-			if(logging == null)
-			{
-				failures.Add( "Logging configuration is required" );
-				return;
-			}
-
-			var validLevels = new[] {"Verbose", "Debug", "Information", "Warning", "Error", "Fatal" };
-			if(!validLevels.Contains( logging.Level ))
-				failures.Add( $"Invalid logging level: {logging.Level}. Valid levels: {string.Join( ", ", validLevels )}" );
-
-			if(logging.EnableFile && string.IsNullOrWhiteSpace( logging.FilePath ))
-				failures.Add( "File path is required when file logging is enabled" );
 		}
 
 		private void ValidateGameData(GameDataConfig gameData, List<string> failures)

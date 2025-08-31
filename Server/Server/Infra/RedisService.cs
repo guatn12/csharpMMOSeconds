@@ -3,66 +3,217 @@ using Microsoft.Extensions.Options;
 using Server.Config;
 using StackExchange.Redis;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Server.Infra
 {
 	public class RedisService : IDisposable
 	{
+		private readonly IConnectionMultiplexer _connectionMultiplexer;
+		private readonly IDatabase _database;
+		private readonly RedisConfig _redisConfig;
 		private readonly ILogger<RedisService> _logger;
-		private readonly string _connectionString;
-		private ConnectionMultiplexer _connection;
+		private readonly string _keyPrefix = "MMO:";
+		
 		private readonly object _lock  = new object();
 
-		public RedisService(IOptions<ServerSettings> serverSettings, ILogger<RedisService> logger)
+		public RedisService(IConnectionMultiplexer connectionMultiplexer, 
+			IOptions<ServerSettings> serverSettings, ILogger<RedisService> logger)
 		{
+			_connectionMultiplexer = connectionMultiplexer;
+			_redisConfig = serverSettings.Value.Redis;
 			_logger = logger;
-			_connectionString = serverSettings.Value.Redis.ConnectionString;
+
+			_database = _connectionMultiplexer.GetDatabase();
+
+			_logger.LogInformation( "RedisService 초기화 완료. KeyPrefix: {KyePrefix}", _keyPrefix );
 		}
 
-		public async Task ConnectAsync()
+		private string GetKey(string key) => $"{_keyPrefix}{key}";
+
+		public async Task<bool> PingAsync()
 		{
-			if(_connection != null && _connection.IsConnected)
+			try
 			{
-				return;
+				var pingTime = await _database.PingAsync();
+				_logger.LogDebug( "Redis Ping 성공: {PingTime}ms", pingTime.TotalMilliseconds );
+				return true;
 			}
-
-			lock(_lock)
+			catch ( Exception ex )
 			{
-				if(_connection != null && _connection.IsConnected)
-				{
-					return;
-				}
-
-				try
-				{
-					_logger.LogInformation( "Connecting to Redis..." );
-					_connection = ConnectionMultiplexer.Connect( _connectionString );
-					_logger.LogInformation( "Successfully connected to Redis." );
-				}
-				catch (Exception ex)
-				{
-					_logger.LogError( ex, "Failed to connect to Redis" );
-					throw;
-				}
+				_logger.LogError( ex, "Redis Ping 실패" );
+				return false;
 			}
 		}
 
-		public IDatabase GetDatabase(int db = -1)
+		public async Task<bool> SetAsync<T>(string key, T value, TimeSpan? expiry = null)
 		{
-			if(_connection == null || !_connection.IsConnected)
+			try
 			{
-				throw new InvalidOperationException( "Redis is not connected." );
+				string serializedValue = JsonSerializer.Serialize(value);
+				string redisKey = GetKey(key);
+				TimeSpan actualExpiry = expiry ?? TimeSpan.FromHours(1);
+
+				bool success = await _database.StringSetAsync(redisKey, serializedValue, actualExpiry);
+				if( success )
+				{
+					_logger.LogDebug( "Redis Set 성공: Key={Key}, Expiry={Expiry}", key, actualExpiry );
+				}
+				else
+				{
+					_logger.LogDebug( "Redis Set 실패: Key={Key}", key );
+				}
+
+				return success;
 			}
-			return _connection.GetDatabase( db );
+			catch(Exception ex )
+			{
+				_logger.LogError( ex, "Redis Set 오류 : Key={Key}", key );
+				return false;
+			}
 		}
 
+		public async Task<T> GetAsync<T>(string key ) where T : class
+		{
+			try
+			{
+				string redisKey = GetKey(key);
+				var value = await _database.StringGetAsync(redisKey);
+				if(!value.HasValue)
+				{
+					_logger.LogDebug( "Redis Get - 키 없음: Key={Key}", key );
+					return null;
+				}
+
+				var deserializedValue = JsonSerializer.Deserialize<T>(value);
+				_logger.LogDebug( "Redis Get 성공: Key={Key}", key );
+				return deserializedValue;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError( ex, "Redis Get 오류: Key={Key}", key );
+				return null;
+			}
+		}
+
+		public async Task<String> GetStringAsync(string key)
+		{
+			try
+			{
+				string redisKey = GetKey(key);
+				var value = await _database.StringGetAsync(redisKey);
+
+				return value.HasValue ? value.ToString() : null;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError( ex, "Redis GetString 오류: Key={Key}", key );
+				return null;
+			}
+		}
+
+		public async Task<bool> DeleteAsync(string key)
+		{
+			try
+			{
+				string redisKey = GetKey(key);
+				bool success = await _database.KeyDeleteAsync(redisKey);
+
+				_logger.LogDebug( "Redis Delete: Key={Key}, Result={Result}", key, success );
+				return success;
+			}
+			catch(Exception ex)
+			{
+				_logger.LogError( ex, "Redis Delete 오류: Key={Key}", key );
+				return false;
+			}
+		}
+
+		// 세션 관리 헬퍼 메서드
+		public async Task<bool> SetSessionAsync(long sessionId, object sessionData, TimeSpan? expiry = null)
+		{
+			return await SetAsync( $"session:{sessionId}", sessionData, expiry );
+		}
+
+		public async Task<T> GetSessionAsync<T>(long sessionId) where T : class
+		{
+			return await GetAsync<T>( $"session:{sessionId}" );
+		}
+
+		public async Task<bool> DeleteSessionAsync(long sessionId)
+		{
+			return await DeleteAsync( $"session:{sessionId}" );
+		}
+
+		// 플레이어 상태 헬퍼 메서드
+		public async Task<bool> SetPlayerStateAsync(long playerId, object playerData, TimeSpan? expriy = null)
+		{
+			return await SetAsync($"player:{playerId}", playerData, expriy );
+		}
+
+		public async Task<T> GetPlayerStateAsync<T>(long playerId) where T : class
+		{
+			return await GetAsync<T>( $"player:{playerId}" );
+		}
+
+		public async Task<bool> DeletePlayerStateAsync(long playerId)
+		{
+			return await DeleteAsync( $"player:{playerId}" );
+		}
 		public void Dispose()
 		{
-			_connection?.Dispose();
+			try
+			{
+				_connectionMultiplexer.Dispose();
+				_logger.LogInformation( "RedisService 리소스 정리 완료" );
+			}
+			catch(Exception ex)
+			{
+				_logger.LogError( ex, "RedisService Dispose 오류" );
+			}
 		}
+
+		//public async Task ConnectAsync()
+		//{
+		//	if(_connection != null && _connection.IsConnected)
+		//	{
+		//		return;
+		//	}
+
+		//	lock(_lock)
+		//	{
+		//		if(_connection != null && _connection.IsConnected)
+		//		{
+		//			return;
+		//		}
+
+		//		try
+		//		{
+		//			_logger.LogInformation( "Connecting to Redis..." );
+		//			_connection = ConnectionMultiplexer.Connect( _connectionString );
+		//			_logger.LogInformation( "Successfully connected to Redis." );
+		//		}
+		//		catch (Exception ex)
+		//		{
+		//			_logger.LogError( ex, "Failed to connect to Redis" );
+		//			throw;
+		//		}
+		//	}
+		//}
+
+		//public IDatabase GetDatabase(int db = -1)
+		//{
+		//	if(_connection == null || !_connection.IsConnected)
+		//	{
+		//		throw new InvalidOperationException( "Redis is not connected." );
+		//	}
+		//	return _connection.GetDatabase( db );
+		//}
+
+		//public void Dispose()
+		//{
+		//	_connection?.Dispose();
+		//}
 	}
 }

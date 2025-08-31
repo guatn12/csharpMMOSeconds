@@ -15,7 +15,7 @@ namespace Server.Room
 	public abstract class BaseRoom : IRoom, IDisposable
 	{
 		protected readonly ILogger _logger;
-		protected readonly ConcurrentDictionary<int, GameSession> _players;
+		protected readonly ConcurrentDictionary<long, GameSession> _players;
 		protected readonly object _lock = new object();
 		private static int _nextRoomId = 1;
 		private bool _dispose = false;
@@ -41,7 +41,7 @@ namespace Server.Room
 			RoomName = roomName ?? throw new ArgumentNullException( nameof( roomName ) );
 			MaxPlayers = 0 < maxPlayers ? maxPlayers : throw new ArgumentOutOfRangeException( nameof( maxPlayers ) );
 
-			_players = new ConcurrentDictionary<int, GameSession>();
+			_players = new ConcurrentDictionary<long, GameSession>();
 
 			_logger.LogInformation( "Room created: {RoomId} '{RoomName}' (Type: {RoomType}, Max: {MaxPlayers})",
 				RoomId, RoomName, RoomType, MaxPlayers );

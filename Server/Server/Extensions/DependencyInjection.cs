@@ -13,6 +13,7 @@ using Server.Core.Session;
 using Server.Core.Jobs;
 using Server.Infra;
 using Microsoft.EntityFrameworkCore;
+using StackExchange.Redis;
 
 namespace Server.Extensions
 {
@@ -37,6 +38,9 @@ namespace Server.Extensions
 
 			// 로깅 서비스 등록
 			services.AddLoggingServices( configuration );
+
+			// 레디스 서비스 등록
+			services.AddRedisService( configuration );
 
 			return services;
 		}
@@ -71,13 +75,11 @@ namespace Server.Extensions
 			// GameSession 팩토리
 			services.AddTransient<GameSession>( provider =>
 			{
-				var logger = provider.GetRequiredService<ILogger<GameSession>>();
-				var roomManager = provider.GetRequiredService<IRoomManager>();
-				return new GameSession( logger, roomManager );
+				ILogger<GameSession> logger = provider.GetRequiredService<ILogger<GameSession>>();
+				IRoomManager roomManager = provider.GetRequiredService<IRoomManager>();
+				RedisService redisService = provider.GetRequiredService<RedisService>();
+				return new GameSession( logger, roomManager, redisService );
 			} );
-
-			// Redis 서비스
-			services.AddSingleton<RedisService>();
 
 			// DB 서비스
 			string connectionString = configuration.GetSection("ServerSettings:Database:ConnectionString").Value;
@@ -124,6 +126,31 @@ namespace Server.Extensions
 			Log.Logger = new LoggerConfiguration()
 				.ReadFrom.Configuration( configuration )
 				.CreateLogger();
+
+			return services;
+		}
+
+		public static IServiceCollection AddRedisService(this IServiceCollection services, IConfiguration configuration )
+		{
+			// Redis 설정 가져오기
+			var redisConnectionString = configuration.GetSection("ServerSettings:Redis:ConnectionString").Value;
+
+			// ConnectionMultiplexer 등록
+			services.AddSingleton<IConnectionMultiplexer>( provider =>
+			{
+				var configurationOptions = new ConfigurationOptions
+				{
+					EndPoints = {redisConnectionString},
+					AbortOnConnectFail = false, // 연결 실패 시 서버 중단 방지
+					ConnectTimeout = 5000,
+					ConnectRetry = 3
+				};
+
+				return ConnectionMultiplexer.Connect( configurationOptions );
+			} );
+
+			// RedisService 등록
+			services.AddSingleton<RedisService>();
 
 			return services;
 		}

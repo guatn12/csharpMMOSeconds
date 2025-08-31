@@ -17,11 +17,6 @@ namespace Server.Config
 		public NetworkConfig Network { get; set; } = new();
 
 		/// <summary>
-		/// 로깅 설정
-		/// </summary>
-		public LoggingConfig Logging { get; set; } = new();
-
-		/// <summary>
 		/// 게임 데이터 설정
 		/// </summary>
 		public GameDataConfig GameData { get; set; } = new();
@@ -64,25 +59,11 @@ namespace Server.Config
 	}
 
 	/// <summary>
-	/// 로깅 설정
-	/// </summary>
-	public class LoggingConfig
-	{
-		public string Level { get; set; } = "Information";
-		public bool EnableConsole { get; set; } = true;
-		public bool EnableFile { get; set; } = true;
-		public string FilePath { get; set; } = "logs/server.log";
-	}
-
-	/// <summary>
 	/// 게임 데이터 설정
 	/// </summary>
 	public class GameDataConfig
 	{
 		public string DataPath { get; set; } = "GameData";
-		//public string FileExtension { get; set; } = ".json";
-		public bool EnableHotReload { get; set; } = false;
-		//public int HotReloadDebounceMs { get; set; } = 500;
 
 		// 파일 경로 동적 생성 메서드
 		public string GetDataFilePath( string tableName ) => 
