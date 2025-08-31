@@ -14,6 +14,7 @@ using Server.Core.Jobs;
 using Server.Infra;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
+using System;
 
 namespace Server.Extensions
 {
@@ -84,8 +85,31 @@ namespace Server.Extensions
 			// DB 서비스
 			string connectionString = configuration.GetSection("ServerSettings:Database:ConnectionString").Value;
 
+			var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
+
 			services.AddDbContext<AppDbContext>( options =>
-				options.UseNpgsql( connectionString ) );
+			{
+				options.UseNpgsql( connectionString, npgsqloptions =>
+				{
+					npgsqloptions.CommandTimeout( 30 );
+					npgsqloptions.EnableRetryOnFailure(
+						maxRetryCount: 3,
+						maxRetryDelay: TimeSpan.FromSeconds( 5 ),
+						errorCodesToAdd: null );
+				} );
+				
+				// Development 환경에서만 상세 로깅
+				if(environment == "Development")
+				{
+					options.EnableSensitiveDataLogging();
+					options.EnableDetailedErrors();
+				}
+
+				options.EnableServiceProviderCaching();
+
+			} );
+
+			
 
 			return services;
 		}
