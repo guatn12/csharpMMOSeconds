@@ -86,7 +86,56 @@ namespace Server
 				await hostedRoomManager.StartAsync( CancellationToken.None );
 			}
 
+			// 시스템 상태 체크 및 모니터링 시작
+			await InitializeMonitoringServicesAsync( serviceProvider, logger );
+
 			logger.LogInformation( "핵심 서비스 초기화 완료" );
+		}
+
+		private static async Task InitializeMonitoringServicesAsync(ServiceProvider serviceProvider, ILogger<Program> logger)
+		{
+			try
+			{
+				// 초기 시스템 상태 체크
+				SystemHealthService healthService = serviceProvider.GetRequiredService<SystemHealthService>();
+				bool initialHealth = await healthService.CheckSystemHealthAsync();
+
+				if(!initialHealth)
+				{
+					logger.LogWarning( "Initiali system health check failed, but continuing startup..." );
+				}
+
+				// 성능 모니터링 서비스 시작
+				PerformanceMonitoringService monitoringService = serviceProvider.GetRequiredService<PerformanceMonitoringService>();
+				logger.LogInformation( "Performance monitoring started" );
+
+				// 주기적 Health Check 시작 (60초)
+				_ = Task.Run( async () => await StartPeriodicHealthCheckAsync( serviceProvider, logger ) );
+
+				logger.LogInformation( "Monitoring services initialized successfully" );
+			}
+			catch ( Exception ex )
+			{
+				logger.LogError( ex, "Failed to initalize monitoring services" );
+			}
+		}
+
+		private static async Task StartPeriodicHealthCheckAsync(ServiceProvider serviceProvider, ILogger<Program> logger)
+		{
+			SystemHealthService healthService = serviceProvider.GetRequiredService<SystemHealthService>();
+
+			while(!_shutdownEvent.WaitOne(0)) // _shutdownEvent가 설정될 때까지 계속
+			{
+				try
+				{
+					await Task.Delay( 60000 );
+					await healthService.CheckSystemHealthAsync();
+				}
+				catch( Exception ex )
+				{
+					logger.LogError( ex, "Periodic health check failed" );
+				}
+			}
 		}
 
 		private static async Task LoadGameDataAsync(ServiceProvider serviceProvider, ILogger<Program> logger)

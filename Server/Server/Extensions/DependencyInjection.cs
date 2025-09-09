@@ -15,6 +15,8 @@ using Server.Infra;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
 using System;
+using Npgsql;
+using Server.Data.Services;
 
 namespace Server.Extensions
 {
@@ -42,6 +44,29 @@ namespace Server.Extensions
 
 			// 레디스 서비스 등록
 			services.AddRedisService( configuration );
+
+			// Health Check 추가 (DB 연결 상태 모니터링)
+			services.AddHealthChecks()
+				.AddDbContextCheck<AppDbContext>( "database" )
+				.AddCheck( "redis", () =>
+				{
+					try
+					{
+						ServiceProvider serviceProvider = services.BuildServiceProvider();
+						IConnectionMultiplexer redis = serviceProvider.GetRequiredService<IConnectionMultiplexer>();
+						if(redis.IsConnected)
+							return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy( "Redis is connected" );
+						else
+							return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy( "Redis is not connected" );
+					}
+					catch(Exception ex)
+					{
+						return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy( $"Redis check failed: {ex.Message}" );
+					}
+				} );
+
+			services.AddSingleton<SystemHealthService>();
+			services.AddSingleton<PerformanceMonitoringService>();
 
 			return services;
 		}
@@ -83,33 +108,49 @@ namespace Server.Extensions
 			} );
 
 			// DB 서비스
-			string connectionString = configuration.GetSection("ServerSettings:Database:ConnectionString").Value;
+			DatabaseConfig databaseConfig = configuration.GetSection("ServerSettings:Database").Get<DatabaseConfig>()
+				?? throw new InvalidOperationException("Database 설정을 찾을 수 없습니다.");
 
 			var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
 
+			string connectionString = databaseConfig.ConnectionString;
+			if(string.IsNullOrEmpty( connectionString ) )
+			{
+				connectionString = configuration.GetConnectionString( "DefaultConnection" )
+					?? throw new InvalidOperationException( "Database 연결 문자열을 찾을 수 없습니다." );
+			}
+
+			// Npgsql Connection Pool 최적화
+			var connectionStringBuilder = new NpgsqlConnectionStringBuilder(connectionString)
+			{
+				MinPoolSize = databaseConfig.MinPoolSize,
+				MaxPoolSize = databaseConfig.MaxPoolSize,
+				ConnectionLifetime = databaseConfig.ConnectionTimeout,
+				Timeout = databaseConfig.ConnectionTimeout,
+				CommandTimeout = databaseConfig.CommandTimeout,
+
+				// 추가 성능 최적화
+				Pooling = true,
+				IncludeErrorDetail = environment == "Development"
+			};
+
 			services.AddDbContext<AppDbContext>( options =>
 			{
-				options.UseNpgsql( connectionString, npgsqloptions =>
+				options.UseNpgsql( connectionStringBuilder.ConnectionString, npgsqloptions =>
 				{
-					npgsqloptions.CommandTimeout( 30 );
-					npgsqloptions.EnableRetryOnFailure(
-						maxRetryCount: 3,
-						maxRetryDelay: TimeSpan.FromSeconds( 5 ),
-						errorCodesToAdd: null );
+					// DatabaseConfig의 설정값 사용
+					npgsqloptions.CommandTimeout( databaseConfig.CommandTimeout );
 				} );
 				
 				// Development 환경에서만 상세 로깅
-				if(environment == "Development")
+				if(environment == "Development" && databaseConfig.EnableSensitiveDataLogging)
 				{
 					options.EnableSensitiveDataLogging();
 					options.EnableDetailedErrors();
 				}
 
 				options.EnableServiceProviderCaching();
-
 			} );
-
-			
 
 			return services;
 		}
@@ -132,6 +173,10 @@ namespace Server.Extensions
 		{
 			// 기본 데이터 관리
 			services.AddSingleton<DataManager>();
+
+			// 새 캐싱 서비스들 추가
+			services.AddScoped<PlayerCacheService>();
+			services.AddScoped<InventoryCacheService>();
 
 			return services;
 		}
