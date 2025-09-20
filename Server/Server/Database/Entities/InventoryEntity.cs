@@ -8,7 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace Server.Data.Entities
+namespace Server.Database.Entities
 {
 	public class InventoryEntity
 	{
@@ -64,10 +64,10 @@ namespace Server.Data.Entities
 		public int ItemId { get; set; }
 		public int Quantity { get; set; } = 1;
 		public int Slot {  get; set; }
-		public EnhancementData? Enhancement { get; set; }
+		public EnhancementData Enhancement { get; set; }
 		public Dictionary<string, double> Options { get; set; } = new Dictionary<string, double>();
 		public DateTime? AcquiredAt { get; set; } = DateTime.UtcNow;
-		public string? CustomName { get; set; }
+		public string CustomName { get; set; }
 	}
 
 	public class EnhancementData

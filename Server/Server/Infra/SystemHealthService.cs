@@ -12,16 +12,16 @@ namespace Server.Infra
 	public class SystemHealthService
 	{
 		private readonly ILogger<SystemHealthService> _logger;
-		private readonly AppDbContext _dbContext;
+		private readonly IDbContextFactory<AppDbContext> _dbContextFactory;
 		private readonly IConnectionMultiplexer _redis;
 
 		public SystemHealthService(
 			ILogger<SystemHealthService> logger,
-			AppDbContext dbContext,
+			IDbContextFactory<AppDbContext> dbContextFactory,
 			IConnectionMultiplexer redis)
 		{
 			_logger = logger;
-			_dbContext = dbContext;
+			_dbContextFactory = dbContextFactory;
 			_redis = redis;
 		}
 
@@ -55,7 +55,8 @@ namespace Server.Infra
 		private async Task<bool> CheckDatabaseHealthAsync()
 		{
 			// 간단한 DB 연결 테스트
-			await _dbContext.Database.ExecuteSqlRawAsync( "SELECT 1" );
+			using var context = _dbContextFactory.CreateDbContext();
+			await context.Database.ExecuteSqlRawAsync( "SELECT 1" );
 			_logger.LogDebug( "Database health check: OK" );
 			return true;
 		}

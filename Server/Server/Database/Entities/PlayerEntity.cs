@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
 
-namespace Server.Data.Entities
+namespace Server.Database.Entities
 {
 	public class PlayerEntity
 	{
@@ -25,7 +25,7 @@ namespace Server.Data.Entities
 
 		[MaxLength( 255 )]
 		[Column( "login_token" )]
-		public string? LoginToken { get; set; }
+		public string LoginToken { get; set; }
 
 		[Column("last_login_at")]
 		public DateTime? LastLoginAt { get; set; }

@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Server.Data.Entities;
+using Server.Database.Entities;
 using Server.Game;
 using Server.Infra;
 using System;
@@ -9,20 +9,20 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Server.Data.Services
+namespace Server.Database.Services
 {
 	public class PlayerCacheService
 	{
-		private readonly AppDbContext _context;
+		private readonly IDbContextFactory<AppDbContext> _contextFactory;
 		private readonly RedisService _redis;
 		private readonly ILogger<PlayerCacheService> _logger;
 
 		private const string PLAYER_CACHE_PREFIX = "MMO:player:";
 		private readonly TimeSpan _cacheTTL = TimeSpan.FromHours(1);
 
-		public PlayerCacheService(AppDbContext context, RedisService redis, ILogger<PlayerCacheService> logger)
+		public PlayerCacheService(IDbContextFactory<AppDbContext> contextFactory, RedisService redis, ILogger<PlayerCacheService> logger)
 		{
-			_context=context;
+			_contextFactory = contextFactory;
 			_redis=redis;
 			_logger=logger;
 		}
@@ -43,7 +43,8 @@ namespace Server.Data.Services
 				}
 
 				// 2. DB에서 조회
-				var player = await _context.Players.FirstOrDefaultAsync(p => p.PlayerId == playerId);
+				using var context = _contextFactory.CreateDbContext();
+				var player = await context.Players.FirstOrDefaultAsync(p => p.PlayerId == playerId);
 				if( player!= null )
 				{
 					// 3. Redis에 저장
@@ -56,7 +57,8 @@ namespace Server.Data.Services
 			catch (Exception ex)
 			{
 				_logger.LogError( ex, "플레이어 캐시 조회 실패 : {PlayerId}", playerId );
-				return await _context.Players.FirstOrDefaultAsync( p => p.PlayerId == playerId );
+				using var context = _contextFactory.CreateDbContext();
+				return await context.Players.FirstOrDefaultAsync( p => p.PlayerId == playerId );
 			}
 		}
 
@@ -68,9 +70,10 @@ namespace Server.Data.Services
 			try
 			{
 				// 1. DB 저장
+				using var context = _contextFactory.CreateDbContext();
 				player.UpdatedAt = DateTime.UtcNow;
-				_context.Players.Update( player );
-				await _context.SaveChangesAsync();
+				context.Players.Update( player );
+				await context.SaveChangesAsync();
 
 				// 2. Redis 업데이트
 				await _redis.SetAsync( cacheKey, player, _cacheTTL );

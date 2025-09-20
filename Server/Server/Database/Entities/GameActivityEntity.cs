@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace Server.Data.Entities
+namespace Server.Database.Entities
 {
 	[Table("game_activity")]
 	public class GameActivityEntity

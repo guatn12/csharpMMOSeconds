@@ -16,7 +16,7 @@ using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
 using System;
 using Npgsql;
-using Server.Data.Services;
+using Server.Database.Services;
 
 namespace Server.Extensions
 {
@@ -104,7 +104,8 @@ namespace Server.Extensions
 				ILogger<GameSession> logger = provider.GetRequiredService<ILogger<GameSession>>();
 				IRoomManager roomManager = provider.GetRequiredService<IRoomManager>();
 				RedisService redisService = provider.GetRequiredService<RedisService>();
-				return new GameSession( logger, roomManager, redisService );
+				PacketManager packetManager = provider.GetRequiredService<PacketManager>();
+				return new GameSession( logger, roomManager, redisService, packetManager );
 			} );
 
 			// DB 서비스
@@ -134,15 +135,14 @@ namespace Server.Extensions
 				IncludeErrorDetail = environment == "Development"
 			};
 
-			services.AddDbContext<AppDbContext>( options =>
+			// DbContextFactory만 사용 (MMORPG 서버에서는 Scoped DbContext 불필요)
+			services.AddDbContextFactory<AppDbContext>( options => 
 			{
 				options.UseNpgsql( connectionStringBuilder.ConnectionString, npgsqloptions =>
 				{
-					// DatabaseConfig의 설정값 사용
 					npgsqloptions.CommandTimeout( databaseConfig.CommandTimeout );
 				} );
-				
-				// Development 환경에서만 상세 로깅
+
 				if(environment == "Development" && databaseConfig.EnableSensitiveDataLogging)
 				{
 					options.EnableSensitiveDataLogging();
@@ -175,8 +175,8 @@ namespace Server.Extensions
 			services.AddSingleton<DataManager>();
 
 			// 새 캐싱 서비스들 추가
-			services.AddScoped<PlayerCacheService>();
-			services.AddScoped<InventoryCacheService>();
+			services.AddSingleton<PlayerCacheService>();
+			services.AddSingleton<InventoryCacheService>();
 
 			return services;
 		}

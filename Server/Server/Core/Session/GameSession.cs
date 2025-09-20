@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Game;
 using Server.Infra;
+using Server.Packet;
 using Server.Room;
 using ServerCore;
 using System;
@@ -17,6 +18,7 @@ namespace Server.Core.Session
         private readonly RedisService _redisService;
         private readonly ILogger<GameSession> _logger;
         private readonly IRoomManager _roomManager;
+        private readonly PacketManager _packetManager;
         private IRoom _currentRoom;
         private readonly object _roomLock = new object();
 
@@ -46,11 +48,13 @@ namespace Server.Core.Session
 
         private static long _nextSessionId = 1;
 
-        public GameSession( ILogger<GameSession> logger, IRoomManager roomManager, RedisService redisService )
+        public GameSession( ILogger<GameSession> logger, IRoomManager roomManager, 
+            RedisService redisService, PacketManager packetManager )
         {
             _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
             _roomManager = roomManager ?? throw new ArgumentNullException( nameof( _roomManager ) );
             _redisService = redisService;
+            _packetManager = packetManager;
         }
 
         private static long GenerateNextSessionId()
@@ -60,7 +64,7 @@ namespace Server.Core.Session
 
 		public void Send( IMessage packet )
 		{
-			ArraySegment<byte> segment = Program.PacketManagerInstance.MakeSendPacket(packet);
+			ArraySegment<byte> segment = _packetManager.MakeSendPacket(packet);
 			base.Send( segment );
 		}
 
@@ -72,11 +76,11 @@ namespace Server.Core.Session
             _logger.LogDebug( "Packet Received. SessionId: {SessionId}, PacketID: {PacketID}, Size: {Size}",
                 SessionId, packetId, buffer.Count );
 
-            if(Program.PacketManagerInstance != null)
+            if(_packetManager != null)
             {
                 Task.Run( async () =>
                 {
-                    await Program.PacketManagerInstance.HandlePacket( this, buffer );
+                    await _packetManager.HandlePacket( this, buffer );
                 } );
             }
 

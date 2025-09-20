@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Server.Data.Entities;
+using Server.Database.Entities;
 using Server.Infra;
 using System;
 using System.Collections.Generic;
@@ -8,20 +8,20 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Server.Data.Services
+namespace Server.Database.Services
 {
 	public class InventoryCacheService
 	{
-		private readonly AppDbContext _context;
+		private readonly IDbContextFactory<AppDbContext> _contextFactory;
 		private readonly RedisService _redis;
 		private readonly ILogger<InventoryCacheService> _logger;
 
 		private const string INVENTORY_CACHE_PREFIX = "MMO:inventory:";
 		private readonly TimeSpan _cacheTTL = TimeSpan.FromMinutes(30);
 
-		public InventoryCacheService(AppDbContext context, RedisService redis, ILogger<InventoryCacheService> logger )
+		public InventoryCacheService(IDbContextFactory<AppDbContext> contextFactory, RedisService redis, ILogger<InventoryCacheService> logger )
 		{
-			_context=context;
+			_contextFactory = contextFactory;
 			_redis=redis;
 			_logger=logger;
 		}
@@ -40,7 +40,8 @@ namespace Server.Data.Services
 					return cachedInventory;
 				}
 
-				InventoryEntity inventory = await _context.Inventory.FirstOrDefaultAsync(i => i.PlayerId == playerId);
+				using var context = _contextFactory.CreateDbContext();
+				InventoryEntity inventory = await context.Inventory.FirstOrDefaultAsync(i => i.PlayerId == playerId);
 				if (inventory != null)
 				{
 					await _redis.SetAsync( cacheKey, inventory, _cacheTTL );
@@ -51,8 +52,9 @@ namespace Server.Data.Services
 			}
 			catch (Exception ex)
 			{
+				using var context = _contextFactory.CreateDbContext();
 				_logger.LogError(ex, "인벤토리 조회 실패: PlayerId={PlayerId}", playerId);
-				return await _context.Inventory.FirstOrDefaultAsync(i =>i.PlayerId == playerId);
+				return await context.Inventory.FirstOrDefaultAsync(i =>i.PlayerId == playerId);
 			}
 		}
 
@@ -66,8 +68,9 @@ namespace Server.Data.Services
 				inventory.LastUpdated = DateTime.UtcNow;
 				inventory.Version++;    // 낙관적 동시성 제어
 
-				_context.Inventory.Update( inventory );
-				await _context.SaveChangesAsync();
+				using var context = _contextFactory.CreateDbContext();
+				context.Inventory.Update( inventory );
+				await context.SaveChangesAsync();
 
 				await _redis.SetAsync( cacheKey, inventory, _cacheTTL );
 				_logger.LogDebug( "인벤토리 저장: PlayerId={PlayerId}, Version={Version}",
