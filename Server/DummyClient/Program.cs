@@ -232,15 +232,21 @@ namespace DummyClient
 					{
 						PosInfo = new PosInfo()
 						{
-							PosX = clientId * 100 + moveCount,	// 클라이언트별 고유한 x 좌표 범위
-							PosY = clientId * 10,				// 클라이언트별 고유한 y 좌표
-							PosZ = moveCount % 50
+							PosX = clientId * 20 + (float)(Math.Sin(moveCount * 0.1) * 10),	// 원형 이동 패턴
+							PosY = 1.0f + (float)(Math.Sin(moveCount * 0.2) *2),			// Y축 높이 변화
+							PosZ = clientId * 20 + (float)(Math.Cos(moveCount * 0.1) * 10),	// 원형 이동 패턴
+							RotationX = 0.0f,
+							RotationY = (float)(moveCount * 5) % 360,
+							RotationZ = 0.0f,
+							Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
 						},
 					};
 
 					session.Send( movePacket );
-					logger.LogDebug( "[Client {ClientId}] Send C_Move: pos=({X},{Y},{Z})", 
-						clientId, movePacket.PosInfo.PosX, movePacket.PosInfo.PosY, movePacket.PosInfo.PosZ );
+					logger.LogDebug( "[Client {ClientId}] Send C_Move: 3D Position=({X:F2},{Y:F2},{Z:F2}), " +
+						"Rotation=({RotX:F1}°,{RotY:F1}°,{RotZ:F1}°)",
+						clientId, movePacket.PosInfo.PosX, movePacket.PosInfo.PosY, movePacket.PosInfo.PosZ,
+						movePacket.PosInfo.RotationX, movePacket.PosInfo.RotationY, movePacket.PosInfo.RotationZ );
 
 					// 채팅 패킷 전송 (5번마다 1번)
 					if (moveCount % 5 == 0)
@@ -315,10 +321,20 @@ namespace DummyClient
 					// 1초마다 이동
 					C_Move movePacket = new C_Move()
 					{
-						PosInfo = new PosInfo() {PosX = moveCount++, PosY = 2, PosZ = 3 },
+						PosInfo = new PosInfo() 
+						{
+							PosX = (float)(Math.Sin(moveCount * 0.1) * 20),           // 원형 이동
+							PosY = 2.0f + (float)(Math.Sin(moveCount * 0.3) * 3),    // Y축 높이 변화
+							PosZ = (float)(Math.Cos(moveCount * 0.1) * 20),          // 원형 이동
+							RotationX = 0.0f,
+							RotationY = (float)(moveCount * 10) % 360,               // 계속 회전
+							RotationZ = 0.0f,
+							Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+						},
 					};
 					Session.Send( movePacket );
-					_logger.LogInformation( $"[Send] C_Move: posX={movePacket.PosInfo.PosX}" );
+					_logger.LogInformation( "[Send] C_Move: 3D Position=({X:F2},{Y:F2},{Z:F2}), Rotation=({RotY:F1}°)",
+						movePacket.PosInfo.PosX, movePacket.PosInfo.PosY, movePacket.PosInfo.PosZ, movePacket.PosInfo.RotationY );
 
 					// 5초마다 채팅
 					if(moveCount % 5 == 0)

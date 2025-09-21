@@ -59,6 +59,9 @@ namespace Server.Room
 			_lobbyLogger.LogInformation( "Player {SessionId} entered lobby '{RoomName}' (Total visitors: {TotalVisitors})",
 				 session.SessionId, RoomName, _totalVisitors );
 
+			// 로비 스폰 위치로 플레이어 이동
+			await SetPlayerSpawnPositionAsync( session );
+
 			// 입장한 플레이어에게 메시지 전송
 			await SendWelcomeMessageAsync( session );
 
@@ -246,6 +249,41 @@ namespace Server.Room
 			{
 				_lobbyLogger.LogError( ex, "Failed to send lobby status to Player {SessionId} in lobby '{RoomName}'",
 					  session.SessionId, RoomName );
+			}
+		}
+
+		private async Task SetPlayerSpawnPositionAsync(GameSession session)
+		{
+			try
+			{
+				// Position3DValidator를 사용해 로비 스폰 위치 계산
+				var spawnPosition = Utils.Position3DValidator.GetSpawnPosition(this, new Random());
+
+				// GameSession을 통해 Redis에 위치 업데이트
+				bool positionSet = await session.UpdatePositionAsync(spawnPosition);
+
+				if (positionSet)
+				{
+					// 클라이언트에 위치 정보 전송
+					var spawnPacket = new Protocol.S_Move
+					{
+						PlayerId = session.SessionId,
+						PosInfo = spawnPosition
+					};
+
+					await SendToPlayerAsync( session, spawnPacket );
+
+					_lobbyLogger.LogDebug( "Player {SessionId} 로비 스폰 위치 설정: ({X}, {Y}, {Z})",
+						session.SessionId, spawnPosition.PosX, spawnPosition.PosY, spawnPosition.PosZ );
+				}
+				else
+				{
+					_lobbyLogger.LogWarning( "Player {SessionId} 스폰 위치 설정 실패", session.SessionId );
+				}
+			}
+			catch (Exception ex)
+			{
+				_lobbyLogger.LogError( ex, "Player {SessionId} 스폰 위치 설정 중 오류", session.SessionId );
 			}
 		}
 

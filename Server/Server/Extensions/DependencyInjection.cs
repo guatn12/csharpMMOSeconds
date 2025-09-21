@@ -17,6 +17,7 @@ using StackExchange.Redis;
 using System;
 using Npgsql;
 using Server.Database.Services;
+using Server.Services;
 
 namespace Server.Extensions
 {
@@ -105,7 +106,8 @@ namespace Server.Extensions
 				IRoomManager roomManager = provider.GetRequiredService<IRoomManager>();
 				RedisService redisService = provider.GetRequiredService<RedisService>();
 				PacketManager packetManager = provider.GetRequiredService<PacketManager>();
-				return new GameSession( logger, roomManager, redisService, packetManager );
+				PlayerPositionService playerPositionService = provider.GetRequiredService<PlayerPositionService>();
+				return new GameSession( logger, roomManager, redisService, packetManager, playerPositionService );
 			} );
 
 			// DB 서비스
@@ -220,6 +222,8 @@ namespace Server.Extensions
 
 			// RedisService 등록
 			services.AddSingleton<RedisService>();
+			services.AddSingleton<PlayerPositionService>();
+			
 
 			return services;
 		}

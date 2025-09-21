@@ -145,7 +145,8 @@ namespace PacketGenerator
 			sb.AppendLine( "using Google.Protobuf;" );
 			sb.AppendLine( "using Protocol;" );
 			sb.AppendLine( "using Microsoft.Extensions.Logging;" );
-			sb.AppendLine( "using Server.Jobs;" );
+			sb.AppendLine( "using Server.Core.Jobs;" );
+			sb.AppendLine( "using Server.Core.Session;" );
 			sb.AppendLine( "using Server.Room;" );
 			sb.AppendLine( "using ServerCore;" );
 			sb.AppendLine( "using System;" );

@@ -86,11 +86,7 @@ namespace Server.Core.Host
 			catch(Exception ex)
 			{
 				Log.Fatal( ex, "서버 시작 실패" );
-			}
-			finally
-			{
-				await JobQueueManager.Instance.StopAsync();
-				Log.CloseAndFlush();
+				throw; // 예외를 다시 던져서 서버가 중단되도록 함
 			}
 		}
 

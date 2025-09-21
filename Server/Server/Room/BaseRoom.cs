@@ -23,6 +23,20 @@ namespace Server.Room
 		public int RoomId { get; private set; }
 		public string RoomName { get; protected set; }
 		public int MaxPlayers { get; protected set; }
+
+		// 룸 크기 속성 
+		public float RoomWidth { get; protected set; } = 100.0f;    // x 축 크기
+		public float RoomHeight { get; protected set; } = 50.0f;    // y 축 크기
+		public float RoomDepth { get; protected set; } = 100.0f;    // z 축 크기
+
+		// 룸 경계 정보를 위한 속성
+		public float MinX { get; protected set; } = 0.0f;
+		public float MaxX => MinX + RoomWidth;
+		public float MinY { get; protected set; } = 0.0f;
+		public float MaxY => MinY + RoomHeight;
+		public float MinZ { get; protected set; } = 0.0f;
+		public float MaxZ => MinZ + RoomDepth;
+
 		public int CurrentPlayerCount => _players.Count;
 		public abstract RoomType RoomType { get; }
 		public RoomState State { get; protected set; } = RoomState.Created;
@@ -34,12 +48,23 @@ namespace Server.Room
 		public event EventHandler<PlayerRoomEventArgs> PlayerEntered;
 		public event EventHandler<PlayerRoomEventArgs> PlayerLeft;
 
-		protected BaseRoom( ILogger logger, string roomName, int maxPlayers )
+		protected BaseRoom( ILogger logger, string roomName, int maxPlayers,
+			float roomWidth = 100.0f, float roomHeight = 50.0f, float roomDepth = 100.0f,
+			float minX = 0.0f, float minY = 0.0f, float minZ = 0.0f )
 		{
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			RoomId = GenerateNextRoomId();
 			RoomName = roomName ?? throw new ArgumentNullException( nameof( roomName ) );
 			MaxPlayers = 0 < maxPlayers ? maxPlayers : throw new ArgumentOutOfRangeException( nameof( maxPlayers ) );
+
+			// 3D 룸 크기 설정
+			RoomWidth = roomWidth;
+			RoomHeight = roomHeight;
+			RoomDepth = roomDepth;
+
+			MinX = minX;
+			MinY = minY;
+			MinZ = minZ;
 
 			_players = new ConcurrentDictionary<long, GameSession>();
 
@@ -138,6 +163,9 @@ namespace Server.Room
 
 			try
 			{
+				// 입장 시 session의 currentRoom 변경
+				session.CurrentRoom = this;
+
 				// 룸 별 입장 로직 실행
 				await OnPlayerEnterAsync( session );
 
@@ -153,6 +181,7 @@ namespace Server.Room
 			{
 				// 실패 시 플레이어 제거
 				_players.TryRemove( session.SessionId, out _ );
+				session.CurrentRoom = null; // 실패 시 session의 현재 룸도 초기화.
 				_logger.LogError( e, "Failed to enter player {SessionId} to room {RoomId}", session.SessionId, RoomId );
 				return RoomEnterResult.UnknownError;
 			}
@@ -214,10 +243,30 @@ namespace Server.Room
 			{
 				// 이동 검증 (하위 클래스에서 재정의 가능)
 				if(!await ValidatePlayerMoveAsync( session, packet ))
-					return;
+				{
+					// 검증 실패 시 현재 위치를 클라이언트에 재전송 (동기화)
+					PosInfo currentPos = await session.GetCurrentPositionAsync();
+					if(currentPos != null)
+					{
+						var correctionPacket = new Protocol.S_Move
+						{
+							PlayerId = session.SessionId,
+							PosInfo = currentPos
+						};
+						await SendToPlayerAsync(session, correctionPacket );
+						logger.LogWarning("위치 검증 실패로 클라이언트 위치 동기화: Player {SessionId}", session.SessionId);
+					}
 
-				// 공용 처리
-				session.UpdatePosition( packet.PosInfo );
+					return;
+				}
+
+				// GameSession을 통해 Redis 기반 3D 위치 업데이트
+				bool positionUpdated = await session.UpdatePositionAsync(packet.PosInfo);
+				if(!positionUpdated)
+				{
+					logger.LogWarning( "Player {PlayerId} 위치 업데이트 실패 (경계 밖 또는 오류)", session.SessionId );
+					return;
+				}
 
 				// 룸별 이동 처리
 				await OnPlayerMoveAsync( session, packet );
@@ -303,7 +352,7 @@ namespace Server.Room
 					Player = targetSession.Player.Info
 				};
 
-				await SendToPlayerAsync ( session, response );
+				await SendToPlayerAsync( session, response );
 
 				logger.LogDebug( "TargetPlayer (Id: {PlayerId}, Name: {PlayerName}) Find in Room {RoomId}",
 					targetSession.Player.PlayerId, targetSession.Player.PlayerName, RoomId );
@@ -317,7 +366,7 @@ namespace Server.Room
 
 		public virtual async Task HandlePlayerUseSkillAsync( GameSession session, C_UseSkill packet, ILogger logger )
 		{
-			if(!ContainsPlayer( session ) || !ContainsPlayerToPlayerId(packet.TargetId))
+			if(!ContainsPlayer( session ) || !ContainsPlayerToPlayerId( packet.TargetId ))
 				return;
 
 			try
@@ -330,8 +379,8 @@ namespace Server.Room
 				bool skillUsed = session.Player.UseSkill(packet.SkillId);
 				if(!skillUsed)
 				{
-					logger.LogWarning("Player {PlayerId} failed to use skill {SkillId} - insufficient resources or invalid state", 
-						session.Player.PlayerId, packet.SkillId);
+					logger.LogWarning( "Player {PlayerId} failed to use skill {SkillId} - insufficient resources or invalid state",
+						session.Player.PlayerId, packet.SkillId );
 					return;
 				}
 
@@ -355,9 +404,22 @@ namespace Server.Room
 		protected virtual Task OnPlayerLeaveAsync( GameSession session ) => Task.CompletedTask;
 		protected virtual Task OnPlayerMoveAsync( GameSession session, Protocol.C_Move packet ) => Task.CompletedTask;
 		protected virtual Task OnPlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.CompletedTask;
-		protected virtual Task OnPlayerUseSkillAsync(GameSession session, Protocol.C_UseSkill packet ) => Task.CompletedTask;
+		protected virtual Task OnPlayerUseSkillAsync( GameSession session, Protocol.C_UseSkill packet ) => Task.CompletedTask;
 
-		protected virtual Task<bool> ValidatePlayerMoveAsync( GameSession session, Protocol.C_Move packet ) => Task.FromResult( true );
+		protected virtual Task<bool> ValidatePlayerMoveAsync( GameSession session, Protocol.C_Move packet )
+		{
+			// 기본 3D 위치 검증
+			bool isValid = Utils.Position3DValidator.IsValidPosition(packet.PosInfo, this);
+
+			if(!isValid)
+			{
+				_logger.LogWarning( "Invalid move attempt by player {SessionId} in room{ RoomId}: Position ({X}, {Y}, {Z}) is outside room bounds ({MinX}-{MaxX},{ MinY}-{ MaxY}, { MinZ}-{ MaxZ})",
+					session.SessionId, RoomId,packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ,
+					MinX, MaxX, MinY, MaxY, MinZ, MaxZ );
+			}
+
+			return Task.FromResult( isValid );
+		}
 		protected virtual Task<bool> ValidatePlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.FromResult( true );
 		protected virtual Task<bool> ValidatePlayerInfoAsync( GameSession session, Protocol.C_PlayerInfo packet ) => Task.FromResult( true );
 		protected virtual Task<bool> ValidatePlayerUseSkillAsync( GameSession session, Protocol.C_UseSkill packet ) => Task.FromResult( true );

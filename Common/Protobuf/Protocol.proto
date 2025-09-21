@@ -133,10 +133,14 @@ message S_LevelUp {
 
 enum PlayerState {
 	IDLE = 0;
-	MOVING = 1;
-	COMBAT = 2;
-	DEAD = 3;
-	DISCONNECTED = 4;
+	WALKING = 1;
+	RUNNING = 2;
+	JUMPING = 3;
+	FLYING = 4;
+	FALLING = 5;
+	COMBAT = 6;
+	DEAD = 7;
+	DISCONNECTED = 8;
 }
 
 message PlayerInfo {
@@ -153,9 +157,13 @@ message PlayerInfo {
 }
 
 message PosInfo {
-	float posX = 1;
-	float posY = 2;
-	float posZ = 3;
+	float posX = 1;			// x축
+	float posY = 2;			// y축
+	float posZ = 3;			// z축
+	float rotationX = 4;	// x축 회전 (pitch) - 위/아래
+	float rotationY = 5;	// y축 회전 (yaw) - 좌/우
+	float rotationZ = 6;	// z축 회전 (roll) - 기울기
+	int64 timestamp = 7;	// 위치 업데이트 시간 (성능용)
 }
 
 message Item {

@@ -66,7 +66,7 @@ namespace Server.Game
 			if(newPosition == null) return;
 
 			Info.PosInfo = newPosition;
-			SetState( PlayerState.Moving );
+			SetState( PlayerState.Walking );
 			UpdateLastUpdateTime();
 		}
 
@@ -159,7 +159,7 @@ namespace Server.Game
 
 		public void RestoreToIdleIfMoving()
 		{
-			if(State == PlayerState.Moving)
+			if(State == PlayerState.Walking || State == PlayerState.Running)
 			{
 				SetState( PlayerState.Idle );
 			}
