@@ -1,0 +1,67 @@
+[
+  {
+    "Id": 1001,
+    "Name": "소형 체력 포션",
+    "Description": "체력을 50 회복합니다. 기본적인 회복 아이템입니다.",
+    "Price": 100,
+    "HealAmount": 50,
+    "ManaAmount": 0,
+    "Grade": "Common",
+    "IsStackable": true,
+    "MaxStackCount": 99,
+    "IconPath": "items/potion_heal_small.png",
+    "Tags": ["consumable", "healing"]
+  },
+  {
+    "Id": 1002,
+    "Name": "중형 체력 포션",
+    "Description": "체력을 150 회복합니다. 효과적인 회복 아이템입니다.",
+    "Price": 300,
+    "HealAmount": 150,
+    "ManaAmount": 0,
+    "Grade": "Uncommon",
+    "IsStackable": true,
+    "MaxStackCount": 99,
+    "IconPath": "items/potion_heal_medium.png",
+    "Tags": ["consumable", "healing"]
+  },
+  {
+    "Id": 1003,
+    "Name": "소형 마나 포션",
+    "Description": "마나를 30 회복합니다.",
+    "Price": 80,
+    "HealAmount": 0,
+    "ManaAmount": 30,
+    "Grade": "Common",
+    "IsStackable": true,
+    "MaxStackCount": 99,
+    "IconPath": "items/potion_mana_small.png",
+    "Tags": ["consumable", "mana"]
+  },
+  {
+    "Id": 2001,
+    "Name": "초보자용 검",
+    "Description": "공격력을 5 증가시킵니다. 시작 장비입니다.",
+    "Price": 500,
+    "HealAmount": 0,
+    "ManaAmount": 0,
+    "Grade": "Common",
+    "IsStackable": false,
+    "MaxStackCount": 1,
+    "IconPath": "items/weapon_sword_basic.png",
+    "Tags": ["equipment", "weapon", "sword"]
+  },
+  {
+    "Id": 2002,
+    "Name": "가죽 갑옷",
+    "Description": "방어력을 3 증가시킵니다.",
+    "Price": 300,
+    "HealAmount": 0,
+    "ManaAmount": 0,
+    "Grade": "Common",
+    "IsStackable": false,
+    "MaxStackCount": 1,
+    "IconPath": "items/armor_leather_basic.png",
+    "Tags": ["equipment", "armor", "chest"]
+  }
+]

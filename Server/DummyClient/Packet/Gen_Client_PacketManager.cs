@@ -24,6 +24,12 @@ namespace DummyClient.Packet
         public virtual ValueTask On_S_Damage(Session session, S_Damage packet) { Console.WriteLine("Received but not handled: S_Damage"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_Heal(Session session, S_Heal packet) { Console.WriteLine("Received but not handled: S_Heal"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_LevelUp(Session session, S_LevelUp packet) { Console.WriteLine("Received but not handled: S_LevelUp"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_InventoryData(Session session, S_InventoryData packet) { Console.WriteLine("Received but not handled: S_InventoryData"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_UseItem(Session session, S_UseItem packet) { Console.WriteLine("Received but not handled: S_UseItem"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_ItemEquipped(Session session, S_ItemEquipped packet) { Console.WriteLine("Received but not handled: S_ItemEquipped"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_ItemUnequipped(Session session, S_ItemUnequipped packet) { Console.WriteLine("Received but not handled: S_ItemUnequipped"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_ItemAdded(Session session, S_ItemAdded packet) { Console.WriteLine("Received but not handled: S_ItemAdded"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_InventoryUpdate(Session session, S_InventoryUpdate packet) { Console.WriteLine("Received but not handled: S_InventoryUpdate"); return ValueTask.CompletedTask; }
     }
 
     public class PacketManager
@@ -59,6 +65,16 @@ namespace DummyClient.Packet
             _onRecv.Add((ushort)PacketID.S_Damage, HandlePacket<S_Damage>(_handler.On_S_Damage));
             _onRecv.Add((ushort)PacketID.S_Heal, HandlePacket<S_Heal>(_handler.On_S_Heal));
             _onRecv.Add((ushort)PacketID.S_LevelUp, HandlePacket<S_LevelUp>(_handler.On_S_LevelUp));
+            _packetTypeToId.Add(typeof(Protocol.C_InventoryRequest), PacketID.C_InventoryRequest);
+            _onRecv.Add((ushort)PacketID.S_InventoryData, HandlePacket<S_InventoryData>(_handler.On_S_InventoryData));
+            _packetTypeToId.Add(typeof(Protocol.C_UseItem), PacketID.C_UseItem);
+            _onRecv.Add((ushort)PacketID.S_UseItem, HandlePacket<S_UseItem>(_handler.On_S_UseItem));
+            _packetTypeToId.Add(typeof(Protocol.C_EquipItem), PacketID.C_EquipItem);
+            _onRecv.Add((ushort)PacketID.S_ItemEquipped, HandlePacket<S_ItemEquipped>(_handler.On_S_ItemEquipped));
+            _packetTypeToId.Add(typeof(Protocol.C_UnequipItem), PacketID.C_UnequipItem);
+            _onRecv.Add((ushort)PacketID.S_ItemUnequipped, HandlePacket<S_ItemUnequipped>(_handler.On_S_ItemUnequipped));
+            _onRecv.Add((ushort)PacketID.S_ItemAdded, HandlePacket<S_ItemAdded>(_handler.On_S_ItemAdded));
+            _onRecv.Add((ushort)PacketID.S_InventoryUpdate, HandlePacket<S_InventoryUpdate>(_handler.On_S_InventoryUpdate));
         }
 
         public async ValueTask HandlePacket(Session session, ArraySegment<byte> buffer)

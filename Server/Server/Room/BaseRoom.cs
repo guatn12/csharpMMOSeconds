@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
+using Server.Database.Entities;
 using ServerCore;
 using System;
 using System.Collections.Concurrent;
@@ -9,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Server.Game;
 
 namespace Server.Room
 {
@@ -398,6 +400,306 @@ namespace Server.Room
 			}
 		}
 
+		public virtual async Task HandlePlayerInventoryRequestAsync(GameSession session, C_InventoryRequest packet, ILogger logger )
+		{
+			if(!ContainsPlayer( session ) || packet == null)
+				return;
+
+			try
+			{
+				// 플레이어 인벤토리 데이터 조회
+				InventoryModel inventoryData = session.Player.GetInventoryData();
+				var equipmentData = session.Player.GetEquipmentData();
+
+				// 응답 패킷 생성
+				var response = new S_InventoryData
+				{
+					Gold = session.Player.GetGold(),
+					MaxSlots = 50
+				};
+
+				// 인벤토리 아이템들 추가
+				foreach(var item in inventoryData.Items)
+				{
+					var itemInfo = new InventoryItemInfo
+					{
+						ItemId = item.ItemId,
+						Quantity = item.Quantity,
+						Slot = item.Slot,
+						EnhancementLevel = item.Enhancement?.Level ?? 0,
+						CustomName = item.CustomName,
+						AcquiredAt = item.AcquiredAt?.Ticks ?? 0
+					};
+
+					// Options 복사
+					if(item.Options != null)
+					{
+						foreach(var option in item.Options)
+						{
+							itemInfo.Options[ option.Key ] = option.Value;
+						}
+					}
+
+					response.Items.Add( itemInfo );
+				}
+
+				await SendToPlayerAsync( session, response );
+
+				logger.LogDebug( "Sent inventory data to Player {SessionId} in Room{RoomId}: {ItemCount} items, {Gold} gold",
+					session.SessionId, RoomId, response.Items.Count, response.Gold);
+			}
+			catch ( Exception ex )
+			{
+				logger.LogError( ex, "Failed to handle inventory request for Player {SessionId} in Room {RoomId}",
+					session.SessionId, RoomId);
+
+				// 에러 응답 전송
+				var errorResponse = new S_InventoryData{Gold = 0, MaxSlots = 50};
+				await SendToPlayerAsync( session, errorResponse );
+			}
+		}
+
+		public virtual async Task HandlePlayerUseItemAsync(GameSession session, C_UseItem packet, ILogger logger)
+		{
+			if(!ContainsPlayer( session ) || packet == null ||
+				packet.Slot < 0 || 50 <= packet.Slot || packet.Quantity <= 0)
+				return;
+
+			try
+			{
+				// 아이템 사용 전 상태 저장
+				int oldHP = session.Player.CurrentHP;
+				int oldMP = session.Player.CurrentMP;
+				InventoryItem item = session.Player.Inventory.GetItem(packet.Slot);
+
+				bool success = session.Player.UseItem(packet.Slot, packet.Quantity);
+
+				var response = new S_UseItem
+				{
+					Success = success,
+					Slot = packet.Slot,
+					RemainingQuantity = success ? (item?.Quantity ?? 0) : 0,
+					Message = success ? "아이템을 사용했습니다." : "아이템 사용에 실패했습니다."
+				};
+
+				await SendToPlayerAsync( session, response );
+
+				if(success)
+				{
+					// HP/MP 변화가 있으면 플레이어 상태 업데이트 브로드캐스트
+					if(oldHP != session.Player.CurrentHP || oldMP != session.Player.CurrentMP)
+					{
+						var updatePacket = new S_PlayerUpdate
+						{
+							Player = session.Player.Info
+						};
+						await BroadcastAsync( updatePacket, session );
+					}
+
+					logger.LogInformation("Player {SessionId} used item from slot{Slot}x{Quantity} in Room {RoomId}",
+						session.SessionId, packet.Slot, packet.Quantity, RoomId);
+				}
+				else
+				{
+					 logger.LogWarning("Player {SessionId} failed to use item from slot {Slot}in Room {RoomId}",
+						 session.SessionId, packet.Slot, RoomId);
+				}
+			}
+			catch (Exception ex)
+			{
+				 logger.LogError(ex, "Failed to handle use item for Player {SessionId} in Room{RoomId}",
+					 session.SessionId, RoomId);
+
+				var eerrorResponse = new S_UseItem
+				{
+					Success = false,
+					Message = "서버 오류가 발생했습니다."
+				};
+				await SendToPlayerAsync ( session, eerrorResponse );
+			}
+		}
+
+		public virtual async Task HandlePlayerEquipItemAsync(GameSession session, C_EquipItem packet, ILogger logger)
+		{
+			if(!ContainsPlayer( session ) || packet == null || packet.InventorySlot < 0 || 50 <= packet.InventorySlot ||
+				packet.EquipSlot < 0 || 10 < packet.EquipSlot)
+				return;
+
+			try
+			{
+				// 장비 착용 전 스탯 저장
+				int oldAttack = session.Player.GetTotalAttack();
+				int oldDefense = session.Player.GetTotalDefense();
+				int oldMaxHP = session.Player.MaxHP;
+				int oldMaxMP = session.Player.MaxMP;
+
+				bool success = session.Player.EquipItemFromInventory(packet.InventorySlot);
+
+				// 응답 패킷 생성
+				var response = new S_ItemEquipped
+				{
+					Success = success,
+					InventorySlot = packet.InventorySlot,
+					EquipSlot = packet.EquipSlot,
+				};
+
+				if(success )
+				{
+					// 장착된 장비 정보 업데이트
+					var equipmentData = session.Player.GetEquipmentData();
+					response.UpdatedEquipment = new EquipmentInfo();
+
+					foreach(var kvp in equipmentData)
+					{
+						switch(kvp.Key)
+						{
+						case PlayerEquipment.EquipSlot.Weapon:
+							response.UpdatedEquipment.WeaponItemId = kvp.Value.ItemId;
+							break;
+						case PlayerEquipment.EquipSlot.Armor:
+							response.UpdatedEquipment.ArmorItemId = kvp.Value.ItemId;
+							break;
+						case PlayerEquipment.EquipSlot.Helmet:
+							response.UpdatedEquipment.HelmetItemId = kvp.Value.ItemId;
+							break;
+						case PlayerEquipment.EquipSlot.Gloves:
+							response.UpdatedEquipment.GlovesItemId = kvp.Value.ItemId;
+							break;
+						}
+					}
+
+					response.UpdatedStats = new PlayerStats
+					{
+						Attack = session.Player.GetTotalAttack(),
+						Defense = session.Player.GetTotalDefense(),
+						MaxHP = session.Player.MaxHP,
+						MaxMP = session.Player.MaxMP,
+						CurrentHP = session.Player.CurrentHP,
+						CurrentMP = session.Player.CurrentMP
+					};
+
+					// 스탯 변화가 있으면 플레이어 상태 업데이트 브로드캐스트?
+					//if(oldAttack != session.Player.GetTotalAttack() || oldDefense != session.Player.GetTotalDefense() || 
+					//	oldMaxHP != session.Player.MaxHP || oldMaxMP != session.Player.MaxMP)
+					//{
+					//	var updatePacket = new S_PlayerUpdate
+					//	{
+					//		Player = session.Player.Info
+					//	};
+					//	await BroadcastAsync( updatePacket, session );
+					//}
+
+					 logger.LogInformation("Player {SessionId} equipped item from slot {Slot}to equipment slot {EquipSlot} in Room {RoomId}",
+						 session.SessionId, packet.InventorySlot, packet.EquipSlot, RoomId);
+				}
+				else
+				{
+					logger.LogWarning("Player {SessionId} failed to equip item from slot{Slot} in Room {RoomId}",
+						session.SessionId, packet.InventorySlot, RoomId);
+				}
+
+				await SendToPlayerAsync( session, response );
+			}
+			catch (Exception ex)
+			{
+				logger.LogError(ex, "Failed to handle equip item for Player {SessionId} in Room {RoomId}",
+					session.SessionId, RoomId);
+				
+				var errorResponse = new S_ItemEquipped { Success = false };
+				await SendToPlayerAsync(session, errorResponse);
+			}
+		}
+
+		public virtual async Task HandlePlayerUnequipItemAsync(GameSession session, C_UnequipItem packet,  ILogger logger)
+		{
+			if(!ContainsPlayer( session ) || packet == null || packet.EquipSlot < 1 || 10 < packet.EquipSlot)
+				return;
+
+			try
+			{
+				// 장비 착용 전 스탯 저장
+				int oldAttack = session.Player.GetTotalAttack();
+				int oldDefense = session.Player.GetTotalDefense();
+				int oldMaxHP = session.Player.MaxHP;
+				int oldMaxMP = session.Player.MaxMP;
+
+				var equipSlot = (PlayerEquipment.EquipSlot)packet.EquipSlot;
+				bool success = session.Player.UnequipItemToInventory(equipSlot);
+
+				var response = new S_ItemUnequipped
+				{
+					Success = success,
+					EquipSlot = packet.EquipSlot,
+					ReturnedToSlot = success ? GetLastInventorySlot(session.Player) : -1
+				};
+
+				if(success)
+				{
+					// 장비 해제 후 정보 업데이트
+					var equipmentData = session.Player.GetEquipmentData();
+					response.UpdatedEquipment = new EquipmentInfo();
+
+					foreach(var kvp in equipmentData)
+					{
+						switch(kvp.Key)
+						{
+						case PlayerEquipment.EquipSlot.Weapon:
+							response.UpdatedEquipment.WeaponItemId = kvp.Value.ItemId;
+							break;
+						case PlayerEquipment.EquipSlot.Armor:
+							response.UpdatedEquipment.ArmorItemId = kvp.Value.ItemId;
+							break;
+						case PlayerEquipment.EquipSlot.Helmet:
+							response.UpdatedEquipment.HelmetItemId = kvp.Value.ItemId;
+							break;
+						case PlayerEquipment.EquipSlot.Gloves:
+							response.UpdatedEquipment.GlovesItemId = kvp.Value.ItemId;
+							break;
+						}
+					}
+
+					response.UpdatedStats = new PlayerStats
+					{
+						Attack = session.Player.GetTotalAttack(),
+						Defense = session.Player.GetTotalDefense(),
+						MaxHP = session.Player.MaxHP,
+						MaxMP = session.Player.MaxMP,
+						CurrentHP = session.Player.CurrentHP,
+						CurrentMP = session.Player.CurrentMP,
+					};
+
+					// 스탯 변화가 있으면 플레이어 상태 업데이트 브로드캐스트
+					if(oldAttack != session.Player.GetTotalAttack() || oldDefense != session.Player.GetTotalDefense() ||
+						oldMaxHP != session.Player.MaxHP || oldMaxMP != session.Player.MaxMP)
+					{
+						var updatePacket = new S_PlayerUpdate
+						{
+							Player = session.Player.Info
+						};
+						await BroadcastAsync( updatePacket, session );
+					}
+
+					logger.LogInformation( "Player {SessionId} unequipped item from slot{Slot} in Room {RoomId}",
+						session.SessionId, packet.EquipSlot, RoomId);
+				}
+				else
+				{
+					logger.LogWarning("Player {SessionId} failed to unequip item from slot{Slot} in Room {RoomId}",
+						session.SessionId, packet.EquipSlot, RoomId);
+				}
+
+				await SendToPlayerAsync( session, response );
+			}
+			catch (Exception ex)
+			{
+				logger.LogError(ex, "Failed to handle unequip item for Player {SessionId} inRoom {RoomId}",
+					session.SessionId, RoomId);
+				
+				var errorResponse = new S_ItemUnequipped { Success = false };
+				await SendToPlayerAsync(session, errorResponse);
+			}
+		}
+
 		protected virtual Task OnInitializeAsync() => Task.CompletedTask;
 		protected virtual Task OnCleanupAsync() => Task.CompletedTask;
 		protected virtual Task OnPlayerEnterAsync( GameSession session ) => Task.CompletedTask;
@@ -465,6 +767,33 @@ namespace Server.Room
 				_logger.LogError( ex, "Failed to remove Player {SessionId} from room {RoomId}", session.SessionId, RoomId );
 				return false;
 			}
+		}
+
+		private int GetLastInventorySlot(Player player )
+		{
+			InventoryModel inventoryData = player.GetInventoryData();
+			return inventoryData.Items.LastOrDefault()?.Slot ?? -1;
+		}
+
+		private bool ValidateSession(GameSession session, ILogger logger)
+		{
+			if(session?.Player == null)
+			{
+				logger.LogWarning( "Invalid session or player in Room {RoomId}", RoomId );
+				return false;
+			}
+			return true;
+		}
+
+		private bool ValidateUseItemPacket( C_UseItem packet, ILogger logger )
+		{
+			if(packet == null || packet.Slot < 0 || packet.Slot >= 50 || packet.Quantity <= 0 || packet.Quantity > 10)
+			{
+				logger.LogWarning( "Invalid use item packet: Slot={Slot},Quantity={Quantity}",
+					packet?.Slot ?? -1, packet?.Quantity ?? -1);
+				return false;
+			}
+			return true;
 		}
 
 		public void Dispose()

@@ -35,6 +35,14 @@ namespace Server.Packet
                     await (room?.HandlePlayerPlayerInfoAsync(session, (C_PlayerInfo)packet, logger) ?? Task.CompletedTask),
                 [typeof(C_UseSkill)] = async (session, room, packet, logger) =>
                     await (room?.HandlePlayerUseSkillAsync(session, (C_UseSkill)packet, logger) ?? Task.CompletedTask),
+                [typeof(C_InventoryRequest)] = async (session, room, packet, logger) =>
+                    await (room?.HandlePlayerInventoryRequestAsync(session, (C_InventoryRequest)packet, logger) ?? Task.CompletedTask),
+                [typeof(C_UseItem)] = async (session, room, packet, logger) =>
+                    await (room?.HandlePlayerUseItemAsync(session, (C_UseItem)packet, logger) ?? Task.CompletedTask),
+                [typeof(C_EquipItem)] = async (session, room, packet, logger) =>
+                    await (room?.HandlePlayerEquipItemAsync(session, (C_EquipItem)packet, logger) ?? Task.CompletedTask),
+                [typeof(C_UnequipItem)] = async (session, room, packet, logger) =>
+                    await (room?.HandlePlayerUnequipItemAsync(session, (C_UnequipItem)packet, logger) ?? Task.CompletedTask),
             };
         }
 
@@ -54,6 +62,10 @@ namespace Server.Packet
             _onRecv.Add((ushort)PacketID.C_Chat, HandleC_ChatAsync);
             _onRecv.Add((ushort)PacketID.C_PlayerInfo, HandleC_PlayerInfoAsync);
             _onRecv.Add((ushort)PacketID.C_UseSkill, HandleC_UseSkillAsync);
+            _onRecv.Add((ushort)PacketID.C_InventoryRequest, HandleC_InventoryRequestAsync);
+            _onRecv.Add((ushort)PacketID.C_UseItem, HandleC_UseItemAsync);
+            _onRecv.Add((ushort)PacketID.C_EquipItem, HandleC_EquipItemAsync);
+            _onRecv.Add((ushort)PacketID.C_UnequipItem, HandleC_UnequipItemAsync);
             _packetTypeToId.Add(typeof(S_EnterGame), PacketID.S_EnterGame);
             _packetTypeToId.Add(typeof(S_LeaveGame), PacketID.S_LeaveGame);
             _packetTypeToId.Add(typeof(S_Spawn), PacketID.S_Spawn);
@@ -65,6 +77,12 @@ namespace Server.Packet
             _packetTypeToId.Add(typeof(S_Damage), PacketID.S_Damage);
             _packetTypeToId.Add(typeof(S_Heal), PacketID.S_Heal);
             _packetTypeToId.Add(typeof(S_LevelUp), PacketID.S_LevelUp);
+            _packetTypeToId.Add(typeof(S_InventoryData), PacketID.S_InventoryData);
+            _packetTypeToId.Add(typeof(S_UseItem), PacketID.S_UseItem);
+            _packetTypeToId.Add(typeof(S_ItemEquipped), PacketID.S_ItemEquipped);
+            _packetTypeToId.Add(typeof(S_ItemUnequipped), PacketID.S_ItemUnequipped);
+            _packetTypeToId.Add(typeof(S_ItemAdded), PacketID.S_ItemAdded);
+            _packetTypeToId.Add(typeof(S_InventoryUpdate), PacketID.S_InventoryUpdate);
         }
 
         private async ValueTask HandleC_MoveAsync(GameSession session, ArraySegment<byte> buffer)
@@ -93,6 +111,34 @@ namespace Server.Packet
             var packet = new C_UseSkill();
             packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
             await HandlePacketLogic<C_UseSkill>(session, packet);
+        }
+
+        private async ValueTask HandleC_InventoryRequestAsync(GameSession session, ArraySegment<byte> buffer)
+        {
+            var packet = new C_InventoryRequest();
+            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+            await HandlePacketLogic<C_InventoryRequest>(session, packet);
+        }
+
+        private async ValueTask HandleC_UseItemAsync(GameSession session, ArraySegment<byte> buffer)
+        {
+            var packet = new C_UseItem();
+            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+            await HandlePacketLogic<C_UseItem>(session, packet);
+        }
+
+        private async ValueTask HandleC_EquipItemAsync(GameSession session, ArraySegment<byte> buffer)
+        {
+            var packet = new C_EquipItem();
+            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+            await HandlePacketLogic<C_EquipItem>(session, packet);
+        }
+
+        private async ValueTask HandleC_UnequipItemAsync(GameSession session, ArraySegment<byte> buffer)
+        {
+            var packet = new C_UnequipItem();
+            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+            await HandlePacketLogic<C_UnequipItem>(session, packet);
         }
 
         private async ValueTask HandlePacketLogic<T>(GameSession session, T packet) where T : IMessage

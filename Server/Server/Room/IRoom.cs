@@ -45,6 +45,11 @@ namespace Server.Room
 		Task HandlePlayerChatAsync(GameSession session, Protocol.C_Chat packet, ILogger logger );
 		Task HandlePlayerPlayerInfoAsync(GameSession session, Protocol.C_PlayerInfo packet, ILogger logger );
 		Task HandlePlayerUseSkillAsync(GameSession session, Protocol.C_UseSkill packet, ILogger logger );
+		Task HandlePlayerInventoryRequestAsync( GameSession session, Protocol.C_InventoryRequest packet, ILogger logger );
+		Task HandlePlayerUseItemAsync( GameSession session, Protocol.C_UseItem packet, ILogger logger );
+		Task HandlePlayerEquipItemAsync( GameSession session, Protocol.C_EquipItem packet, ILogger logger );
+		Task HandlePlayerUnequipItemAsync( GameSession session, Protocol.C_UnequipItem packet, ILogger logger );
+
 		//룸 초기화
 		Task InitializeAsync();
 		// 룸 정리 및 종료

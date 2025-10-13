@@ -26,6 +26,18 @@ enum MsgId {
 	S_DAMAGE = 12;			// 데미지 처리
 	S_HEAL = 13;			// 회복 처리
 	S_LEVEL_UP = 14;		// 레벨업 알림
+
+	// 인벤토리
+	C_INVENTORY_REQUEST = 15;	// 인벤토리 조회 요청
+	S_INVENTORY_DATA = 16;		// 인벤토리 데이터 전송
+	C_USE_ITEM = 17;			// 아이템 사용
+	S_USE_ITEM = 18;			// 아이템 사용 결과
+	C_EQUIP_ITEM = 19;			// 아이템(장비) 장착
+	S_ITEM_EQUIPPED = 20;		// 아이템(장비) 장착 결과
+	C_UNEQUIP_ITEM = 21;		// 아이템(장비) 해제
+	S_ITEM_UNEQUIPPED = 22;		// 아이템(장비) 해제 결과
+	S_ITEM_ADDED = 23;			// 아이템 획득 알림
+	S_INVENTORY_UPDATE = 24;	// 인벤토리 변경 알림
 }
 
 // 서버 -> 클라이언트
@@ -129,6 +141,72 @@ message S_LevelUp {
 	int32 newMaxMP = 4;
 }
 
+message C_InventoryRequest {
+	option (handler_name) = "InventoryPacketHandler";
+}
+
+message S_InventoryData {
+	option (handler_name) = "InventoryPacketHandler";
+	repeated InventoryItemInfo items = 1;
+	int64 gold = 2;
+	int32 maxSlots = 3;
+}
+
+message C_UseItem {
+	option (handler_name) = "InventoryPacketHandler";
+	int32 slot = 1;				// 인벤 슬롯
+	int32 quantity = 2;			// 사용할 수량 (기본 1)
+}
+
+message S_UseItem {
+	option (handler_name) = "InventoryPacketHandler";
+	bool success = 1;
+	int32 slot = 2;
+	int32 remainingQuantity = 3;
+	string message = 4;
+}
+
+message C_EquipItem {
+	option (handler_name) = "InventoryPacketHandler";
+	int32 inventorySlot = 1;		// 인벤토리 슬롯 
+	int32 equipSlot = 2;			// 장착 슬롯 (0 = 무기, 1 = 갑옷)
+}
+
+message S_ItemEquipped {
+	option (handler_name) = "InventoryPacketHandler";
+	bool success = 1;
+	int32 inventorySlot = 2;
+	int32 equipSlot = 3;
+	EquipmentInfo updatedEquipment = 4;
+	PlayerStats updatedStats = 5;
+}
+
+message C_UnequipItem {
+	option (handler_name) = "InventoryPacketHandler";
+	int32 equipSlot = 1;		// 해제할 장착 슬롯
+}
+
+message S_ItemUnequipped {
+	option (handler_name) = "InventoryPacketHandler";
+	bool success = 1;
+	int32 equipSlot = 2;
+	int32 returnedToSlot = 3;			// 인벤토리로 돌아간 슬롯?
+	EquipmentInfo updatedEquipment = 4;
+	PlayerStats updatedStats = 5;
+}
+
+message S_ItemAdded {
+	option (handler_name) = "InventoryPacketHandler";
+	InventoryItemInfo item = 1;
+	string source = 2;			// 획득 경로
+}
+
+message S_InventoryUpdate {
+	option (handler_name) = "InventoryPacketHandler";
+	repeated InventoryItemInfo changedItems = 1;
+	int64 newGold = 2;
+}
+
 // --------- 공용 데이터 구조 --------- 
 
 enum PlayerState {
@@ -179,4 +257,30 @@ message Monster {
 message Skill {
 	int32 id = 1;
 	string name = 2;
+}
+
+message InventoryItemInfo{
+	int32 itemId = 1;
+	int32 quantity = 2;
+	int32 slot = 3;
+	int32 enhancementLevel = 4;
+	map<string, double> options = 5;
+	string customName = 6;
+	int64 acquiredAt = 7;				// Unix timestamp
+}
+
+message EquipmentInfo {
+	int32 weaponItemId = 1;		// 무기 아이템 ID (0이면 없음)
+	int32 armorItemId = 2;		// 갑옷 아이템 ID (0이면 없음)
+	int32 helmetItemId = 3;		// 헬멧
+	int32 glovesItemId = 4;		// 장갑
+}
+
+message PlayerStats {
+	int32 attack =1;
+	int32 defense = 2;
+	int32 maxHP = 3;
+	int32 maxMP = 4;
+	int32 currentHP = 5;
+	int32 currentMP = 6;
 }

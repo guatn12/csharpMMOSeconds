@@ -1,0 +1,68 @@
+[
+  {
+    "Id": 3001,
+    "Name": "기본 공격",
+    "Description": "기본적인 물리 공격입니다.",
+    "ManaCost": 0,
+    "Damage": 10,
+    "CooldownSeconds": 1.0,
+    "CastTime": 0.5,
+    "Range": 2.0,
+    "SkillType": "Attack"
+  },
+  {
+    "Id": 3002,
+    "Name": "강화 공격",
+    "Description": "일반 공격보다 강한 물리 공격입니다.",
+    "ManaCost": 5,
+    "Damage": 20,
+    "CooldownSeconds": 3.0,
+    "CastTime": 1.0,
+    "Range": 2.0,
+    "SkillType": "Attack"
+  },
+  {
+    "Id": 3003,
+    "Name": "파이어볼",
+    "Description": "화염구를 발사하여 적에게 화염 피해를 입힙니다.",
+    "ManaCost": 20,
+    "Damage": 50,
+    "CooldownSeconds": 4.0,
+    "CastTime": 2.0,
+    "Range": 10.0,
+    "SkillType": "Attack"
+  },
+  {
+    "Id": 3004,
+    "Name": "체력 회복",
+    "Description": "자신의 체력을 회복합니다.",
+    "ManaCost": 15,
+    "Damage": -30,
+    "CooldownSeconds": 8.0,
+    "CastTime": 3.0,
+    "Range": 0.0,
+    "SkillType": "Heal"
+  },
+  {
+    "Id": 3005,
+    "Name": "분노",
+    "Description": "잠시 동안 공격력이 증가합니다.",
+    "ManaCost": 10,
+    "Damage": 0,
+    "CooldownSeconds": 15.0,
+    "CastTime": 1.0,
+    "Range": 0.0,
+    "SkillType": "Buff"
+  },
+  {
+    "Id": 3006,
+    "Name": "독성 분비",
+    "Description": "독성 액체를 분비하여 지속 피해를 입힙니다.",
+    "ManaCost": 8,
+    "Damage": 5,
+    "CooldownSeconds": 6.0,
+    "CastTime": 1.5,
+    "Range": 3.0,
+    "SkillType": "Debuff"
+  }
+]
