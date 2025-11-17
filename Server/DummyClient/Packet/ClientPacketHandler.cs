@@ -1,26 +1,23 @@
-using DummyClient.Packet;
+using Microsoft.Extensions.Logging; // Added for ILogger
+using Protocol; // Added for packet types
 using ServerCore;
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
-using Protocol; // Added for packet types
-using Microsoft.Extensions.Logging; // Added for ILogger
 
 namespace DummyClient.Packet
 {
-    public class ClientPacketHandler : BaseClientPacketHandler
-    {
-        private readonly ILogger<ClientPacketHandler> _logger;
+	public class ClientPacketHandler : BaseClientPacketHandler
+	{
+		private readonly ILogger<ClientPacketHandler> _logger;
 
-        public ClientPacketHandler(ILogger<ClientPacketHandler> logger)
-        {
-            _logger = logger;
-        }
+		public ClientPacketHandler( ILogger<ClientPacketHandler> logger )
+		{
+			_logger = logger;
+		}
 
-        public override ValueTask On_S_EnterGame(Session session, S_EnterGame packet)
-        {
+		public override ValueTask On_S_EnterGame( Session session, S_EnterGame packet )
+		{
 			_logger.LogInformation( "[Client] S_EnterGame - PlayerId: {PlayerId}, " +
 				"PlayerName: {PlayerName}, Level: {Level}, HP: {HP}/{MaxHP}",
 				packet.Player.PlayerId, packet.Player.Name,
@@ -29,13 +26,13 @@ namespace DummyClient.Packet
 			Program.MyPlayer.PlayerId = packet.Player.PlayerId;
 			Program.MyPlayer.PlayerName = packet.Player.Name;
 			Program.MyPlayer.Level = packet.Player.Level;
-			Program.MyPlayer.CurrentHP = packet.Player.CurrentHP;
-			Program.MyPlayer.CurrentMP = packet.Player.CurrentMP;
-			Program.MyPlayer.MaxHP = packet.Player.MaxHP;
-			Program.MyPlayer.MaxMP = packet.Player.MaxMP;
+			Program.MyPlayer.Stats.CurrentHP = packet.Player.CurrentHP;
+			Program.MyPlayer.Stats.CurrentMP = packet.Player.CurrentMP;
+			Program.MyPlayer.Stats.MaxHP = packet.Player.MaxHP;
+			Program.MyPlayer.Stats.MaxMP = packet.Player.MaxMP;
 			Program.MyPlayer.CurrentExp = packet.Player.Experience;
-			
-			// À§Ä¡ Á¤º¸ ÃÊ±âÈ­
+
+			// ìœ„ì¹˜ ì •ë³´ ì´ˆê¸°í™”
 			if(packet.Player.PosInfo != null)
 			{
 				Program.MyPlayer.Position.PosX = packet.Player.PosInfo.PosX;
@@ -51,14 +48,14 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
-        public override ValueTask On_S_LeaveGame(Session session, S_LeaveGame packet)
-        {
-            _logger.LogInformation("[Client] Received S_LeaveGame. PlayerId: {PlayerId}", packet.PlayerId);
-            return ValueTask.CompletedTask;
-        }
+		public override ValueTask On_S_LeaveGame( Session session, S_LeaveGame packet )
+		{
+			_logger.LogInformation( "[Client] Received S_LeaveGame. PlayerId: {PlayerId}", packet.PlayerId );
+			return ValueTask.CompletedTask;
+		}
 
-        public override ValueTask On_S_Spawn(Session session, S_Spawn packet)
-        {
+		public override ValueTask On_S_Spawn( Session session, S_Spawn packet )
+		{
 			_logger.LogInformation( "[Client] S_Spawn - {PlayersCount} players spawned", packet.Players.Count );
 			foreach(var player in packet.Players)
 			{
@@ -68,17 +65,17 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
-        public override ValueTask On_S_Despawn(Session session, S_Despawn packet)
-        {
-            _logger.LogInformation("[Client] Received S_Despawn. ObjectIds: {ObjectIds}", string.Join(", ", packet.ObjectIds));
-            return ValueTask.CompletedTask;
-        }
+		public override ValueTask On_S_Despawn( Session session, S_Despawn packet )
+		{
+			_logger.LogInformation( "[Client] Received S_Despawn. ObjectIds: {ObjectIds}", string.Join( ", ", packet.ObjectIds ) );
+			return ValueTask.CompletedTask;
+		}
 
-        public override ValueTask On_S_Move(Session session, S_Move packet)
-        {
+		public override ValueTask On_S_Move( Session session, S_Move packet )
+		{
 			_logger.LogInformation( "[Client] S_Move - PlayerId: {PlayerId}, " +
 				"3D Position: ({PosX:F2}, {PosY:F2}, {PosZ:F2}), " +
-				"Rotation: ({RotX:F1}¡Æ, {RotY:F1}¡Æ, {RotZ:F1}¡Æ), " +
+				"Rotation: ({RotX:F1}, {RotY:F1}, {RotZ:F1}), " +
 				"Timestamp: {Timestamp}",
 				packet.PlayerId,
 				packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ,
@@ -87,24 +84,24 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
-        public override ValueTask On_S_Chat(Session session, S_Chat packet)
-        {
-            _logger.LogInformation("[Client] Received S_Chat. PlayerId: {PlayerId}, Message: {Message}", packet.PlayerId, packet.Message);
-            return ValueTask.CompletedTask;
-        }
+		public override ValueTask On_S_Chat( Session session, S_Chat packet )
+		{
+			_logger.LogInformation( "[Client] Received S_Chat. PlayerId: {PlayerId}, Message: {Message}", packet.PlayerId, packet.Message );
+			return ValueTask.CompletedTask;
+		}
 
-		public override ValueTask On_S_PlayerUpdate( Session session, S_PlayerUpdate packet ) 
-		{ 
-			// ³» ÇÃ·¹ÀÌ¾î Á¤º¸¸¸ ¾÷µ¥ÀÌÆ®
+		public override ValueTask On_S_PlayerUpdate( Session session, S_PlayerUpdate packet )
+		{
+			// ë‚´ í”Œë ˆì´ì–´ ì •ë³´ë§Œ ì—…ë°ì´íŠ¸
 			if(packet.Player.PlayerId == Program.MyPlayer.PlayerId)
 			{
-				int oldHP = Program.MyPlayer.CurrentHP;
-				int oldMP = Program.MyPlayer.CurrentMP;
+				int oldHP = Program.MyPlayer.Stats.CurrentHP;
+				int oldMP = Program.MyPlayer.Stats.CurrentMP;
 
-				Program.MyPlayer.CurrentMP = packet.Player.CurrentMP;
-				Program.MyPlayer.CurrentHP = packet.Player.CurrentHP;
+				Program.MyPlayer.Stats.CurrentMP = packet.Player.CurrentMP;
+				Program.MyPlayer.Stats.CurrentHP = packet.Player.CurrentHP;
 
-				// HP º¯È­ ·Î±×
+				// HP ë³€í™” ë¡œê·¸
 				if(oldHP != packet.Player.CurrentHP)
 				{
 					int hpChange = packet.Player.CurrentHP - oldHP;
@@ -113,53 +110,53 @@ namespace DummyClient.Packet
 					_logger.LogInformation( "HP : {OldHP} -> {NewHP} ({Change}) [{Percent:F1}%]",
 						oldHP, packet.Player.CurrentHP, changeStr, Program.MyPlayer.HPPercent );
 
-					// HP À§Çè °æ°í (30% ÀÌÇÏ)
+					// HP ìœ„í—˜ ê²½ê³  (30% ì´í•˜)
 					if(Program.MyPlayer.HPPercent < 30f && 30f <= ((float)oldHP / packet.Player.MaxHP * 100))
 					{
-						_logger.LogWarning( "HP À§Çè! Æ÷¼Ç »ç¿ë ±ÇÀå" );
+						_logger.LogWarning( "HP ìœ„í—˜! í¬ì…˜ ì‚¬ìš© ê¶Œì¥" );
 					}
 				}
 
-				// MP º¯È­ ·Î±×
+				// MP ë³€í™” ë¡œê·¸
 				if(oldMP != packet.Player.CurrentMP)
 				{
 					int mpChange = packet.Player.CurrentMP - oldMP;
 					string changeStr = 0 < mpChange ? $"+{mpChange}" : mpChange.ToString();
 
-					_logger.LogDebug( "MP: {OldMP} ¡æ {NewMP} ({Change})",
+					_logger.LogDebug( "MP: {OldMP} -> {NewMP} ({Change})",
 						oldMP, packet.Player.CurrentMP, changeStr );
 				}
 			}
 
-			return ValueTask.CompletedTask; 
+			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_PlayerStat( Session session, S_PlayerStat packet ) 
-		{ 
+		public override ValueTask On_S_PlayerStat( Session session, S_PlayerStat packet )
+		{
 			if(packet.Player.PlayerId == Program.MyPlayer.PlayerId)
 			{
 				Program.MyPlayer.Level = packet.Player.Level;
-				Program.MyPlayer.CurrentHP = packet.Player.CurrentHP;
-				Program.MyPlayer.MaxHP = packet.Player.MaxHP;
-				Program.MyPlayer.CurrentMP = packet.Player.CurrentMP;
-				Program.MyPlayer.MaxMP = packet.Player.MaxMP;
+				Program.MyPlayer.Stats.CurrentHP = packet.Player.CurrentHP;
+				Program.MyPlayer.Stats.MaxHP = packet.Player.MaxHP;
+				Program.MyPlayer.Stats.CurrentMP = packet.Player.CurrentMP;
+				Program.MyPlayer.Stats.MaxMP = packet.Player.MaxMP;
 				Program.MyPlayer.CurrentExp = packet.Player.Experience;
 
-				// ÀüÃ¼ Ãâ·Â
+				// ì „ì²´ ì¶œë ¥
 				Program.MyPlayer.LogStatus( _logger );
 			}
 
-			return ValueTask.CompletedTask; 
+			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_Damage( Session session, S_Damage packet ) 
+		public override ValueTask On_S_Damage( Session session, S_Damage packet )
 		{
-			// °ø°İÀÚ¿Í ÇÇÇØÀÚ Á¤º¸ ÆÄ¾Ç
+			// ê³µê²©ìì™€ í”¼í•´ì ì •ë³´ íŒŒì•…
 			string attackerName = packet.AttackerId < 1000
 				? $"Player {packet.AttackerId}"
 				: (Program.NearbyMonsters.TryGetValue(packet.AttackerId, out var attacker)
 					? attacker.Name
 					: $"Monster {packet.AttackerId}");
 
-			// ¸ó½ºÅÍÀÇ °æ¿ì (ÀÓ½Ã ±¸ºĞ)
+			// ëª¬ìŠ¤í„°ì˜ ê²½ìš° (ì„ì‹œ êµ¬ë¶„)
 			if(1000 <= packet.TargetId)
 			{
 				if(!Program.NearbyMonsters.TryGetValue( packet.TargetId, out var target ))
@@ -170,57 +167,155 @@ namespace DummyClient.Packet
 
 				target.CurrentHP = packet.CurrentHP;
 
-				_logger.LogInformation( "[Client] Damage: {Attacker} ¡æ {Target} | Damage: {Damage} | Remaining HP: {CurrentHP}",
+				_logger.LogInformation( "[Client] Damage: {Attacker} -> {Target} | Damage: {Damage} | Remaining HP: {CurrentHP}",
 					attackerName, target.Name, packet.Damage, packet.CurrentHP );
 			}
-			// ÇÃ·¹ÀÌÀÎ °æ¿ì(ÀÓ½Ã ±¸ºĞ)
+			// í”Œë ˆì´ì¸ ê²½ìš°(ì„ì‹œ êµ¬ë¶„)
 			else
 			{
-				// Å¸°ÙÀÌ ³ªÀÎ °æ¿ì
+				// íƒ€ê²Ÿì´ ë‚˜ì¸ ê²½ìš°
 				if(packet.TargetId == Program.MyPlayer.PlayerId)
 				{
-					Program.MyPlayer.CurrentHP = packet.CurrentHP;
+					Program.MyPlayer.Stats.CurrentHP = packet.CurrentHP;
 
-					_logger.LogWarning( "[Client] ÇÇ°İ! {Attacker} ¡æ ³ª | Damage: {Damage} | Remaining HP:{ CurrentHP}/{ MaxHP} ({ Percent: F1}%)",
-						attackerName, packet.Damage, packet.CurrentHP, Program.MyPlayer.MaxHP, Program.MyPlayer.HPPercent);
+					_logger.LogWarning( "[Client] í”¼ê²©! {Attacker} -> ë‚˜ | Damage: {Damage} | Remaining HP:{ CurrentHP}/{ MaxHP} ({ Percent: F1}%)",
+						attackerName, packet.Damage, packet.CurrentHP, Program.MyPlayer.Stats.MaxHP, Program.MyPlayer.HPPercent);
 
-					// HP À§Çè °æ°í
+					// HP ìœ„í—˜ ê²½ê³ 
 					if(Program.MyPlayer.HPPercent < 30f)
 					{
-						_logger.LogError( "HP À§Çè! Æ÷¼Ç »ç¿ë ¶Ç´Â µµ¸Á ÇÊ¿ä!" );
+						_logger.LogError( "HP ìœ„í—˜! í¬ì…˜ ì‚¬ìš© ë˜ëŠ” ë„ë§ í•„ìš”!" );
 					}
 				}
 			}
 
-			return ValueTask.CompletedTask; 
+			return ValueTask.CompletedTask;
 		}
 		public override ValueTask On_S_Heal( Session session, S_Heal packet ) { Console.WriteLine( "Received but not handled: S_Heal" ); return ValueTask.CompletedTask; }
-		public override ValueTask On_S_LevelUp( Session session, S_LevelUp packet ) 
+		public override ValueTask On_S_LevelUp( Session session, S_LevelUp packet )
 		{
-			_logger.LogInformation( "[Client] LEVEL UP! Player {PlayerId} ¡æ Level {NewLevel}",
+			_logger.LogInformation( "[Client] LEVEL UP! Player {PlayerId} -> Level {NewLevel}",
 				packet.PlayerId, packet.NewLevel );
-			_logger.LogInformation( "  ¦§¦¡ Max HP: {NewMaxHP}", packet.NewMaxHP );
-			_logger.LogInformation( "  ¦¦¦¡ Max MP: {NewMaxMP}", packet.NewMaxMP );
-			
+			_logger.LogInformation( "  â”œâ”€ Max HP: {NewMaxHP}", packet.NewMaxHP );
+			_logger.LogInformation( "  â””â”€ Max MP: {NewMaxMP}", packet.NewMaxMP );
+
 			if(packet.PlayerId == Program.MyPlayer.PlayerId)
 			{
 				Program.MyPlayer.Level = packet.NewLevel;
-				Program.MyPlayer.MaxHP = packet.NewMaxHP;
-				Program.MyPlayer.MaxMP = packet.NewMaxMP;
-				Program.MyPlayer.CurrentHP = packet.NewMaxHP;
-				Program.MyPlayer.CurrentMP = packet.NewMaxMP;
+				Program.MyPlayer.Stats.MaxHP = packet.NewMaxHP;
+				Program.MyPlayer.Stats.MaxMP = packet.NewMaxMP;
+				Program.MyPlayer.Stats.CurrentHP = packet.NewMaxHP;
+				Program.MyPlayer.Stats.CurrentMP = packet.NewMaxMP;
 				Program.MyPlayer.CurrentExp = 0;
 			}
-			
-			return ValueTask.CompletedTask; 
+
+			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_InventoryData( Session session, S_InventoryData packet ) { Console.WriteLine( "Received but not handled: S_InventoryData" ); return ValueTask.CompletedTask; }
+
+		public override ValueTask On_S_InventoryData( Session session, S_InventoryData packet )
+		{
+			_logger.LogInformation( "========================================" );
+			_logger.LogInformation( "[Client] S_InventoryData - ì¸ë²¤í† ë¦¬ ì¡°íšŒ" );
+			_logger.LogInformation( "========================================" );
+			_logger.LogInformation( "ì¸ë²¤í† ë¦¬ ìš©ëŸ‰: {Count}/{MaxSlots}", packet.Items.Count, packet.MaxSlots );
+			_logger.LogInformation( "ê³¨ë“œ: {Gold}", packet.Gold );
+
+			if(0 < packet.Items.Count)
+			{
+				_logger.LogInformation( "ë³´ìœ  ì•„ì´í…œ:" );
+				foreach(var item in packet.Items)
+				{
+					string itemInfo = $"  [ìŠ¬ë¡¯ {item.Slot}] ì•„ì´í…œ ID: {item.ItemId} x{item.Quantity}";
+					if(0 < item.EnhancementLevel)
+					{
+						itemInfo += $" +{item.EnhancementLevel}";
+					}
+					_logger.LogInformation( itemInfo );
+				}
+			}
+			else
+			{
+				_logger.LogInformation( "ë³´ìœ  ì•„ì´í…œ: ì—†ìŒ" );
+			}
+
+			_logger.LogInformation( "========================================" );
+			return ValueTask.CompletedTask;
+		}
+
 		public override ValueTask On_S_UseItem( Session session, S_UseItem packet ) { Console.WriteLine( "Received but not handled: S_UseItem" ); return ValueTask.CompletedTask; }
-		public override ValueTask On_S_ItemEquipped( Session session, S_ItemEquipped packet ) { Console.WriteLine( "Received but not handled: S_ItemEquipped" ); return ValueTask.CompletedTask; }
+		public override ValueTask On_S_ItemEquipped( Session session, S_ItemEquipped packet )
+		{
+			_logger.LogInformation( "========================================" );
+			_logger.LogInformation( "[Client] S_ItemEquipped - ì•„ì´í…œ ì¥ì°©" );
+			_logger.LogInformation( "========================================" );
+
+			if(packet.Success)
+			{
+				_logger.LogInformation( "[ì„±ê³µ] ì¥ì°© ì™„ë£Œ" );
+				_logger.LogInformation( "  ì¸ë²¤í† ë¦¬ ìŠ¬ë¡¯: {InventorySlot} -> ì¥ì°© ìŠ¬ë¡¯: {EquipSlot} ({EquipSlotName})",
+					packet.InventorySlot, packet.EquipSlot, GetEquipSlotName( packet.EquipSlot ) );
+
+				// í˜„ì¬ ì¥ì°© ì¥ë¹„ ì „ì²´ í‘œì‹œ
+				_logger.LogInformation( "í˜„ì¬ ì¥ì°© ì¥ë¹„:" );
+				_logger.LogInformation( "  ë¬´ê¸°: {Weapon}", packet.UpdatedEquipment.WeaponItemId == 0 ? "ì—†ìŒ" : $"ì•„ì´í…œ {packet.UpdatedEquipment.WeaponItemId}" );
+				_logger.LogInformation( "  ê°‘ì˜·: {Armor}", packet.UpdatedEquipment.ArmorItemId == 0 ? "ì—†ìŒ" : $"ì•„ì´í…œ {packet.UpdatedEquipment.ArmorItemId}" );
+				_logger.LogInformation( "  í—¬ë©§: {Helmet}", packet.UpdatedEquipment.HelmetItemId == 0 ? "ì—†ìŒ" : $"ì•„ì´í…œ {packet.UpdatedEquipment.HelmetItemId}" );
+				_logger.LogInformation( "  ì¥ê°‘: {Gloves}", packet.UpdatedEquipment.GlovesItemId == 0 ? "ì—†ìŒ" : $"ì•„ì´í…œ {packet.UpdatedEquipment.GlovesItemId}" );
+
+				// í˜„ì¬ ìŠ¤íƒ¯ ì „ì²´ í‘œì‹œ
+				_logger.LogInformation( "í˜„ì¬ ìŠ¤íƒ¯:" );
+				_logger.LogInformation( "  ê³µê²©ë ¥: {Attack}", packet.UpdatedStats.Attack );
+				_logger.LogInformation( "  ë°©ì–´ë ¥: {Defense}", packet.UpdatedStats.Defense );
+				_logger.LogInformation( "  HP: {CurrentHP}/{MaxHP}", packet.UpdatedStats.CurrentHP, packet.UpdatedStats.MaxHP );
+				_logger.LogInformation( "  MP: {CurrentMP}/{MaxMP}", packet.UpdatedStats.CurrentMP, packet.UpdatedStats.MaxMP );
+
+				// ë‚´ í”Œë ˆì´ì–´ ì •ë³´ ì—…ë°ì´íŠ¸
+				Program.MyPlayer.Stats.Attack = packet.UpdatedStats.Attack;
+				Program.MyPlayer.Stats.Defense = packet.UpdatedStats.Defense;
+				Program.MyPlayer.Stats.MaxHP = packet.UpdatedStats.MaxHP;
+				Program.MyPlayer.Stats.MaxMP = packet.UpdatedStats.MaxMP;
+				Program.MyPlayer.Stats.CurrentHP = packet.UpdatedStats.CurrentHP;
+				Program.MyPlayer.Stats.CurrentMP = packet.UpdatedStats.CurrentMP;
+			}
+			else
+			{
+				_logger.LogWarning( "[ì‹¤íŒ¨] ì¥ì°© ì‹¤íŒ¨" );
+				_logger.LogWarning( "  ì¸ë²¤í† ë¦¬ ìŠ¬ë¡¯: {InventorySlot}, ì¥ì°© ìŠ¬ë¡¯: {EquipSlot}",
+					packet.InventorySlot, packet.EquipSlot );
+			}
+
+			_logger.LogInformation( "========================================" );
+			return ValueTask.CompletedTask;
+		}
+
+		// ì¥ì°© ìŠ¬ë¡¯ ë²ˆí˜¸ â†’ ì´ë¦„ ë³€í™˜
+		private string GetEquipSlotName( int slotNumber )
+		{
+			return slotNumber switch
+			{
+				0 => "ë¬´ê¸°",
+				1 => "ê°‘ì˜·",
+				2 => "í—¬ë©§",
+				3 => "ì¥ê°‘",
+				_ => "ì•Œ ìˆ˜ ì—†ìŒ"
+			};
+		}
 		public override ValueTask On_S_ItemUnequipped( Session session, S_ItemUnequipped packet ) { Console.WriteLine( "Received but not handled: S_ItemUnequipped" ); return ValueTask.CompletedTask; }
-		public override ValueTask On_S_ItemAdded( Session session, S_ItemAdded packet ) { Console.WriteLine( "Received but not handled: S_ItemAdded" ); return ValueTask.CompletedTask; }
+		public override ValueTask On_S_ItemAdded( Session session, S_ItemAdded packet )
+		{
+			_logger.LogInformation( "========================================" );
+			_logger.LogInformation( "[Client] S_ItemAdded - ì•„ì´í…œ íšë“!" );
+			_logger.LogInformation( "========================================" );
+			_logger.LogInformation( "ì•„ì´í…œ ID: {itemId}", packet.Item.ItemId );
+			_logger.LogInformation( "ìˆ˜ëŸ‰: x{Count}", packet.Item.Quantity );
+			_logger.LogInformation( "ì¸ë²¤í† ë¦¬ ìŠ¬ë¡¯: {Slot}", packet.Item.Slot );
+			_logger.LogInformation( "íšë“ì²˜: {Source}", packet.Source );
+			_logger.LogInformation( "========================================" );
+
+			return ValueTask.CompletedTask;
+		}
 		public override ValueTask On_S_InventoryUpdate( Session session, S_InventoryUpdate packet ) { Console.WriteLine( "Received but not handled: S_InventoryUpdate" ); return ValueTask.CompletedTask; }
-		public override ValueTask On_S_MonsterSpawn( Session session, S_MonsterSpawn packet ) 
+		public override ValueTask On_S_MonsterSpawn( Session session, S_MonsterSpawn packet )
 		{
 			_logger.LogInformation( "[Client] S_MonsterSpawn - {Count} monsters spawned", packet.Monsters.Count );
 
@@ -231,11 +326,11 @@ namespace DummyClient.Packet
 					monster.MonsterId, monster.Name, monster.Level, monster.CurrentHP, monster.MaxHP,
 					monster.State, monster.PosInfo.PosX, monster.PosInfo.PosY, monster.PosInfo.PosZ );
 
-				// ¸ó½ºÅÍ Á¤º¸¸¦ ProgramÀÇ Á¤Àû µñ¼Å³Ê¸®¿¡ ÀúÀå
+				// ëª¬ìŠ¤í„° ì •ë³´ë¥¼ Programì˜ ì •ì  ë”•ì…”ë„ˆë¦¬ì— ì €ì¥
 				Program.NearbyMonsters[ monster.MonsterId ] = monster;
 			}
 
-			// ÀÚµ¿ Å¸°Ù ¼³Á¤ (Ã¹ ¹øÂ° ¸ó½ºÅÍ)(
+			// ìë™ íƒ€ê²Ÿ ì„¤ì • (ì²« ë²ˆì§¸ ëª¬ìŠ¤í„°)(
 			if (Program.TargetMonsterId == 0 && 0 < packet.Monsters.Count)
 			{
 				Program.TargetMonsterId = packet.Monsters[0].MonsterId;
@@ -245,20 +340,20 @@ namespace DummyClient.Packet
 
 			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_MonsterDespawn( Session session, S_MonsterDespawn packet ) 
+		public override ValueTask On_S_MonsterDespawn( Session session, S_MonsterDespawn packet )
 		{
 			_logger.LogInformation( "[Client] S_MonsterDespawn - {Count} monsters removed",
 				packet.MonsterIds.Count );
 
 			foreach(var monsterId in packet.MonsterIds)
 			{
-				if(Program.NearbyMonsters.TryGetValue(monsterId, out MonsterInfo monster))
+				if(Program.NearbyMonsters.TryGetValue( monsterId, out MonsterInfo monster ))
 				{
 					_logger.LogInformation( "Removed Monster {MonsterId}: {Name}", monsterId, monster.Name );
-					Program.NearbyMonsters.Remove(monsterId);
+					Program.NearbyMonsters.Remove( monsterId );
 				}
 
-				// Å¸°ÙÀÌ Á¦°ÅµÇ¾úÀ¸¸é ÃÊ±âÈ­
+				// íƒ€ê²Ÿì´ ì œê±°ë˜ì—ˆìœ¼ë©´ ì´ˆê¸°í™”
 				if(Program.TargetMonsterId == monsterId)
 				{
 					Program.TargetMonsterId = 0;
@@ -266,10 +361,10 @@ namespace DummyClient.Packet
 				}
 			}
 
-			return ValueTask.CompletedTask; 
+			return ValueTask.CompletedTask;
 		}
 		public override ValueTask On_S_MonsterMove( Session session, S_MonsterMove packet ) { Console.WriteLine( "Received but not handled: S_MonsterMove" ); return ValueTask.CompletedTask; }
-		public override ValueTask On_S_MonsterAttack( Session session, S_MonsterAttack packet ) 
+		public override ValueTask On_S_MonsterAttack( Session session, S_MonsterAttack packet )
 		{
 			string monsterName = Program.NearbyMonsters.TryGetValue(packet.MonsterId, out var monster)
 				? monster.Name
@@ -278,73 +373,73 @@ namespace DummyClient.Packet
 			_logger.LogWarning( "[Client] Monster Attack! {Name} attacked Player {PlayerId} for {Damage} damage",
 				monsterName, packet.TargetPlayerId, packet.Damage );
 
-			return ValueTask.CompletedTask; 
+			return ValueTask.CompletedTask;
 		}
-		
-		public override ValueTask On_S_MonsterDie( Session session, S_MonsterDie packet ) 
-		{ 
+
+		public override ValueTask On_S_MonsterDie( Session session, S_MonsterDie packet )
+		{
 			string monsterName = Program.NearbyMonsters.TryGetValue(packet.MonsterId, out var monster)
 				? monster.Name : $"Monster {packet.MonsterId}";
 
 			_logger.LogInformation( "[Client] Monster Killed! {Name} (ID:{MonsterId})",
 	monsterName, packet.MonsterId );
-			_logger.LogInformation( "  ¦§¦¡ Killer: Player {KillerId}", packet.KillPlayerId );
-			_logger.LogInformation( "  ¦§¦¡ Exp Gained: +{Exp}", packet.ExpGained );
-			_logger.LogInformation( "  ¦§¦¡ Gold Gained: +{Gold}", packet.GoldGained );
+			_logger.LogInformation( "  â”œâ”€ Killer: Player {KillerId}", packet.KillPlayerId );
+			_logger.LogInformation( "  â”œâ”€ Exp Gained: +{Exp}", packet.ExpGained );
+			_logger.LogInformation( "  â”œâ”€ Gold Gained: +{Gold}", packet.GoldGained );
 
 			if(0 < packet.DroppedItems.Count)
 			{
-				_logger.LogInformation( "  ¦¦¦¡ Items Dropped: {Count} items", packet.DroppedItems.Count );
+				_logger.LogInformation( "  â””â”€ Items Dropped: {Count} items", packet.DroppedItems.Count );
 				foreach(var item in packet.DroppedItems)
 				{
-					_logger.LogInformation( "     ¦¦¦¡ Item {ItemId} x{Quantity}", item.ItemId, item.Quantity );
+					_logger.LogInformation( "     â””â”€ Item {ItemId} x{Quantity}", item.ItemId, item.Quantity );
 				}
 			}
 
-			// ¸ó½ºÅÍ »óÅÂ¸¦ Dead·Î º¯°æ (Á¦°ÅÇÏÁö ¾ÊÀ½!)
+			// ëª¬ìŠ¤í„° ìƒíƒœë¥¼ Deadë¡œ ë³€ê²½ (ì œê±°í•˜ì§€ ì•ŠìŒ!)
 			if(Program.NearbyMonsters.TryGetValue(packet.MonsterId, out var targetMonster))
 			{
-				targetMonster.State = MonsterState.MonsterDie;	// »ç¸Á »óÅÂ·Î º¯°æ
+				targetMonster.State = MonsterState.MonsterDie;	// ì‚¬ë§ ìƒíƒœë¡œ ë³€ê²½
 				Program.NearbyMonsters[packet.MonsterId] = targetMonster;
 				_logger.LogInformation( "[Client] Monster {MonsterId} state changed to DEAD (Waiting for despawn...)",
 					packet.MonsterId );
 			}
 
-			// Å¸°ÙÀÌ Á×¾úÀ¸¸é »õ Å¸°Ù Ã£±â
+			// íƒ€ê²Ÿì´ ì£½ì—ˆìœ¼ë©´ ìƒˆ íƒ€ê²Ÿ ì°¾ê¸°
 			if(Program.TargetMonsterId == packet.MonsterId)
 			{
 				Program.TargetMonsterId = FindNewTarget();
-				if(0 < Program.TargetMonsterId )
+				if(0 < Program.TargetMonsterId)
 				{
 					_logger.LogInformation( "New target: Monster {MonsterId}", Program.TargetMonsterId );
 				}
 			}
-			return ValueTask.CompletedTask; 
+			return ValueTask.CompletedTask;
 		}
-		
-		public override ValueTask On_S_MonsterUpdate( Session session, S_MonsterUpdate packet ) 
-		{ 
+
+		public override ValueTask On_S_MonsterUpdate( Session session, S_MonsterUpdate packet )
+		{
 			foreach(var monster in packet.Monsters)
 			{
-				// ±âÁ¸ ¸ó½ºÅÍ Á¤º¸ ¾÷µ¥ÀÌÆ®
+				// ê¸°ì¡´ ëª¬ìŠ¤í„° ì •ë³´ ì—…ë°ì´íŠ¸
 				if(Program.NearbyMonsters.ContainsKey(monster.MonsterId))
 				{
 					var oldMonster = Program.NearbyMonsters[monster.MonsterId];
 
-					// HP º¯È­ ·Î±×
+					// HP ë³€í™” ë¡œê·¸
 					if(oldMonster.CurrentHP != monster.CurrentHP)
 					{
 						int hpChange = monster.CurrentHP - oldMonster.CurrentHP;
 						string changeStr = 0 < hpChange ? $"+{hpChange}" : hpChange.ToString();
 
-						_logger.LogDebug( "[Client] Monster {MonsterId} HP: {OldHP} ¡æ {NewHP} ({Change})",
+						_logger.LogDebug( "[Client] Monster {MonsterId} HP: {OldHP} -> {NewHP} ({Change})",
 							monster.MonsterId, oldMonster.CurrentHP, monster.CurrentHP, changeStr );
 					}
 
-					// »óÅÂ º¯°æ ·Î±×
+					// ìƒíƒœ ë³€ê²½ ë¡œê·¸
 					if (oldMonster.State != monster.State)
 					{
-						_logger.LogDebug( "[Client] Monster {MonsterId} State: {OldState} ¡æ {NewState}",
+						_logger.LogDebug( "[Client] Monster {MonsterId} State: {OldState} -> {NewState}",
 							monster.MonsterId, oldMonster.State, monster.State );
 					}
 
@@ -352,16 +447,16 @@ namespace DummyClient.Packet
 				}
 			}
 
-			return ValueTask.CompletedTask; 
+			return ValueTask.CompletedTask;
 		}
 
-		// ÇïÆÛ ¸Ş¼­µå : »õ Å¸°Ù Ã£±â
+		// í—¬í¼ ë©”ì„œë“œ : ìƒˆ íƒ€ê²Ÿ ì°¾ê¸°
 		private long FindNewTarget()
 		{
 			if(Program.NearbyMonsters.Count == 0)
 				return 0;
 
-			// »ì¾Æ ÀÖ´Â ¸ó½ºÅÍ Áß Ã¹ ¹øÂ° ¼±ÅÃ
+			// ì‚´ì•„ ìˆëŠ” ëª¬ìŠ¤í„° ì¤‘ ì²« ë²ˆì§¸ ì„ íƒ
 			var aliveMonster = Program.NearbyMonsters.FirstOrDefault(m => m.Value.State != MonsterState.MonsterDie);
 			return aliveMonster.Value != null ? aliveMonster.Key : 0;
 		}

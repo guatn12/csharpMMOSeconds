@@ -461,7 +461,7 @@ namespace Server.Room
 						Quantity = item.Quantity,
 						Slot = item.Slot,
 						EnhancementLevel = item.Enhancement?.Level ?? 0,
-						CustomName = item.CustomName,
+						CustomName = item.CustomName ?? string.Empty,
 						AcquiredAt = item.AcquiredAt?.Ticks ?? 0
 					};
 
@@ -857,7 +857,9 @@ namespace Server.Room
 				killerSession.Player.AddGold( goldReward );
 
 				// 아이템 드롭 (간단)
-				if(new Random().NextDouble() < 0.1)
+				double randomValue = new Random().NextDouble();
+				_logger.LogInformation("Monster Drop Rating Value: {RandomValue} - Drop Value 0.3 Under", randomValue);
+				if(randomValue < 0.3)
 				{
 					int itemId = 1001;
 					int quantity = 1;

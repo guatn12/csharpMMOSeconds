@@ -31,13 +31,7 @@ namespace DummyClient
 		public string PlayerName { get; set; } = "Unknown";
 		public int Level { get; set; }
 
-		// stat
-		public int CurrentHP { get; set; } = 100;
-		public int MaxHP { get; set; } = 100;
-		public int CurrentMP { get; set; } = 50;
-		public int MaxMP { get; set; } = 50;
-		public int Attack { get; set; } = 10;
-		public int Defense { get; set; } = 5;
+		public PlayerStats Stats { get; set; }
 
 		// 경험치
 		public long CurrentExp { get; set; } = 0;
@@ -47,13 +41,24 @@ namespace DummyClient
 		public PosInfo Position { get; set; }
 
 		// 전투 관련 계산 프로퍼티
-		public bool IsAlive => 0 < CurrentHP;
-		public float HPPercent => 0 < MaxHP ? (float)CurrentHP / MaxHP * 100 : 0;
-		public float MPPercent => 0 < MaxMP ? (float)CurrentMP / MaxMP * 100 : 0;
+		public bool IsAlive => 0 < Stats.CurrentHP;
+		public float HPPercent => 0 < Stats.MaxHP ? (float)Stats.CurrentHP / Stats.MaxHP * 100 : 0;
+		public float MPPercent => 0 < Stats.MaxMP ? (float)Stats.CurrentMP / Stats.MaxMP * 100 : 0;
 		public float ExpPercent => 0 < MaxExp ? (float)CurrentExp / MaxExp * 100 : 0;
 
 		public ClientPlayerInfo()
 		{
+			// Stats 초기화
+			Stats = new PlayerStats
+			{
+				Attack = 10,
+				Defense = 5,
+				MaxHP = 100,
+				MaxMP = 50,
+				CurrentHP = 100,
+				CurrentMP = 50
+			};
+
 			Position = new PosInfo
 			{
 				PosX = 50.0f,
@@ -84,10 +89,10 @@ namespace DummyClient
 			logger.LogInformation( "이름: {Name} (ID: {PlayerId})", PlayerName, PlayerId );
 			logger.LogInformation( "레벨: {Level}", Level );
 			logger.LogInformation( "HP: {CurrentHP}/{MaxHP} ({HPPercent:F1}%)",
-				CurrentHP, MaxHP, HPPercent );
+				Stats.CurrentHP, Stats.MaxHP, HPPercent );
 			logger.LogInformation( "MP: {CurrentMP}/{MaxMP} ({MPPercent:F1}%)",
-				CurrentMP, MaxMP, MPPercent );
-			logger.LogInformation( "공격력: {Attack} | 🛡️ 방어력: {Defense}", Attack, Defense );
+				Stats.CurrentMP, Stats.MaxMP, MPPercent );
+			logger.LogInformation( "공격력: {Attack} | 방어력: {Defense}", Stats.Attack, Stats.Defense );
 			logger.LogInformation( "경험치: {CurrentExp}/{MaxExp} ({ExpPercent:F1}%)",
 				CurrentExp, MaxExp, ExpPercent );
 			logger.LogInformation( "골드: {Gold}", Gold );
@@ -114,6 +119,10 @@ namespace DummyClient
 		public static bool AutoAttackEnabled = true;		// 자동 공격 활성화.
 		public static readonly float AttackRange = 5.0f;    // 공격 범위(서버와 동일)
 		public static readonly float MoveSpeed = 5.0f;		// 이동 속도 (초당 5 유닛)
+
+		// 인벤토리 자동 조회
+		public static bool InventoryRequested = false;
+		public static DateTime LastInventoryRequestTime = DateTime.MinValue;
 
 		static void Main( string[] args )
 		{
@@ -568,6 +577,29 @@ namespace DummyClient
 						Thread.Sleep( 300 );
 						continue;
 					}
+
+					// ===== 인벤토리 자동 조회 =====
+					// 1. 초기 조회 (5초 후 1회)
+					if(!InventoryRequested && 5 <= moveCount)
+					{
+						C_InventoryRequest inventoryPacket = new C_InventoryRequest();
+						Session.Send( inventoryPacket );
+						InventoryRequested = true;
+						LastInventoryRequestTime = DateTime.UtcNow;
+
+						_logger.LogInformation( "[Send] C_InventoryRequest - 초기 인벤토리 조회" );
+					}
+
+					// 2. 주기적 재조회 (30초마다)
+					if(InventoryRequested && 30 <= (DateTime.UtcNow - LastInventoryRequestTime).TotalSeconds)
+					{
+						C_InventoryRequest inventoryPacket = new C_InventoryRequest();
+						Session.Send( inventoryPacket );
+						LastInventoryRequestTime = DateTime.UtcNow;
+
+						_logger.LogInformation( "[Send] C_InventoryRequest - 주기적 조회 (30초)" );
+					}
+					// ===== 인벤토리 자동 조회 끝 =====
 
 					// 1. 타겟 몬스터 선택 및 위치 업데이트
 					if(0 < NearbyMonsters.Count)
