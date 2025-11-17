@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ServerCore
@@ -11,10 +12,17 @@ namespace ServerCore
 	public class Connector
 	{
 		private Func<Session> _sessionFactory;
+		public ManualResetEvent ConnectDone { get; private set; }
+		public bool IsConnected { get; private set; }
+		public SocketError LastError { get; private set; }
 
 		public void Connect(IPEndPoint endPoint, Func<Session> sessionFactory)
 		{
 			_sessionFactory = sessionFactory;
+			ConnectDone = new ManualResetEvent(false);
+			IsConnected = false;
+			LastError = SocketError.Success;
+
 			Socket socket = new Socket(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
 			SocketAsyncEventArgs args = new SocketAsyncEventArgs();
@@ -29,7 +37,12 @@ namespace ServerCore
 		{
 			Socket socket = args.UserToken as Socket;
 			if(socket == null)
+			{
+				IsConnected = false;
+				LastError = SocketError.SocketError;
+				ConnectDone.Set();
 				return;
+			}
 
 			bool pending = socket.ConnectAsync( args );
 			if(!pending)
@@ -43,11 +56,19 @@ namespace ServerCore
 				Session session = _sessionFactory.Invoke();
 				session.Start( args.ConnectSocket );
 				session.OnConnected(args.RemoteEndPoint );
+
+				IsConnected = true;
+				LastError = SocketError.Success;
 			}
 			else
 			{
 				Console.WriteLine($"OnConnectedCompleted Fail: {args.SocketError}");
+
+				IsConnected= false;
+				LastError = args.SocketError;
 			}
+
+			ConnectDone.Set();
 		}
 	}
 }

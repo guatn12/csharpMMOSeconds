@@ -28,4 +28,11 @@ public enum PacketID
 	S_ItemUnequipped = 22,
 	S_ItemAdded = 23,
 	S_InventoryUpdate = 24,
+	S_MonsterSpawn = 25,
+	S_MonsterDespawn = 26,
+	S_MonsterMove = 27,
+	C_AttackMonster = 28,
+	S_MonsterAttack = 29,
+	S_MonsterDie = 30,
+	S_MonsterUpdate = 31,
 }

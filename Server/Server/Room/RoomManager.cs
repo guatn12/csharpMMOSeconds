@@ -2,7 +2,10 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Server.Config;
+using Server.Core.Jobs;
 using Server.Core.Session;
+using Server.Data;
+using ServerCore;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -21,6 +24,10 @@ namespace Server.Room
 		private readonly ILoggerFactory _loggerFactory;
 		private readonly ConcurrentDictionary<int, IRoom> _rooms;
 		private readonly object _lock = new object();
+		private readonly DataManager _dataManager;
+
+		private readonly JobQueueManager _jobQueueManager;
+		private readonly JobPool _jobPool;
 
 		private Timer _cleanupTimer;
 		private bool _disposed = false;
@@ -35,11 +42,14 @@ namespace Server.Room
 		public event EventHandler<PlayerRoomChangedEventArgs> PlayerRoomChanged;
 
 		public RoomManager( ILogger<RoomManager> logger, IOptionsMonitor<ServerSettings> serverSettings,
-			ILoggerFactory loggerFactory )
+			ILoggerFactory loggerFactory, DataManager dataManager, JobQueueManager jobQueueManager, JobPool jobPool )
 		{
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_serverSettings = serverSettings ?? throw new ArgumentNullException( nameof( serverSettings ) );
 			_loggerFactory = loggerFactory ?? throw new ArgumentNullException( nameof( loggerFactory ) );
+			_dataManager = dataManager;
+			_jobQueueManager = jobQueueManager;
+			_jobPool = jobPool;
 
 			_rooms = new ConcurrentDictionary<int, IRoom>();
 
@@ -116,7 +126,7 @@ namespace Server.Room
 					RoomType.Lobby => new LobbyRoom(
 						_loggerFactory.CreateLogger<LobbyRoom>(),
 						Options.Create(_serverSettings.CurrentValue),
-						roomName, false),
+						_dataManager, _jobQueueManager, _jobPool, roomName, false ),
 					RoomType.Battle => throw new NotImplementedException("BattleRoom not implemented yet"),
 					RoomType.Dungeon => throw new NotImplementedException("DungeonRoom not implemented yet"),
 					RoomType.Guild => throw new NotImplementedException("GuildRoom not implemented yet"),

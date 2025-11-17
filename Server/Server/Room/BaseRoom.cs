@@ -11,6 +11,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Server.Game;
+using Server.Data;
+using Server.Utils;
+using Server.Core.Jobs;
 
 namespace Server.Room
 {
@@ -47,14 +50,28 @@ namespace Server.Room
 		public bool IsEmpty => _players.IsEmpty;
 		public bool IsFull => MaxPlayers <= _players.Count;
 
+		// 몬스터
+		protected MonsterSpawner _monsterSpawner;
+		protected readonly DataManager _dataManager;
+		private System.Threading.Timer _monsterUpdateTimer;
+
+		private readonly JobQueueManager _jobQueueManager;
+		private readonly JobPool _jobPool;
+		private bool _isMonsterUpdateScheduled = false;	// Timer 누적 방지
+
 		public event EventHandler<PlayerRoomEventArgs> PlayerEntered;
 		public event EventHandler<PlayerRoomEventArgs> PlayerLeft;
 
-		protected BaseRoom( ILogger logger, string roomName, int maxPlayers,
+		protected BaseRoom( ILogger logger, string roomName, int maxPlayers, DataManager dataManager,
+			JobQueueManager jobQueueManager, JobPool jobPool,
 			float roomWidth = 100.0f, float roomHeight = 50.0f, float roomDepth = 100.0f,
 			float minX = 0.0f, float minY = 0.0f, float minZ = 0.0f )
 		{
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
+			_dataManager = dataManager;
+			_jobQueueManager = jobQueueManager;
+			_jobPool = jobPool;
+
 			RoomId = GenerateNextRoomId();
 			RoomName = roomName ?? throw new ArgumentNullException( nameof( roomName ) );
 			MaxPlayers = 0 < maxPlayers ? maxPlayers : throw new ArgumentOutOfRangeException( nameof( maxPlayers ) );
@@ -87,6 +104,9 @@ namespace Server.Room
 				State = RoomState.Active;
 			}
 
+			// 몬스터 스폰 시스템 초기화
+			InitializeMonsterSpawner();
+
 			await OnInitializeAsync();
 
 			_logger.LogInformation( "Room {RoomId} '{RoomName}' initialized successfully", RoomId, RoomName );
@@ -103,6 +123,20 @@ namespace Server.Room
 
 				State = RoomState.Closing;
 			}
+
+			// 몬스터 업데이트 타이머 정지
+			_monsterUpdateTimer?.Dispose();
+			_monsterUpdateTimer = null;
+
+			// 이벤트 구독 해제
+			if(_monsterSpawner != null)
+			{
+				_monsterSpawner.OnMonsterDespawned -= OnMonsterDespawned;
+			}
+
+			// 모든 몬스터 제거
+			_monsterSpawner?.ClearAllMonsters();
+			_monsterSpawner = null;
 
 			// 모든 플레이어 강제 퇴장
 			List<GameSession> playersToRemove = _players.Values.ToList();
@@ -700,9 +734,207 @@ namespace Server.Room
 			}
 		}
 
+		// 플레이어가 몬스터 공격 핸들러 추가.
+		public virtual async Task HandlePlayerAttackMonsterAsync( GameSession session, Protocol.C_AttackMonster packet, ILogger logger )
+		{
+			if(!ContainsPlayer( session ) || packet == null)
+				return;
+
+			try
+			{
+				// 몬스터 존재 확인
+				Monster monster = _monsterSpawner?.GetMonster(packet.MonsterId);
+				if(monster == null || !monster.IsAlive)
+				{
+					_logger.LogWarning( "Player {PlayerId} tried to attack non-existent or dead monster {MonsterId}",
+						session.Player.PlayerId, packet.MonsterId );
+					return;
+				}
+
+				// 공격 범위 검증 (3D 거리)
+				float distance = Position3DValidator.CalculateDistance3D(session.Player.Position, monster.Position);
+				float attackRange = 5.0f;		// 기본 공격 범위
+
+				if(attackRange < distance)
+				{
+					logger.LogWarning( "Player {PlayerId} out of attack range for monster {MonsterId} (Distance: {Distance})",
+						session.Player.PlayerId, packet.MonsterId, distance );
+					return;
+				}
+
+				// 데미지 계산(최소 데미지 보정)
+				int baseDamage = session.Player.GetTotalAttack();
+				int defense = monster.StaticData.Defense;
+				int finalDamage = Math.Max(10, baseDamage - defense);
+
+				// 크리티컬 계산
+				bool isCritical = new Random().NextDouble() < 0.1;
+				if(isCritical)
+				{
+					finalDamage = (int)(finalDamage * 1.5f);
+					logger.LogDebug( "Critical hit! Damage increased to {Damage}", finalDamage );
+				}
+
+
+				// 몬스터에게 데미지 적용
+				bool damaged = monster.TakeDamage(finalDamage, session.Player.PlayerId);
+				if(damaged)
+				{
+					// 공격 쿨다운 시작 (이동 제한)
+					session.Player.StartAttackCooldown();
+
+					logger.LogInformation( "Player {PlayerId} attacked Monster {MonsterId} for {Damage} damage (Critical: {IsCritical}) - remain Monster HP({CurrentHP})",
+						session.Player.PlayerId, packet.MonsterId, finalDamage, isCritical, monster.CurrentHP );
+
+					// S_Damage 패킷 브로드캐스트
+					var damagePacket = new Protocol.S_Damage
+					{
+						AttackerId = session.Player.PlayerId,
+						TargetId = packet.MonsterId,
+						Damage = finalDamage,
+						CurrentHP = monster.CurrentHP
+					};
+
+					await BroadcastAsync( damagePacket );
+
+					// 몬스터 상태 업데이트 브로드캐스트
+					var updatePacket = new Protocol.S_MonsterUpdate
+					{
+						Monsters = {monster.Info }
+					};
+
+					await BroadcastAsync( updatePacket );
+
+					// 몬스터 사망 처리
+					if(!monster.IsAlive)
+					{
+						await HandleMonsterDeathAsync( monster, session.Player.PlayerId );
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				logger.LogError( ex, "Failed to handle attack monster for Player {PlayerId} in Room {RoomId}",
+					session.Player.PlayerId, RoomId );
+			}
+		}
+
+		protected virtual async Task HandleMonsterDeathAsync(Monster monster, long killerPlayerId)
+		{
+			try
+			{
+				// 킬러 플레이어 찾기
+				GameSession killerSession = FindPlayerToPlayerId(killerPlayerId);
+				if(killerSession == null)
+				{
+					_logger.LogWarning( "Killer player {PlayerId} not found in room", killerPlayerId );
+					return;
+				}
+
+				// 보상 계산
+				int expReward = monster.StaticData.ExpReward;
+				int goldReward = monster.StaticData.GoldReward;
+				List<Protocol.InventoryItemInfo> droppedItems = new();
+
+				// 경험치 지급
+				bool leveledUp = killerSession.Player.GainExperience(expReward);
+				if(leveledUp)
+				{
+					var levelUpPacket = new Protocol.S_LevelUp
+					{
+						PlayerId = killerPlayerId,
+						NewLevel = killerSession.Player.Level,
+						NewMaxHP = killerSession.Player.MaxHP,
+						NewMaxMP = killerSession.Player.MaxMP
+					};
+					await BroadcastAsync( levelUpPacket );
+
+					_logger.LogInformation( "Player {PlayerId} leveled up to {Level}",
+						killerPlayerId, killerSession.Player.Level );
+				}
+
+				// 골드 지급
+				killerSession.Player.AddGold( goldReward );
+
+				// 아이템 드롭 (간단)
+				if(new Random().NextDouble() < 0.1)
+				{
+					int itemId = 1001;
+					int quantity = 1;
+
+					if (killerSession.Player.AddItem(itemId, quantity))
+					{
+						var itemInfo = new Protocol.InventoryItemInfo
+						{
+							ItemId = itemId,
+							Quantity = quantity,
+							Slot = -1 // 슬롯은 additem에서 자동 할당
+						};
+						droppedItems.Add( itemInfo );
+
+						var itemAddedPacket = new Protocol.S_ItemAdded
+						{
+							Item = itemInfo,
+							Source = $"Monster {monster.Name}",
+						};
+
+						await SendToPlayerAsync( killerSession, itemAddedPacket );
+					}
+				}
+
+				// S_MonsterDie 브로드캐스트
+				var diePacket = new Protocol.S_MonsterDie
+				{
+					MonsterId = monster.MonsterId,
+					KillPlayerId = killerPlayerId,
+					ExpGained = expReward,
+					GoldGained = goldReward,
+				};
+
+				diePacket.DroppedItems.AddRange( droppedItems );
+				await BroadcastAsync( diePacket );
+
+				_logger.LogInformation( "Monster {MonsterId} ({Name}) killed by Player {PlayerId}. Rewards: {Exp} exp, {Gold} gold",
+					monster.MonsterId, monster.Name, killerPlayerId, expReward, goldReward );
+
+				_monsterSpawner.ScheduleDespawn( monster.MonsterId, TimeSpan.FromSeconds( 5 ) );
+				//// 몬스터 제거 (리스폰은 MOnsterSpawner가 자동 처리)
+				//_monsterSpawner?.DespawnMonster( monster.MonsterId );
+
+				//// S_monsterDespawn 브로드캐스트
+				//var despawnPacket = new Protocol.S_MonsterDespawn();
+				//despawnPacket.MonsterIds.Add( monster.MonsterId );
+				//await BroadcastAsync( despawnPacket );
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError( ex, "Failed to handle monster death for Monster {MonsterId} in Room {RoomId}",
+					monster.MonsterId, RoomId );
+			}
+		}
+
 		protected virtual Task OnInitializeAsync() => Task.CompletedTask;
 		protected virtual Task OnCleanupAsync() => Task.CompletedTask;
-		protected virtual Task OnPlayerEnterAsync( GameSession session ) => Task.CompletedTask;
+		protected virtual async Task OnPlayerEnterAsync( GameSession session )
+		{
+			// 현재 스폰된 몬스터 정보 전송
+			if(_monsterSpawner != null)
+			{
+				var aliveMonsters = _monsterSpawner.GetAliveMonsters();
+				if(0 < aliveMonsters.Count)
+				{
+					var monsterSpawnPacket = new Protocol.S_MonsterSpawn();
+					foreach(var monster in aliveMonsters)
+					{
+						monsterSpawnPacket.Monsters.Add( monster.Info );
+					}
+					await SendToPlayerAsync( session, monsterSpawnPacket );
+
+					_logger.LogDebug( "Sent {Count} monsters info to Player {SessionId}",
+						aliveMonsters.Count, session.SessionId );
+				}
+			}
+		}
 		protected virtual Task OnPlayerLeaveAsync( GameSession session ) => Task.CompletedTask;
 		protected virtual Task OnPlayerMoveAsync( GameSession session, Protocol.C_Move packet ) => Task.CompletedTask;
 		protected virtual Task OnPlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.CompletedTask;
@@ -725,6 +957,152 @@ namespace Server.Room
 		protected virtual Task<bool> ValidatePlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.FromResult( true );
 		protected virtual Task<bool> ValidatePlayerInfoAsync( GameSession session, Protocol.C_PlayerInfo packet ) => Task.FromResult( true );
 		protected virtual Task<bool> ValidatePlayerUseSkillAsync( GameSession session, Protocol.C_UseSkill packet ) => Task.FromResult( true );
+
+		// 몬스터 초기화 메서드 추가
+		protected virtual void InitializeMonsterSpawner()
+		{
+			_monsterSpawner = new MonsterSpawner( this, _dataManager, _logger );
+
+			// Despawn 이벤트 구독 (JobQueue에서 실행됨)
+			_monsterSpawner.OnMonsterDespawned += OnMonsterDespawned;
+
+			// Spawn 이벤트 구독 (JobQueue에서 실행됨)
+			_monsterSpawner.OnMonsterSpawned += OnMonsterSpawned;
+
+			// 기본 스폰 포인트 설정(하위 클래스에서 재정의 가능)
+			SetupDefaultSpawnPoints();
+
+			// 초기 몬스터 스폰
+			_monsterSpawner.SpawnInitialMonsters();
+
+			// 주기적 업데이트 타이머 시작 (100ms마다)
+			_monsterUpdateTimer = new System.Threading.Timer(
+				callback: _ => UpdateMonsters(),
+				state: null,
+				dueTime: TimeSpan.FromMilliseconds( 100 ),
+				period: TimeSpan.FromMilliseconds( 100 ) );
+
+			_logger.LogInformation( "Monster spawner initialized for room {RoomId}", RoomId );
+		}
+
+		/// <summary>
+		/// MonsterSpawner에서 딜레이 Despawn이 완료되었을 때 호출됨
+		/// JobQueue Worker 스레드에서 실행되므로 스레드 안전
+		/// </summary>
+		private void OnMonsterDespawned(long monsterId)
+		{
+			try
+			{
+				// S_MonsterDespawn 브로드캐스트
+				S_MonsterDespawn despawnPacket = new S_MonsterDespawn();
+				despawnPacket.MonsterIds.Add( monsterId );
+
+				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
+				BroadcastAsync(despawnPacket).GetAwaiter().GetResult();
+
+				_logger.LogInformation( "Broadcasted S_MonsterDespawn for Monster {MonsterId} in Room {RoomId}",
+					monsterId, RoomId );
+			}
+			catch(Exception ex)
+			{
+				_logger.LogError( ex, "Failed to broadcast despawn for Monster {MonsterId} in Room {RoomId}",
+					monsterId, RoomId );
+			}
+		}
+
+		/// <summary>
+		/// MonsterSpawner에서 몬스터 리스폰이 완료되었을 때 호출됨
+		/// JobQueue Worker 스레드에서 실행되므로 스레드 안전
+		/// </summary>
+		private void OnMonsterSpawned(Monster monster)
+		{
+			try
+			{
+				// S_MonsterSpawn 브로드 캐스트
+				S_MonsterSpawn spawnPacket = new S_MonsterSpawn();
+				spawnPacket.Monsters.Add( monster.Info );
+
+				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
+				BroadcastAsync( spawnPacket ).GetAwaiter().GetResult();
+
+				_logger.LogInformation( "Broadcasted S_MonsterSpawn for Monster {MonsterId} ({Name}) in Room {RoomId}",
+					monster.MonsterId, monster.Name, RoomId );
+			}
+			catch(Exception ex)
+			{
+				_logger.LogError( ex, "Failed to broadcast spawn for Monster {MonsterId} in Room {RoomId}",
+					monster.MonsterId, RoomId );
+			}
+		}
+
+		// 기본 스폰 포인트 설정 (하위 클래스에서 재정의)
+		protected virtual void SetupDefaultSpawnPoints()
+		{
+			//ex) 룸 중앙에 슬라임 3마리 스폰
+			float centerX = MinX + RoomWidth / 2;
+			float centerY = MinY;
+			float centerZ = MinZ + RoomDepth / 2;
+
+			_monsterSpawner.AddSpawnPoint( 2201, new PosInfo
+			{
+				PosX = centerX - 5,
+				PosY = centerY,
+				PosZ = centerZ
+			} );
+
+			_monsterSpawner.AddSpawnPoint( 2201, new PosInfo
+			{
+				PosX = centerX + 5,
+				PosY = centerY,
+				PosZ = centerZ
+			} );
+
+			_monsterSpawner.AddSpawnPoint( 2001, new PosInfo
+			{
+				PosX = centerX,
+				PosY = centerY,
+				PosZ = centerZ + 10
+			} );
+		}
+
+		// 몬스터 업데이트 메서드
+		protected virtual void UpdateMonsters()
+		{
+			// Timer 누적 호출 방지
+			if(_isMonsterUpdateScheduled)
+			{
+				_logger.LogDebug( "Monster update already scheduled for room {RoomId}, skipping", RoomId );
+				return;
+			}
+
+			if(_monsterSpawner == null)
+			{
+				_logger.LogWarning( "MonsterSpawner is null for room {RoomId}", RoomId );
+				return;
+			}
+
+			_isMonsterUpdateScheduled = true;
+
+			// MonsterUpdateJob 생성 및 초기화
+			MonsterUpdateJob job = _jobPool.Get<MonsterUpdateJob>();
+			job.Initialize( _monsterSpawner, RoomId, _logger );
+
+			// JobQueue에 비동기 추가
+			_ = _jobQueueManager.PushAsync( job )
+				.AsTask()
+				.ContinueWith( t =>
+				{
+					// Job 큐잉 완료 후 플래그 해제
+					_isMonsterUpdateScheduled = false;
+
+					if(t.IsFaulted)
+					{
+						_logger.LogError( t.Exception, "Failed to push MonsterUpdateJob to queue for room {RoomId}", RoomId );
+					}
+				}, TaskScheduler.Default );
+		}
+
+		
 
 		private static int GenerateNextRoomId()
 		{
@@ -802,10 +1180,16 @@ namespace Server.Room
 			GC.SuppressFinalize( this );
 		}
 
+		public Monster GetMonster(long monsterId)
+		{
+			return _monsterSpawner?.GetMonster(monsterId);
+		}
+
 		protected virtual void Dispose( bool disposing )
 		{
 			if(!_dispose && disposing)
 			{
+				_monsterUpdateTimer?.Dispose();
 				CleanupAsync().GetAwaiter().GetResult();
 				_dispose = true;
 			}

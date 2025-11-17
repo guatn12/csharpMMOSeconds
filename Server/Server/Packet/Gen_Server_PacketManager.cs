@@ -43,6 +43,8 @@ namespace Server.Packet
                     await (room?.HandlePlayerEquipItemAsync(session, (C_EquipItem)packet, logger) ?? Task.CompletedTask),
                 [typeof(C_UnequipItem)] = async (session, room, packet, logger) =>
                     await (room?.HandlePlayerUnequipItemAsync(session, (C_UnequipItem)packet, logger) ?? Task.CompletedTask),
+                [typeof(C_AttackMonster)] = async (session, room, packet, logger) =>
+                    await (room?.HandlePlayerAttackMonsterAsync(session, (C_AttackMonster)packet, logger) ?? Task.CompletedTask),
             };
         }
 
@@ -66,6 +68,7 @@ namespace Server.Packet
             _onRecv.Add((ushort)PacketID.C_UseItem, HandleC_UseItemAsync);
             _onRecv.Add((ushort)PacketID.C_EquipItem, HandleC_EquipItemAsync);
             _onRecv.Add((ushort)PacketID.C_UnequipItem, HandleC_UnequipItemAsync);
+            _onRecv.Add((ushort)PacketID.C_AttackMonster, HandleC_AttackMonsterAsync);
             _packetTypeToId.Add(typeof(S_EnterGame), PacketID.S_EnterGame);
             _packetTypeToId.Add(typeof(S_LeaveGame), PacketID.S_LeaveGame);
             _packetTypeToId.Add(typeof(S_Spawn), PacketID.S_Spawn);
@@ -83,6 +86,12 @@ namespace Server.Packet
             _packetTypeToId.Add(typeof(S_ItemUnequipped), PacketID.S_ItemUnequipped);
             _packetTypeToId.Add(typeof(S_ItemAdded), PacketID.S_ItemAdded);
             _packetTypeToId.Add(typeof(S_InventoryUpdate), PacketID.S_InventoryUpdate);
+            _packetTypeToId.Add(typeof(S_MonsterSpawn), PacketID.S_MonsterSpawn);
+            _packetTypeToId.Add(typeof(S_MonsterDespawn), PacketID.S_MonsterDespawn);
+            _packetTypeToId.Add(typeof(S_MonsterMove), PacketID.S_MonsterMove);
+            _packetTypeToId.Add(typeof(S_MonsterAttack), PacketID.S_MonsterAttack);
+            _packetTypeToId.Add(typeof(S_MonsterDie), PacketID.S_MonsterDie);
+            _packetTypeToId.Add(typeof(S_MonsterUpdate), PacketID.S_MonsterUpdate);
         }
 
         private async ValueTask HandleC_MoveAsync(GameSession session, ArraySegment<byte> buffer)
@@ -139,6 +148,13 @@ namespace Server.Packet
             var packet = new C_UnequipItem();
             packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
             await HandlePacketLogic<C_UnequipItem>(session, packet);
+        }
+
+        private async ValueTask HandleC_AttackMonsterAsync(GameSession session, ArraySegment<byte> buffer)
+        {
+            var packet = new C_AttackMonster();
+            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+            await HandlePacketLogic<C_AttackMonster>(session, packet);
         }
 
         private async ValueTask HandlePacketLogic<T>(GameSession session, T packet) where T : IMessage

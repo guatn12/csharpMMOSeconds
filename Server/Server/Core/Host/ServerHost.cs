@@ -70,11 +70,11 @@ namespace Server.Core.Host
 				// Redis 연결 테스트 추가
 				await TestRedisConnectionAsync();
 
-				// 핵심 서비스 초기화
-				await InitializeCoreServicesAsync();
-
 				// 게임 데이터 로딩
 				await LoadGameDataAsync();
+
+				// 핵심 서비스 초기화
+				await InitializeCoreServicesAsync();
 
 				// 서버 시작
 				StartNetworkServerAsync();

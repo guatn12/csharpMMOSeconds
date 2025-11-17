@@ -16,6 +16,11 @@ namespace Server.Game
 		
 		private long _combatTargetId = 0;
 		private readonly Dictionary<int, DateTime> _skillCooldowns = new Dictionary<int, DateTime>();
+		private readonly object _playerLock = new object();
+
+		// 공격 쿨다운 (이동 제한용)
+		private DateTime _lastAttackTime = DateTime.MinValue;
+		private readonly TimeSpan _attackCooldown = TimeSpan.FromSeconds(1); // 공격 후 1초간 이동 불가
 
 		// 인벤, 장비
 		public PlayerInventory Inventory { get; private set; }
@@ -92,39 +97,46 @@ namespace Server.Game
 
 		public bool TakeDamage( int damage )
 		{
-			if(!IsAlive || damage <= 0) return false;
-
-			int oldHP = CurrentHP;
-			Info.CurrentHP = Math.Max( 0, CurrentHP - damage );
-
-			// HP 변경 이벤트 발생
-			OnHealthChanged?.Invoke( this, oldHP, CurrentHP );
-
-			if(CurrentHP <= 0)
+			lock(_playerLock)
 			{
-				SetState( PlayerState.Dead );
-				// 사망 이벤트 발생
-				OnDeath?.Invoke( this );
-			}
+				if(!IsAlive || damage <= 0) return false;
 
+				int oldHP = CurrentHP;
+				Info.CurrentHP = Math.Max( 0, CurrentHP - damage );
+
+				// HP 변경 이벤트 발생
+				OnHealthChanged?.Invoke( this, oldHP, CurrentHP );
+
+				if(CurrentHP <= 0)
+				{
+					SetState( PlayerState.Dead );
+					// 사망 이벤트 발생
+					OnDeath?.Invoke( this );
+				}
+			}
+			
 			UpdateLastUpdateTime();
 			return true;
 		}
 
 		public bool Heal( int amount )
 		{
-			if(!IsAlive || amount <= 0) return false;
-
-			int oldHP = CurrentHP;
-			Info.CurrentHP = Math.Min( MaxHP, CurrentHP + amount );
-
-			// HP 변경 이벤트 발생
-			OnHealthChanged?.Invoke( this, oldHP, CurrentHP );
-
-			if(State == PlayerState.Dead && 0 < CurrentHP)
+			lock(_playerLock)
 			{
-				SetState( PlayerState.Idle );
+				if(!IsAlive || amount <= 0) return false;
+
+				int oldHP = CurrentHP;
+				Info.CurrentHP = Math.Min( MaxHP, CurrentHP + amount );
+
+				// HP 변경 이벤트 발생
+				OnHealthChanged?.Invoke( this, oldHP, CurrentHP );
+
+				if(State == PlayerState.Dead && 0 < CurrentHP)
+				{
+					SetState( PlayerState.Idle );
+				}
 			}
+			
 
 			LastUpdateTime = DateTime.UtcNow;
 			return true;
@@ -166,13 +178,16 @@ namespace Server.Game
 
 		public void SetState( PlayerState newState )
 		{
-			if(State == newState) return;
+			lock(_playerLock)
+			{
+				if(State == newState) return;
 
-			PlayerState oldState = State;
-			Info.State = newState;
+				PlayerState oldState = State;
+				Info.State = newState;
 
-			// 상태 변경 이벤트 발생
-			OnStateChanged?.Invoke( this, oldState, newState );
+				// 상태 변경 이벤트 발생
+				OnStateChanged?.Invoke( this, oldState, newState );
+			}
 
 			LastUpdateTime = DateTime.UtcNow;
 		}
@@ -218,6 +233,10 @@ namespace Server.Game
 
 		public bool CanMove()
 		{
+			// 공격 쿨다운 중에는 이동 불가
+			if(DateTime.UtcNow - _lastAttackTime < _attackCooldown)
+				return false;
+
 			return CanPerformAction() && State != PlayerState.Combat;
 		}
 
@@ -234,9 +253,15 @@ namespace Server.Game
 		{
 			if(State == PlayerState.Combat)
 			{
-				_combatTargetId = 0;	
+				_combatTargetId = 0;
 				SetState( PlayerState.Idle );
 			}
+		}
+
+		// 공격 쿨다운 시작 (이동 제한)
+		public void StartAttackCooldown()
+		{
+			_lastAttackTime = DateTime.UtcNow;
 		}
 
 		public bool CanUseSkill( int skillId )

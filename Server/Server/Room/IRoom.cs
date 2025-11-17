@@ -49,6 +49,7 @@ namespace Server.Room
 		Task HandlePlayerUseItemAsync( GameSession session, Protocol.C_UseItem packet, ILogger logger );
 		Task HandlePlayerEquipItemAsync( GameSession session, Protocol.C_EquipItem packet, ILogger logger );
 		Task HandlePlayerUnequipItemAsync( GameSession session, Protocol.C_UnequipItem packet, ILogger logger );
+		Task HandlePlayerAttackMonsterAsync(GameSession session, Protocol.C_AttackMonster packet, ILogger logger );
 
 		//룸 초기화
 		Task InitializeAsync();

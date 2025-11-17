@@ -38,6 +38,15 @@ enum MsgId {
 	S_ITEM_UNEQUIPPED = 22;		// 아이템(장비) 해제 결과
 	S_ITEM_ADDED = 23;			// 아이템 획득 알림
 	S_INVENTORY_UPDATE = 24;	// 인벤토리 변경 알림
+
+	// 몬스터
+	S_MONSTER_SPAWN = 25;		// 몬스터 스폰 알림
+	S_MONSTER_DESPAWN = 26;		// 몬스터 제거 알림
+	S_MONSTER_MOVE = 27;		// 몬스터 이동 알림
+	C_ATTACK_MONSTER = 28;		// 몬스터 공격 요청
+	S_MONSTER_ATTACK = 29;		// 몬스터가 플레이어 공격
+	S_MONSTER_DIE = 30;			// 몬스터 사망 알림
+	S_MONSTER_UPDATE = 31;		// 몬스터 상태 업데이트
 }
 
 // 서버 -> 클라이언트
@@ -207,6 +216,50 @@ message S_InventoryUpdate {
 	int64 newGold = 2;
 }
 
+// 몬스터
+message S_MonsterSpawn {
+	option (handler_name) = "GamePlayPacketHandler";
+	repeated MonsterInfo monsters = 1;
+}
+
+message S_MonsterDespawn {
+	option (handler_name) = "GamePlayPacketHandler";
+	repeated int64 monsterIds = 1;
+}
+
+message S_MonsterMove {
+	option (handler_name) = "CombatPacketHandler";
+	repeated MonsterInfo monsters = 1;
+}
+
+message C_AttackMonster {
+	option (handler_name) = "CombatPacketHandler";
+	int64 monsterId = 1;
+	int32 skillId = 2;				// 사용할 스킬 (기본 공격은 0)
+}
+
+message S_MonsterAttack {
+	option (handler_name) = "CombatPacketHandler";
+	int64 monsterId = 1;
+	int64 targetPlayerId = 2;
+	int32 damage = 3;
+}
+
+message S_MonsterDie {
+	option (handler_name) = "CombatPacketHandler";
+	int64 monsterId = 1;
+	int64 killPlayerId = 2;
+	int64 expGained = 3;
+	int64 goldGained = 4;
+	repeated InventoryItemInfo droppedItems = 5;
+}
+
+message S_MonsterUpdate {
+	option (handler_name) = "GamePlayPacketHandler";
+	repeated MonsterInfo monsters = 1;
+}
+
+
 // --------- 공용 데이터 구조 --------- 
 
 enum PlayerState {
@@ -244,21 +297,6 @@ message PosInfo {
 	int64 timestamp = 7;	// 위치 업데이트 시간 (성능용)
 }
 
-message Item {
-	int32 id = 1;
-	string name = 2;
-}
-
-message Monster {
-	int32 id = 1;
-	string name = 2;
-}
-
-message Skill {
-	int32 id = 1;
-	string name = 2;
-}
-
 message InventoryItemInfo{
 	int32 itemId = 1;
 	int32 quantity = 2;
@@ -283,4 +321,24 @@ message PlayerStats {
 	int32 maxMP = 4;
 	int32 currentHP = 5;
 	int32 currentMP = 6;
+}
+
+message MonsterInfo {
+	int64 monsterId = 1;
+	int32 templateId = 2;
+	string name = 3;
+	PosInfo posInfo = 4;
+	int32 level = 5;
+	int32 currentHP = 6;
+	int32 maxHP = 7;
+	MonsterState state = 8;
+}
+
+enum MonsterState {
+	MONSTER_IDLE = 0;
+	MONSTER_PATROL = 1;
+	MONSTER_CHASE = 2;
+	MONSTER_ATTACK = 3;
+	MONSTER_RETURN = 4;
+	MONSTER_DIE = 5;
 }

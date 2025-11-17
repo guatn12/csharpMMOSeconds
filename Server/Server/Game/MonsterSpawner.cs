@@ -1,0 +1,417 @@
+﻿using Microsoft.Extensions.Logging;
+using Protocol;
+using Server.Data;
+using Server.Data.Models;
+using Server.Room;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Server.Game
+{
+	/// <summary>
+	/// 몬스터 스폰 지점 정보
+	/// </summary>
+	public class SpawnPoint
+	{
+		public int TemplateId { get; set; }				// 몬스터 템플릿 ID
+		public PosInfo Position { get; set; }			// 스폰 위치
+		public DateTime LastSpawnTime { get; set; }		// 마지막 스폰 시간
+		public long CurrentMonsterId { get; set; }		// 현재 스폰된 몬스터 ID
+		public TimeSpan RespawnInterval { get; set; }	// 리스폰 대기 시간
+
+		public SpawnPoint(int templateId, PosInfo position, TimeSpan respawnInterval)
+		{
+			TemplateId = templateId;
+			Position = position;
+			RespawnInterval = respawnInterval;
+			LastSpawnTime = DateTime.MinValue;
+			CurrentMonsterId = 0;
+		}
+
+		public bool CanSpawn()
+		{
+			return CurrentMonsterId == 0 &&
+				RespawnInterval <= DateTime.UtcNow - LastSpawnTime;
+		}
+	}
+
+	/// <summary>
+	/// 몬스터 스폰 및 관리 시스템
+	/// </summary>
+	public class MonsterSpawner
+	{
+		private readonly IRoom _room;
+		private readonly DataManager _dataManager;
+		private readonly ILogger _logger;
+
+		// 스폰 포인트 및 몬스터 관리
+		private readonly List<SpawnPoint> _spawnPoints = new List<SpawnPoint>();
+		private readonly ConcurrentDictionary<long, Monster> _monsters = new ConcurrentDictionary<long, Monster>();
+		private readonly ConcurrentDictionary<long, MonsterAI> _monsterAis = new ConcurrentDictionary<long, MonsterAI>();
+
+
+		// 몬스터 ID 생성
+		private static long _nextMonsterId = 1;
+
+		// 스폰 설정
+		private int _maxMonsters = 50;
+		private readonly TimeSpan _defaultRespawnInterval = TimeSpan.FromSeconds(5);
+
+		// 업데이트 관련
+		private DateTime _lastUpdateTime;
+		private readonly TimeSpan _updateInterval = TimeSpan.FromMilliseconds(100);
+
+		private class DelayedDespawn
+		{
+			public long MonsterId { get; set; }
+			public DateTime DespawnTime { get; set; }
+		}
+
+		private readonly List<DelayedDespawn> _delayedDespawns = new List<DelayedDespawn>();
+		private readonly object _despawnLock = new object();
+
+		// 이벤트 : Room에서 Despawn 알림
+		public event Action<long> OnMonsterDespawned;
+		public event Action<Monster> OnMonsterSpawned;
+
+		public IReadOnlyDictionary<long, Monster> Monsters => _monsters;
+		public int MonsterCount => _monsters.Count;
+		public int SpawnPointCount => _spawnPoints.Count;
+
+		public MonsterSpawner(IRoom room, DataManager dataManager, ILogger logger)
+		{
+			_room = room;
+			_dataManager = dataManager;
+			_logger = logger;
+
+			_lastUpdateTime = DateTime.UtcNow;
+		}
+
+		/// <summary>
+		/// 스폰 포인트 추가
+		/// </summary>
+		public void AddSpawnPoint(int templateId, PosInfo position, TimeSpan? respawnInterval = null)
+		{
+			if(position == null)
+				throw new ArgumentNullException(nameof(position));
+
+			// 템플릿 데이터 검증
+			MonsterData monsterData = _dataManager.GetMonster(templateId);
+			if(monsterData == null)
+			{
+				_logger.LogError( "Failed to add spawn point: Monster template {TemplateId} not found", templateId );
+				return;
+			}
+
+			var spawnPoint = new SpawnPoint(
+				templateId,
+				position,
+				respawnInterval ?? _defaultRespawnInterval);
+
+			_spawnPoints.Add(spawnPoint);
+
+			_logger.LogInformation("Spawn point added: Template={TemplateId} at ({X}, {Y}, {Z})",
+				templateId, position.PosX, position.PosY, position.PosZ);
+		}
+
+		/// <summary>
+		/// 초기 몬스터 스폰 (Room 초기화 시 호출)
+		/// </summary>
+		public void SpawnInitialMonsters()
+		{
+			_logger.LogInformation( "Spawning initial monster for room {RoomId}...", _room.RoomId );
+
+			int spawnedCount = 0;
+			foreach(var spawnPoint in _spawnPoints)
+			{
+				if(_maxMonsters <= spawnedCount) break;
+
+				Monster monster = SpawnMonster(spawnPoint);
+				if(monster != null)
+				{
+					spawnedCount++;
+				}
+			}
+
+			_logger.LogInformation( "Initial spawn completed: {Count} monsters spawned", spawnedCount );
+		}
+
+		/// <summary>
+		/// 특정 스폰 포인트에서 몬스터 스폰
+		/// </summary>
+		public Monster SpawnMonster(SpawnPoint spawnPoint)
+		{
+			if(spawnPoint == null) return null;
+			if(_maxMonsters <= _monsters.Count) return null;
+
+			// 몬스터 정적 데이터 로드
+			MonsterData monsterData = _dataManager.GetMonster(spawnPoint.TemplateId);
+			if(monsterData == null)
+			{
+				_logger.LogError("Cannot spawn monster: Template {TemplateId} not found", spawnPoint.TemplateId);
+				return null;
+			}
+
+			// 몬스터 ID 생성
+			long monsterId = GenerateNextMonsterId();
+
+			// 몬스터 생성
+			Monster monster = new Monster(monsterId, spawnPoint.TemplateId, spawnPoint.Position, monsterData);
+
+			// 몬스터 이벤트 구독
+			monster.OnDeath += OnMonsterDeath;
+			monster.OnHealthChanged += OnMonsterHealthChanged;
+			monster.OnStateChanged += OnMonsterStateChanged;
+
+			// 딕셔너리에 추가
+			if(!_monsters.TryAdd(monsterId, monster))
+			{
+				_logger.LogError( "Failed to add monster {MonsterId} to dictionary", monsterId );
+				return null;
+			}
+
+			// AI 생성
+			MonsterAI monsterAi = new MonsterAI(monster, _room, _logger);
+			if(!_monsterAis.TryAdd(monsterId, monsterAi))
+			{
+				_monsters.TryRemove( monsterId, out _ );
+				_logger.LogError( "Failed to add monster AI for monster {MonsterId}", monsterId );
+				return null;
+			}
+
+			// 스폰 포인트 업데이트
+			spawnPoint.CurrentMonsterId = monsterId;
+			spawnPoint.LastSpawnTime = DateTime.UtcNow;
+
+			_logger.LogInformation("Monster spawned: {MonsterId} ({Name}) at ({X}, {Y}, {Z})",
+				monsterId, monster.Name, monster.Position.PosX, monster.Position.PosY,  monster.Position.PosZ);
+
+			return monster;
+		}
+
+		/// <summary>
+		/// 몬스터 제거
+		/// </summary>
+		public bool DespawnMonster(long monsterId)
+		{
+			if(!_monsters.TryRemove( monsterId, out Monster monster ))
+				return false;
+
+			// AI 제거
+			_monsterAis.TryRemove( monsterId, out _ );
+
+			// 이벤트 구독 해제
+			monster.OnDeath -= OnMonsterDeath;
+			monster.OnHealthChanged -= OnMonsterHealthChanged;
+			monster.OnStateChanged -= OnMonsterStateChanged;
+
+			// 스폰 포인트 업데이트
+			var spawnPoint = _spawnPoints.FirstOrDefault(sp => sp.CurrentMonsterId == monsterId);
+			if(spawnPoint != null)
+			{
+				spawnPoint.CurrentMonsterId = 0;
+				spawnPoint.LastSpawnTime = DateTime.UtcNow;
+			}
+
+			_logger.LogInformation( "Monster despawned: {MonsterId}", monsterId );
+
+			return true;
+		}
+
+		/// <summary>
+		/// 몬스터를 지정된 시간 후에 Despawn하도록 예약
+		/// JobQueue Worker 스레드에서 안전하게 처리됨
+		/// </summary>
+		public void ScheduleDespawn(long monsterId, TimeSpan delay)
+		{
+			lock(_despawnLock)
+			{
+				// 이미 예약된 경우 패스
+				if(_delayedDespawns.FirstOrDefault( d => d.MonsterId == monsterId ) != null)
+				{
+					_logger.LogWarning( "Schedule Despawn already Monster {MonsterId} ", monsterId );
+					return;
+				}
+
+				_delayedDespawns.Add( new DelayedDespawn
+				{
+					MonsterId = monsterId,
+					DespawnTime = DateTime.UtcNow + delay
+				} );
+			}
+
+			_logger.LogInformation( "Scheduled despawn for Monster {MonsterId} after {Delay}s", monsterId, delay.TotalSeconds );
+		}
+
+		private void ProcessDelayedDespawns(DateTime now)
+		{
+			List<DelayedDespawn> toRemove = null;
+
+			lock( _despawnLock )
+			{
+				if(_delayedDespawns.Count == 0) return;
+
+				// 시간이 된 Despawn들 찾기
+				toRemove = _delayedDespawns.Where( d => d.DespawnTime <= now ).ToList();
+
+				if(toRemove.Count == 0) return;
+
+				// 리스트에서 제거
+				foreach(var delayed in toRemove)
+				{
+					_delayedDespawns.Remove( delayed );
+				}
+			}
+
+			// lock 밖에서 실제 Despawn 처리
+			foreach(var delayed in toRemove)
+			{
+				bool success = DespawnMonster(delayed.MonsterId);
+
+				if(success)
+				{
+					_logger.LogInformation( "Monster {MonsterId} despawned (delayed)", delayed.MonsterId );
+
+					// Room에 Despawn 이벤트 발생 (S_MonsterDespawn 패킷 전송용)
+					OnMonsterDespawned?.Invoke( delayed.MonsterId );
+				}
+			}
+		}
+
+		/// <summary>
+		/// 주기적 업데이트 (Room에서 호출)
+		/// </summary>
+		public void Update()
+		{
+			DateTime now = DateTime.UtcNow;
+
+			// 업데이트 주기 체크
+			if(now - _lastUpdateTime < _updateInterval) return;
+			_lastUpdateTime = now;
+
+			// 모든 몬스터 AI 업데이트
+			foreach(var kvp in _monsterAis)
+			{
+				try
+				{
+					kvp.Value.Update();
+				}
+				catch(Exception ex)
+				{
+					_logger.LogError(ex, "Error updating monster AI for monster {MonsterId}", kvp.Key);
+				}
+			}
+
+			// 딜레이된 Despawn 처리 (JobQueue 안에서 안전하게 실행됨)
+			ProcessDelayedDespawns( now );
+
+			// 리스폰 체크(CanSpawn()이 RespawnInterval로 자동 필터링)
+			CheckRespawns();
+		}
+
+		///<summary>
+		/// 리스폰 체크
+		/// </summary>
+		private void CheckRespawns()
+		{
+			foreach(var spawnPoint in _spawnPoints)
+			{
+				if(_maxMonsters <= _monsters.Count) break;
+
+				if(spawnPoint.CanSpawn())
+				{
+					Monster respawnedMonster = SpawnMonster( spawnPoint );
+
+					if(respawnedMonster != null)
+					{
+						OnMonsterSpawned?.Invoke( respawnedMonster );
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// 특정 몬스터 조회
+		/// </summary>
+		public Monster GetMonster(long monsterId)
+		{
+			return _monsters.TryGetValue(monsterId, out Monster monster) ? monster : null;
+		}
+
+		/// <summary>
+		/// 모든 몬스터 조회
+		/// </summary>
+		public List<Monster> GetAllMonsters()
+		{
+			return _monsters.Values.ToList();
+		}
+
+		/// <summary>
+		/// 살아있는 몬스터만 조회
+		/// </summary>
+		public List<Monster> GetAliveMonsters()
+		{
+			return _monsters.Values.Where(m => m.IsAlive).ToList();
+		}
+
+		/// <summary>
+		/// 최대 몬스터 수 설정
+		/// </summary>
+		public void SetMaxMonsters(int maxMonsters)
+		{
+			_maxMonsters = Math.Max( 1, maxMonsters );
+			_logger.LogInformation( "Max monsters set to {MaxMonsters}", _maxMonsters );
+		}
+
+		/// <summary>
+		/// 모든 몬스터 제거 (Room 정리 시)
+		/// </summary>
+		public void ClearAllMonsters()
+		{
+			_logger.LogInformation( "Clearing all monsters in room {RoomId}...", _room.RoomId );
+
+			List<long> monsterIds = _monsters.Keys.ToList();
+			foreach(long monsterId in monsterIds)
+			{
+				DespawnMonster( monsterId );
+			}
+
+			_spawnPoints.Clear();
+
+			_logger.LogInformation( "All monsters cleared" );
+		}
+
+		// 몬스터 ID 생성 (thread-safe)
+		private static long GenerateNextMonsterId()
+		{
+			return Interlocked.Increment( ref _nextMonsterId );
+		}
+
+		// 이벤트 핸들러
+		private void OnMonsterDeath(Monster monster)
+		{
+			_logger.LogInformation( "Monster {MonsterId} ({Name}) died", monster.MonsterId, monster.Name );
+
+			// 몬스터 제거 (리스폰 가능하도록)
+			//DespawnMonster( monster.MonsterId );
+
+			// TODO: BaseRoom에서 보상 처리 및 S_MonsterDie 브로드캐스트
+		}
+
+		private void OnMonsterHealthChanged(Monster monster, int oldHP, int newHP)
+		{
+			// TODO: HP 변화가 클 경우 S_MonsterUpdate 브로드캐스트
+		}
+
+		private void OnMonsterStateChanged(Monster monster, MonsterState oldState, MonsterState newState)
+		{
+			_logger.LogDebug( "Monster {MonsterId} state changed: {OldState} -> {NewState}",
+				  monster.MonsterId, oldState, newState );
+		}
+	}
+}

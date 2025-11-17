@@ -2,7 +2,9 @@
 using Microsoft.Extensions.Options;
 using Protocol;
 using Server.Config;
+using Server.Core.Jobs;
 using Server.Core.Session;
+using Server.Data;
 using ServerCore;
 using System;
 using System.Collections.Generic;
@@ -28,8 +30,10 @@ namespace Server.Room
 		public bool IsDefaultLobby { get; private set; }
 
 		public LobbyRoom( ILogger<LobbyRoom> logger, IOptions<ServerSettings> ServerSettings,
+			DataManager datamanager, JobQueueManager jobQueueManager, JobPool jobPool,
 			string roomName = null, bool isDefaultLobby = false ) 
-			: base( logger, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers )
+			: base( logger, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
+				  jobQueueManager, jobPool)
 		{
 			_lobbyLogger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_serverSettings = ServerSettings.Value ?? throw new ArgumentNullException(nameof( ServerSettings ) );

@@ -30,6 +30,12 @@ namespace DummyClient.Packet
         public virtual ValueTask On_S_ItemUnequipped(Session session, S_ItemUnequipped packet) { Console.WriteLine("Received but not handled: S_ItemUnequipped"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_ItemAdded(Session session, S_ItemAdded packet) { Console.WriteLine("Received but not handled: S_ItemAdded"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_InventoryUpdate(Session session, S_InventoryUpdate packet) { Console.WriteLine("Received but not handled: S_InventoryUpdate"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterSpawn(Session session, S_MonsterSpawn packet) { Console.WriteLine("Received but not handled: S_MonsterSpawn"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterDespawn(Session session, S_MonsterDespawn packet) { Console.WriteLine("Received but not handled: S_MonsterDespawn"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterMove(Session session, S_MonsterMove packet) { Console.WriteLine("Received but not handled: S_MonsterMove"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterAttack(Session session, S_MonsterAttack packet) { Console.WriteLine("Received but not handled: S_MonsterAttack"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterDie(Session session, S_MonsterDie packet) { Console.WriteLine("Received but not handled: S_MonsterDie"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterUpdate(Session session, S_MonsterUpdate packet) { Console.WriteLine("Received but not handled: S_MonsterUpdate"); return ValueTask.CompletedTask; }
     }
 
     public class PacketManager
@@ -75,6 +81,13 @@ namespace DummyClient.Packet
             _onRecv.Add((ushort)PacketID.S_ItemUnequipped, HandlePacket<S_ItemUnequipped>(_handler.On_S_ItemUnequipped));
             _onRecv.Add((ushort)PacketID.S_ItemAdded, HandlePacket<S_ItemAdded>(_handler.On_S_ItemAdded));
             _onRecv.Add((ushort)PacketID.S_InventoryUpdate, HandlePacket<S_InventoryUpdate>(_handler.On_S_InventoryUpdate));
+            _onRecv.Add((ushort)PacketID.S_MonsterSpawn, HandlePacket<S_MonsterSpawn>(_handler.On_S_MonsterSpawn));
+            _onRecv.Add((ushort)PacketID.S_MonsterDespawn, HandlePacket<S_MonsterDespawn>(_handler.On_S_MonsterDespawn));
+            _onRecv.Add((ushort)PacketID.S_MonsterMove, HandlePacket<S_MonsterMove>(_handler.On_S_MonsterMove));
+            _packetTypeToId.Add(typeof(Protocol.C_AttackMonster), PacketID.C_AttackMonster);
+            _onRecv.Add((ushort)PacketID.S_MonsterAttack, HandlePacket<S_MonsterAttack>(_handler.On_S_MonsterAttack));
+            _onRecv.Add((ushort)PacketID.S_MonsterDie, HandlePacket<S_MonsterDie>(_handler.On_S_MonsterDie));
+            _onRecv.Add((ushort)PacketID.S_MonsterUpdate, HandlePacket<S_MonsterUpdate>(_handler.On_S_MonsterUpdate));
         }
 
         public async ValueTask HandlePacket(Session session, ArraySegment<byte> buffer)
