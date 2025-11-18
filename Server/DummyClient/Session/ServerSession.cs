@@ -15,9 +15,16 @@ namespace DummyClient
 	{
 		public int DummyId { get; private set; }
 		private readonly ILogger<ServerSession> _logger;
-		public long DummySessionId { get; set; }
+		public long SessionId { get; private set; }
+
+		private static long _nextSessionId = 1;
 
 		private readonly PacketManager _packetManager;
+
+		private static long GenerateNextSessionId()
+		{
+			return System.Threading.Interlocked.Increment( ref _nextSessionId );
+		}
 
 		public ServerSession(ILogger<ServerSession> logger, PacketManager packetManager )
 		{
@@ -34,16 +41,13 @@ namespace DummyClient
 
 		public override void OnConnected( EndPoint endPoint )
 		{
-			Program.Session = this;
-			//Console.WriteLine( $"OnConnected: {endPoint}" );
+			SessionId = GenerateNextSessionId();
 			_logger.LogInformation( "OnConnected: {endPoint}", endPoint );
 		}
 
 		public override void OnDisConnected( EndPoint endPoint )
 		{
-			//Console.WriteLine( $"OnDisConnected: {endPoint}" );
 			_logger.LogInformation( "OnDisConnected: {endPoint}", endPoint );
-			Program.Session = null;
 		}
 
 		public override void OnRecvPacket( ArraySegment<byte> buffer )

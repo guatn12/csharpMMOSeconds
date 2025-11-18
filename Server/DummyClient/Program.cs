@@ -112,13 +112,25 @@ namespace DummyClient
 		// 플레이어 정보 추가
 		public static ClientPlayerInfo MyPlayer = new ClientPlayerInfo();
 
+		public static Dictionary<long, ClientPlayerInfo> Players = new();
+
 		// 몬스터 추적
 		public static Dictionary<long, MonsterInfo> NearbyMonsters = new Dictionary<long, MonsterInfo>();
 
 		public static long TargetMonsterId = 0;
 		public static bool AutoAttackEnabled = true;		// 자동 공격 활성화.
 		public static readonly float AttackRange = 5.0f;    // 공격 범위(서버와 동일)
-		public static readonly float MoveSpeed = 5.0f;		// 이동 속도 (초당 5 유닛)
+		public static readonly float MoveSpeed = 5.0f;      // 이동 속도 (초당 5 유닛)
+
+		// 포션 자동 사용 설정
+		public static bool AutoPotionEnabled = true;
+		public static float AutoPotionThreshold = 0.5f;	// 50% 이하 시 사용
+		public static DateTime LastPotionUseTime = DateTime.MinValue;
+		public static readonly TimeSpan PotionCooldown = TimeSpan.FromSeconds(5);
+
+		// 포션 정보
+		public static int HealthPotionSlot = -1;
+		public static int HealthPotionItemId = 1001;
 
 		// 인벤토리 자동 조회
 		public static bool InventoryRequested = false;
@@ -254,8 +266,6 @@ namespace DummyClient
 		// 다중 클라이언트 실행
 		private static void RunClientInstance( int clientId, IPEndPoint endPoint, ClientConfiguration config, CancellationToken cancellationToken )
 		{
-			ServerSession session = null;
-
 			try
 			{
 				var logger = _serviceProvider.GetRequiredService<ILogger<Program>>();
@@ -294,8 +304,7 @@ namespace DummyClient
 					{
 						var sessionLogger = _serviceProvider.GetRequiredService<ILogger<ServerSession>>();
 						// ServerSession 생성자에 DI에서 관리되는 PacketManager 인스턴스 주입
-						session = new ServerSession( sessionLogger, packetManager );
-						return session;
+						return new ServerSession( sessionLogger, packetManager );
 					} );
 
 					// 연결 완료 대기(최대 1초)
@@ -346,120 +355,19 @@ namespace DummyClient
 
 				logger.LogInformation( "클라이언트 {ClientId} 연결 성공", clientId );
 
-				//개별 클라이언트 루프 실행
-				RunClientLoop( clientId, session, config, logger, cancellationToken );
+				if(connector.ConnectionSession == null)
+				{
+					logger.LogError( "클라이언트 {ClientId} 연결 성공했지만 세션이 null 입니다.", clientId );
+					return;
+				}
+
+				//개별 클라이언트 루프 실행 (통합 MainLoop 호출)
+				MainLoop( clientId, (ServerSession)connector.ConnectionSession, config, logger, cancellationToken );
 			}
 			catch(Exception ex)
 			{
 				var logger = _serviceProvider.GetService<ILogger<Program>>();
 				logger.LogError( ex, "클라이언트 {ClientId} 실행 중 오류", clientId );
-			}
-		}
-
-		// 개별 클라이언트 메인 루프
-		private static void RunClientLoop( int clientId, ServerSession session, ClientConfiguration config,
-			ILogger<Program> logger, CancellationToken cancellationToken )
-		{
-			int moveCount = 0;
-			Random random = new Random(clientId * 1000); // 클라이언트별 다른 시도
-			int messageInterval = config.Simulation.MessageIntervalMs;
-
-			// 클라이언트별 타겟 몬스터 (간단히 클라이언트 ID로 구분)
-			long localTargetMonsterId = 0;
-
-			// 기본 타겟 위치 (클라이언트별로 조금씩 다름)
-			float targetX = 50.0f + (clientId % 3 -1) *10;
-			float targetZ = 50.0f + (clientId%3 -1) *10;
-
-			logger.LogInformation( "클라이언트 {ClientId} 루프 시작 - 메시지 간격: {IntervalMs}ms", clientId, messageInterval );
-
-			while(session.IsConnected() && !cancellationToken.IsCancellationRequested)
-			{
-				try
-				{
-					// 타겟 몬스터 선택 (간단히 첫 번째 몬스터)
-					if(0 < NearbyMonsters.Count && localTargetMonsterId == 0)
-					{
-						localTargetMonsterId = NearbyMonsters.Keys.First();
-						logger.LogInformation( "[Client {ClientId}] 타겟 선택: Monster {MonsterId}",
-							clientId, localTargetMonsterId );
-					}
-
-					// 타겟 몬스터 위치 업데이트
-					if(NearbyMonsters.TryGetValue( localTargetMonsterId, out var targetMonster ))
-					{
-						targetX = targetMonster.PosInfo.PosX;
-						targetZ = targetMonster.PosInfo.PosZ;
-					}
-
-					// 몬스터 공격 (2초마다)
-					if(moveCount % 2 == 0 && 0 < localTargetMonsterId)
-					{
-						C_AttackMonster attackPacket = new C_AttackMonster
-						{
-							MonsterId = localTargetMonsterId,
-							SkillId = 0
-						};
-						session.Send( attackPacket );
-						logger.LogDebug( "[Client {ClientId}] C_AttackMonster: Target={MonsterId}",
-							clientId, localTargetMonsterId );
-					}
-
-					// 이동 패킷 전송 (타겟 몬스터 중심 원형 이동)
-					float orbitRadius = 3.0f + (clientId % 3) * 0.3f;  // 3.0~3.6 유닛 (클라이언트별 차이)
-					C_Move movePacket = new C_Move()
-					{
-						PosInfo = new PosInfo()
-						{
-							PosX = targetX + (float)(Math.Sin(moveCount * 0.2) * orbitRadius),  // 타겟 중심 원형 이동
-							PosY = 1.0f,                                                          // 고정 높이
-							PosZ = targetZ + (float)(Math.Cos(moveCount * 0.2) * orbitRadius),  // 타겟 중심 원형 이동
-							RotationX = 0.0f,
-							RotationY = (float)(moveCount * 5) % 360,
-							RotationZ = 0.0f,
-							Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-						},
-					};
-
-					session.Send( movePacket );
-					logger.LogDebug( "[Client {ClientId}] Send C_Move: 3D Position=({X:F2},{Y:F2},{Z:F2}), " +
-						"Rotation=({RotX:F1}°,{RotY:F1}°,{RotZ:F1}°)",
-						clientId, movePacket.PosInfo.PosX, movePacket.PosInfo.PosY, movePacket.PosInfo.PosZ,
-						movePacket.PosInfo.RotationX, movePacket.PosInfo.RotationY, movePacket.PosInfo.RotationZ );
-
-					// 채팅 패킷 전송 (5번마다 1번)
-					if(moveCount % 5 == 0)
-					{
-						C_Chat chatPacket = new C_Chat()
-						{
-							Message = $"[Client-{clientId:D2}] 안녕하세요! {moveCount/5+1}번째 채팅 (총 이동: {moveCount})"
-						};
-
-						session.Send( chatPacket );
-						logger.LogInformation( "[Client {ClientId}] Send C_Chat: {Message}", clientId, chatPacket.Message );
-					}
-
-					moveCount++;
-
-					// 설정에서 가져온 메시지 간격 사용 (약간의 랜덤 요소 추가)
-					int sleepTime = messageInterval + random.Next(-100, 100); // +- 100ms 랜덤
-					sleepTime = Math.Max( sleepTime, 100 ); // 최소 100ms 보장
-
-					// CancellationToken을 고려한 대기
-					try
-					{
-						Task.Delay( sleepTime, cancellationToken ).Wait();
-					}
-					catch(OperationCanceledException)
-					{
-						break;
-					}
-				}
-				catch(Exception ex)
-				{
-					logger.LogError( ex, "클라이언트 {ClientId} 루프 중 오류", clientId );
-					break;
-				}
 			}
 		}
 
@@ -509,6 +417,7 @@ namespace DummyClient
 
 				if(signaled && connector.IsConnected)
 				{
+					Session = (ServerSession)connector.ConnectionSession;
 					connected = true;
 					logger.LogInformation( "클라이언트 {ClientId} 연결 성공 ({RetryCount} 번째 시도)",
 						clientId, retryCount );
@@ -540,66 +449,80 @@ namespace DummyClient
 
 			logger.LogInformation( "클라이언트 {ClientId} 연결 성공", clientId );
 
-			//Connector connector = new Connector();
-			//_logger.LogInformation( "서버 연결 시도: {EndPoint}", endPoint );
+			// 연결된 session 확인 (전역 Session 사용)
+			if(Session == null)
+			{
+				logger.LogError( "클라이언트 {ClientId} 세션이 null입니다.", clientId );
+				return;
+			}
 
-			//connector.Connect( endPoint, () =>
-			//{
-			//	var sessionLogger = _serviceProvider.GetRequiredService<ILogger<ServerSession>>();
-			//	var packetManager = _serviceProvider.GetRequiredService<PacketManager>();
-			//	return new ServerSession( sessionLogger, packetManager );
-			//} );
-
-			// 메인 루프는 기존과 동일...
-			MainLoop( config );
+			// 통합 MainLoop 호출
+			MainLoop( (int)clientId, Session, config, logger );
 		}
 
-		private static void MainLoop( ClientConfiguration config )
+		// 통합 메인 루프 (단일/다중 클라이언트 공용)
+		private static void MainLoop(int clientId, ServerSession session, ClientConfiguration config,
+			ILogger<Program> logger, CancellationToken cancellationToken = default)
 		{
 			int moveCount = 0;
 			int messageInterval = config.Simulation.MessageIntervalMs;
 
-			_logger.LogInformation( "단일 클라이언트 루프 시작 - 메시지 간격: {IntervalMs}ms", messageInterval );
-			_logger.LogInformation( "자동 공격 모드 :{AutoAttack}", AutoAttackEnabled ? "활성화" : "비화성화" );
-
-			//float targetX = 50.0f;
-			//float targetZ = 50.0f;
+			logger.LogInformation( "[Client {ClientId}] 루프 시작 - 메시지 간격: {IntervalMs}ms", clientId, messageInterval );
+			logger.LogInformation( "[Client {ClientId}] 자동 공격 모드: {AutoAttack}", clientId, AutoAttackEnabled ? "활성화" : "비활성화" );
 
 			// 로그 카운터
 			int logCounter = 0;
 
-			while(true)
+			while(session.IsConnected() && !cancellationToken.IsCancellationRequested)
 			{
 				try
 				{
-					if(Session == null)
-					{
-						Thread.Sleep( 300 );
-						continue;
-					}
 
 					// ===== 인벤토리 자동 조회 =====
 					// 1. 초기 조회 (5초 후 1회)
 					if(!InventoryRequested && 5 <= moveCount)
 					{
 						C_InventoryRequest inventoryPacket = new C_InventoryRequest();
-						Session.Send( inventoryPacket );
+						session.Send( inventoryPacket );
 						InventoryRequested = true;
 						LastInventoryRequestTime = DateTime.UtcNow;
 
-						_logger.LogInformation( "[Send] C_InventoryRequest - 초기 인벤토리 조회" );
+						logger.LogInformation( "[Client {ClientId}] [Send] C_InventoryRequest - 초기 인벤토리 조회", clientId );
 					}
 
 					// 2. 주기적 재조회 (30초마다)
 					if(InventoryRequested && 30 <= (DateTime.UtcNow - LastInventoryRequestTime).TotalSeconds)
 					{
 						C_InventoryRequest inventoryPacket = new C_InventoryRequest();
-						Session.Send( inventoryPacket );
+						session.Send( inventoryPacket );
 						LastInventoryRequestTime = DateTime.UtcNow;
 
-						_logger.LogInformation( "[Send] C_InventoryRequest - 주기적 조회 (30초)" );
+						logger.LogInformation( "[Client {ClientId}] [Send] C_InventoryRequest - 주기적 조회 (30초)", clientId );
 					}
 					// ===== 인벤토리 자동 조회 끝 =====
+
+					// ===== 포션 자동 사용 =====
+					if(AutoPotionEnabled && 0 <= HealthPotionSlot)
+					{
+						float hpPercent = MyPlayer.HPPercent;
+						bool cooldownReady = PotionCooldown <= (DateTime.UtcNow - LastPotionUseTime);
+
+						if(hpPercent < AutoPotionThreshold * 100 && cooldownReady)
+						{
+							C_UseItem useItemPacket = new C_UseItem
+							{
+								Slot = HealthPotionSlot,
+								Quantity = 1
+							};
+
+							session.Send( useItemPacket );
+							LastPotionUseTime = DateTime.UtcNow;
+
+							logger.LogWarning( "[Client {ClientId}] [Send] C_UseItem - HP 포션 자동 사용 (HP:{Percent: F1}%)",
+								clientId, hpPercent);
+						}
+					}
+					// ===== 포션 자동 끝 =====
 
 					// 1. 타겟 몬스터 선택 및 위치 업데이트
 					if(0 < NearbyMonsters.Count)
@@ -616,8 +539,8 @@ namespace DummyClient
 								var nearestMonster = aliveMonsters.First();
 								TargetMonsterId = nearestMonster.MonsterId;
 
-								_logger.LogInformation( "[타겟 변경] 새 타겟: {Name} (ID:{MonsterId})",
-								nearestMonster.Name, TargetMonsterId );
+								logger.LogInformation( "[Client {ClientId}] [타겟 변경] 새 타겟: {Name} (ID:{MonsterId})",
+								clientId, nearestMonster.Name, TargetMonsterId );
 							}
 							else
 							{
@@ -631,7 +554,7 @@ namespace DummyClient
 
 						if(logCounter % 10 == 0)
 						{
-							_logger.LogWarning( "몬스터가 스폰되지 않았습니다." );
+							logger.LogWarning( "[Client {ClientId}] 몬스터가 스폰되지 않았습니다.", clientId );
 						}
 					}
 
@@ -692,12 +615,12 @@ namespace DummyClient
 									Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
 								},
 							};
-							Session.Send( movePacket );
+							session.Send( movePacket );
 
 							if(moveCount % 5 == 0)
 							{
-								_logger.LogInformation( "[이동] → {Target} | 거리: {Distance:F2}m | 위치: ({X:F2}, {Y:F2},{Z:F2}) | 내 HP: {HP:F1}%",
-									targetName, distanceToTarget,
+								logger.LogInformation( "[Client {ClientId}] [이동] → {Target} | 거리: {Distance:F2}m | 위치: ({X:F2}, {Y:F2},{Z:F2}) | 내 HP: {HP:F1}%",
+									clientId, targetName, distanceToTarget,
 									MyPlayer.Position.PosX, MyPlayer.Position.PosY, MyPlayer.Position.PosZ, MyPlayer.HPPercent );
 							}
 						}
@@ -713,17 +636,17 @@ namespace DummyClient
 									SkillId = 0
 								};
 
-								Session.Send( attackPacket );
+								session.Send( attackPacket );
 
-								_logger.LogInformation( "[공격] {Target} | 거리: {Distance:F2}m | 내 HP: {MyHP:F1}% | 타겟 HP: {TargetHP}/{MaxHP}",
-									targetName, distanceToTarget, MyPlayer.HPPercent, targetMonster.CurrentHP, targetMonster.MaxHP );
+								logger.LogInformation( "[Client {ClientId}] [공격] {Target} | 거리: {Distance:F2}m | 내 HP: {MyHP:F1}% | 타겟 HP: {TargetHP}/{MaxHP}",
+									clientId, targetName, distanceToTarget, MyPlayer.HPPercent, targetMonster.CurrentHP, targetMonster.MaxHP );
 							}
 
 							// 공격 범위 내에서는 이동하지 않음 (위치 패킷 전송 안 함)
 							if(moveCount % 10 == 0)
 							{
-								_logger.LogDebug( "[대기] 공격 범위 내 정지 | 거리: {Distance:F2}m | HP: {HP:F1}%",
-									distanceToTarget, MyPlayer.HPPercent );
+								logger.LogDebug( "[Client {ClientId}] [대기] 공격 범위 내 정지 | 거리: {Distance:F2}m | HP: {HP:F1}%",
+									clientId, distanceToTarget, MyPlayer.HPPercent );
 							}
 						}
 					}
@@ -763,12 +686,12 @@ namespace DummyClient
 									Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
 								}
 							};
-							Session.Send( movePacket );
+							session.Send( movePacket );
 
 							if(moveCount % 10 == 0)
 							{
-								_logger.LogDebug( "[이동] Room 중앙으로 이동 중... 거리: {Distance:F2}m",
-									distanceToCenter );
+								logger.LogDebug( "[Client {ClientId}] [이동] Room 중앙으로 이동 중... 거리: {Distance:F2}m",
+									clientId, distanceToCenter );
 							}
 						}
 					}
@@ -777,18 +700,27 @@ namespace DummyClient
 					// 10초마다 채팅
 					if(moveCount % 10 == 0)
 					{
-						C_Chat chatPacket = new C_Chat() {Message = $"안녕하세요! {moveCount / 5}번째 채팅입니다." };
-						Session.Send( chatPacket );
-						_logger.LogInformation( $"[Send] C_Chat: {chatPacket.Message}" );
+						C_Chat chatPacket = new C_Chat() {Message = $"[Client-{clientId:D2}] 안녕하세요! {moveCount / 5}번째 채팅입니다." };
+						session.Send( chatPacket );
+						logger.LogInformation( "[Client {ClientId}] [Send] C_Chat: {Message}", clientId, chatPacket.Message );
 					}
 
 					moveCount++;
 					logCounter++;
-					Thread.Sleep( messageInterval );
+
+					// CancellationToken 지원
+					try
+					{
+						Task.Delay( messageInterval, cancellationToken ).Wait();
+					}
+					catch(OperationCanceledException)
+					{
+						break;
+					}
 				}
 				catch(Exception ex)
 				{
-					_logger.LogError( ex, "MainLoop 중 오류 발생" );
+					logger.LogError( ex, "[Client {ClientId}] MainLoop 중 오류 발생", clientId );
 					break;
 				}
 			}

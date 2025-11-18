@@ -15,6 +15,7 @@ namespace ServerCore
 		public ManualResetEvent ConnectDone { get; private set; }
 		public bool IsConnected { get; private set; }
 		public SocketError LastError { get; private set; }
+		public Session ConnectionSession { get; private set; }
 
 		public void Connect(IPEndPoint endPoint, Func<Session> sessionFactory)
 		{
@@ -57,6 +58,7 @@ namespace ServerCore
 				session.Start( args.ConnectSocket );
 				session.OnConnected(args.RemoteEndPoint );
 
+				ConnectionSession = session;
 				IsConnected = true;
 				LastError = SocketError.Success;
 			}

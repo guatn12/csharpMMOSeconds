@@ -191,7 +191,28 @@ namespace DummyClient.Packet
 
 			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_Heal( Session session, S_Heal packet ) { Console.WriteLine( "Received but not handled: S_Heal" ); return ValueTask.CompletedTask; }
+		public override ValueTask On_S_Heal( Session session, S_Heal packet ) 
+		{ 
+			int oldHP = Program.MyPlayer.Stats.CurrentHP;
+			if(packet.HealAmount <= 0)
+			{
+				_logger.LogWarning( "[Client] S_Heal - HealAmount({HealAmount}) is Zero or Negative!!!", packet.HealAmount);
+				return ValueTask.CompletedTask;
+			}
+
+			// 힐 타겟이 나인 경우 HP 업데이트
+			if(packet.TargetId == Program.MyPlayer.PlayerId)
+			{
+				Program.MyPlayer.Stats.CurrentHP = packet.CurrentHP;
+			}
+
+			_logger.LogInformation( "[Client] Heal!!! healerId: {healerId} -> TargetId: {TargetId}", packet.HealerId, packet.TargetId );
+			_logger.LogInformation( "HealAmount: {healAmount} | oldHP: {oldHP} -> CurrentHP: {CurrentHP} (ChangeValue: {Change}) ",
+				packet.HealAmount, oldHP, packet.CurrentHP, packet.CurrentHP - oldHP );
+
+
+			return ValueTask.CompletedTask; 
+		}
 		public override ValueTask On_S_LevelUp( Session session, S_LevelUp packet )
 		{
 			_logger.LogInformation( "[Client] LEVEL UP! Player {PlayerId} -> Level {NewLevel}",
@@ -239,10 +260,52 @@ namespace DummyClient.Packet
 			}
 
 			_logger.LogInformation( "========================================" );
+
+			// 포션 슬롯 감지
+			var healthPotion = packet.Items.FirstOrDefault(i => i.ItemId == Program.HealthPotionItemId);
+			if(healthPotion != null)
+			{
+				Program.HealthPotionSlot = healthPotion.Slot;
+				_logger.LogInformation( "[Potion] HP 포션 감지: 슬롯 {Slot}, 수량 x{Quantity}",
+					healthPotion.Slot, healthPotion.Quantity );
+			}
+			else
+			{
+				Program.HealthPotionSlot = -1;
+				_logger.LogDebug( "[Potion] HP 포션 없음" );
+			}
+			
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_UseItem( Session session, S_UseItem packet ) { Console.WriteLine( "Received but not handled: S_UseItem" ); return ValueTask.CompletedTask; }
+		public override ValueTask On_S_UseItem( Session session, S_UseItem packet ) 
+		{
+			_logger.LogInformation( "========================================" );
+			_logger.LogInformation( "[Client] S_UseItem - 아이템 사용" );
+			_logger.LogInformation( "========================================" );
+
+			if(packet.Success)
+			{
+				_logger.LogInformation( "[성공] 아이템 사용 완료" );
+				_logger.LogInformation( "  슬롯: {Slot}", packet.Slot );
+				_logger.LogInformation( "  남은 수량: x{RemainingQuantity}",
+					packet.RemainingQuantity );
+
+				// 서버 메시지 표시
+				if(!string.IsNullOrEmpty( packet.Message ))
+				{
+					_logger.LogInformation( "  메시지: {Message}", packet.Message );
+				}
+			}
+			else
+			{
+				_logger.LogWarning( "[실패] 아이템 사용 실패" );
+				_logger.LogWarning( "  사유: {Reason}", packet.Message ?? "알 수 없음" );
+			}
+
+			_logger.LogInformation( "========================================" );
+			return ValueTask.CompletedTask; 
+		}
 		public override ValueTask On_S_ItemEquipped( Session session, S_ItemEquipped packet )
 		{
 			_logger.LogInformation( "========================================" );

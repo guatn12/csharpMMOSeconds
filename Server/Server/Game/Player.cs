@@ -531,8 +531,9 @@ namespace Server.Game
 			// 아이템 ID에 따른 효과 적용(임시)
 			return item.ItemId switch
 			{
-				100 => UseHealthPotion( quantity * 50 ),        // 체력 포션
-				101 => UseManaPotion( quantity * 30 ),      // 마나 포션
+				1001 => UseHealthPotion( quantity * 50 ),			// 체력 포션 소
+				1002 => UseHealthPotion( quantity * 100 ),          // 체력 포션 중
+				1003 => UseManaPotion( quantity * 30 ),				// 마나 포션 소
 				102 => UseFullHealthPotion(),               // 완전 회복 표션
 				_ => true
 			};
