@@ -10,14 +10,16 @@ echo [GameData Copy Script] Starting...
 
 :: 현재 스크립트 위치에서 프로젝트 루트 계산
 set SCRIPT_DIR=%~dp0
-set PROJECT_ROOT=%SCRIPT_DIR%\..\
+set PROJECT_ROOT=%SCRIPT_DIR%\..\..\
 
 :: 소스 및 대상 경로 설정 (Common/GameData로 변경)
-set SOURCE_DIR=%PROJECT_ROOT%\GameData
+set SOURCE_DIR=%PROJECT_ROOT%\Common\GameData
 set TARGET_DIR=%PROJECT_ROOT%\Server\Server\bin\Debug\net8.0\GameData
+set CLIENT_TARGET_DIR=%PROJECT_ROOT%\Server\DummyClient\bin\Debug\net8.0\GameData
 
 echo [INFO] Source Directory: %SOURCE_DIR%
 echo [INFO] Target Directory: %TARGET_DIR%
+echo [INFO] Client Target Directory: %CLIENT_TARGET_DIR%
 
 :: 소스 디렉토리 존재 확인
 if not exist "%SOURCE_DIR%" (
@@ -33,18 +35,28 @@ if not exist "%TARGET_DIR%" (
     mkdir "%TARGET_DIR%"
 )
 
+:: 클라이언트 대상 디렉토리 생성 (없으면)
+if not exist "%CLIENT_TARGET_DIR%" (
+    echo [INFO] Creating target directory: %CLIENT_TARGET_DIR%
+    mkdir "%CLIENT_TARGET_DIR%"
+)
+
 :: JSON 파일들 복사
 echo [INFO] Copying JSON files...
 copy "%SOURCE_DIR%\*.json" "%TARGET_DIR%\" /Y
+copy "%SOURCE_DIR%\*.json" "%CLIENT_TARGET_DIR%\" /Y
 
 if %ERRORLEVEL% EQU 0 (
     echo [SUCCESS] GameData files copied successfully!
     echo [SUCCESS] Files copied to: %TARGET_DIR%
+    echo [SUCCESS] Files copied to: %CLIENT_TARGET_DIR%
     
     :: 복사된 파일 목록 표시
     echo.
-    echo [INFO] Copied files:
+    echo [INFO] Server Copied files:
     dir "%TARGET_DIR%\*.json" /B
+    echo [INFO] Client Copied files:
+    dir "%CLIENT_TARGET_DIR%\*.json" /B
 ) else (
     echo [ERROR] Failed to copy GameData files. Error code: %ERRORLEVEL%
     pause

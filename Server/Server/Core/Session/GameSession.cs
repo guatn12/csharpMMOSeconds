@@ -1,6 +1,7 @@
 ﻿using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Protocol;
+using Server.Database.Entities;
 using Server.Game;
 using Server.Infra;
 using Server.Packet;
@@ -10,6 +11,7 @@ using ServerCore;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -136,6 +138,20 @@ namespace Server.Core.Session
 		{
 			//LogManager.Info("Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
 			_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
+
+            // Player 이벤트 구독 해제 추가
+            if(Player != null)
+            {
+                Player.OnHealthChanged -= OnPlayerHealthChanged;
+                Player.OnManaChanged -= OnPlayerManaChanged;
+                Player.OnLevelUp -= OnPlayerLevelUp;
+                Player.OnItemAdded -= OnPlayerItemAdded;
+                Player.OnItemRemoved -= OnPlayerItemRemoved;
+                Player.OnItemUnequipped -= OnPlayerItemUnequipped;
+                Player.OnItemEquipped -= OnPlayerItemEquipped;
+                Player.OnEquipmentStatsChanged -= OnEquipmentStatsChanged;
+                Player.OnDeath -= OnPlayerDeath;
+            }
 
             // Redis에서 세션 정보 삭제
             _ = Task.Run( async () =>
@@ -272,11 +288,258 @@ namespace Server.Core.Session
         {
 			Player = new Player( SessionId, null );
 
-            _logger.LogInformation( "Player initialized: {PlayerInfo}", Player.ToString() );
+            Player.OnHealthChanged += OnPlayerHealthChanged;
+            Player.OnManaChanged += OnPlayerManaChanged;
+            Player.OnLevelUp += OnPlayerLevelUp;
+
+            Player.OnItemAdded += OnPlayerItemAdded;
+            Player.OnItemEquipped += OnPlayerItemEquipped;
+            Player.OnItemUnequipped += OnPlayerItemUnequipped;
+            Player.OnItemRemoved += OnPlayerItemRemoved;
+            Player.OnEquipmentStatsChanged += OnEquipmentStatsChanged;
+            Player.OnDeath += OnPlayerDeath;
+
+			_logger.LogInformation( "Player initialized: {PlayerInfo}", Player.ToString() );
         }
 
-        // 플레이어 상태 업데이트
-        public void UpdatePosition(PosInfo newPosition)
+        // HP 변경 이벤트 핸들러
+        private void OnPlayerHealthChanged(Player player, int oldHP, int newHP)
+        {
+            S_PlayerUpdate packet = new S_PlayerUpdate
+            {
+                Player = player.Info
+            };
+
+            Send(packet);
+
+			_logger.LogDebug( "[Event] Player HP Changed: PlayerId={PlayerId}, {OldHP} → {NewHP}",
+                player.PlayerId, oldHP, newHP);
+		}
+
+        // MP 변경 이벤트 핸들러
+        private void OnPlayerManaChanged(Player player, int oldMP, int newMP)
+        {
+			S_PlayerUpdate packet = new S_PlayerUpdate
+			{
+				Player = player.Info
+			};
+
+			Send( packet );
+
+			_logger.LogDebug( "[Event] Player MP Changed: PlayerId={PlayerId}, {OldMP} → {NewMP}",
+				player.PlayerId, oldMP, newMP );
+		}
+
+        // 레벨 업 이벤트 핸들러
+        private void OnPlayerLevelUp(Player player)
+        {
+            S_LevelUp packet = new S_LevelUp
+            {
+                PlayerId = player.PlayerId,
+                NewLevel = player.Level,
+                NewMaxHP = player.MaxHP,
+                NewMaxMP = player.MaxMP,
+
+            };
+
+            // 현재 룸의 모든 플레이어에게 브로드캐스트
+            if(CurrentRoom != null)
+            {
+                // async 메서드를 동기적으로 호출(이벤트 핸들러는 void 반환)
+                _ = CurrentRoom.BroadcastAsync( packet );
+            }
+
+			_logger.LogInformation( "[Event] Player Level Up: PlayerId={PlayerId},NewLevel={NewLevel}, HP={MaxHP}, MP={MaxMP}",
+                player.PlayerId, player.Level, player.MaxHP, player.MaxMP);
+		}
+
+        // 아이템 추가 이벤트 핸들러
+        private void OnPlayerItemAdded(Player player, int slot, InventoryItem item)
+        {
+            // InventoryItem -> InventoryItemInfo 변환
+            S_ItemAdded packet = new S_ItemAdded
+            {
+                Item = new InventoryItemInfo
+                {
+                    ItemId = item.ItemId,
+                    Quantity = item.Quantity,
+                    Slot = item.Slot,
+                    EnhancementLevel = item.Enhancement?.Level ?? 0,
+                    CustomName = item.CustomName ?? "",
+                    AcquiredAt = item.AcquiredAt.HasValue
+                    ? ((DateTimeOffset)item.AcquiredAt.Value).ToUnixTimeSeconds() : 0
+                },
+                Source = "Monster Drop"
+            };
+
+            // Options 딕셔너리 복사
+            if(item.Options != null && item.Options.Any())
+            {
+                foreach(var kvp in item.Options)
+                {
+                    packet.Item.Options.Add(kvp.Key, kvp.Value);
+                }
+            }
+
+            Send( packet );
+
+			_logger.LogInformation( "[Event] Item Added: PlayerId={PlayerId}, ItemId={ItemId}, Slot={Slot}, Qty={Quantity}",
+                player.PlayerId, item.ItemId, item.Slot, item.Quantity);
+		}
+
+        // 장비 착용 이벤트 핸들러
+        private void OnPlayerItemEquipped(Player player, PlayerEquipment.EquipSlot slot, InventoryItem item)
+        {
+            // 현재 장비 상태 조회
+            var equipmentData = player.GetEquipmentData();
+
+            S_ItemEquipped packet = new S_ItemEquipped
+            {
+                Success = true,
+                InventorySlot = item?.Slot ?? -1,
+                EquipSlot = (int)slot,
+                UpdatedEquipment = new EquipmentInfo()
+            };
+
+            // dictionary를 순회하면서 EquipmentInfo 채우기
+            foreach(var kvp in equipmentData)
+            {
+                switch(kvp.Key)
+                {
+                case PlayerEquipment.EquipSlot.Weapon:
+                    packet.UpdatedEquipment.WeaponItemId = kvp.Value.ItemId;
+                    break;
+                case PlayerEquipment.EquipSlot.Armor:
+                    packet.UpdatedEquipment.ArmorItemId = kvp.Value.ItemId;
+                    break;
+				case PlayerEquipment.EquipSlot.Helmet:
+					packet.UpdatedEquipment.HelmetItemId = kvp.Value.ItemId;
+					break;
+				case PlayerEquipment.EquipSlot.Gloves:
+					packet.UpdatedEquipment.GlovesItemId = kvp.Value.ItemId;
+					break;
+				}
+            }
+
+            packet.UpdatedStats = new PlayerStats
+            {
+                Attack = player.GetTotalAttack(),
+                Defense = player.GetTotalDefense(),
+                MaxHP = player.MaxHP,
+                MaxMP = player.MaxMP,
+                CurrentHP = player.CurrentHP,
+                CurrentMP = player.CurrentMP,
+            };
+
+            Send( packet );
+
+			_logger.LogInformation( "[Event] Item Equipped: PlayerId={PlayerId}, Slot={Slot}, ItemId={ItemId}",
+                player.PlayerId, slot, item?.ItemId ?? 0);
+		}
+
+        private void OnPlayerItemUnequipped(Player player, PlayerEquipment.EquipSlot slot, InventoryItem item)
+        {
+            var equipmentData = player.GetEquipmentData();
+
+            S_ItemUnequipped packet = new S_ItemUnequipped
+            {
+                Success = true,
+                EquipSlot = (int)slot,
+                ReturnedToSlot = item?.Slot ?? -1,
+                UpdatedEquipment = new EquipmentInfo()
+            };
+
+			// EquipmentInfo 채우기 (장착 핸들러와 동일)
+			foreach(var kvp in equipmentData)
+			{
+				switch(kvp.Key)
+				{
+				case PlayerEquipment.EquipSlot.Weapon:
+					packet.UpdatedEquipment.WeaponItemId = kvp.Value.ItemId;
+					break;
+				case PlayerEquipment.EquipSlot.Armor:
+					packet.UpdatedEquipment.ArmorItemId = kvp.Value.ItemId;
+					break;
+				case PlayerEquipment.EquipSlot.Helmet:
+					packet.UpdatedEquipment.HelmetItemId = kvp.Value.ItemId;
+					break;
+				case PlayerEquipment.EquipSlot.Gloves:
+					packet.UpdatedEquipment.GlovesItemId = kvp.Value.ItemId;
+					break;
+				}
+			}
+
+            packet.UpdatedStats = new PlayerStats
+            {
+                Attack = player.GetTotalAttack(),
+                Defense = player.GetTotalDefense(),
+                MaxHP = player.MaxHP,
+                MaxMP = player.MaxMP,
+                CurrentHP = player.CurrentHP,
+                CurrentMP = player.CurrentMP,
+            };
+
+            Send( packet );
+
+			_logger.LogInformation( "[Event] Item Unequipped: PlayerId={PlayerId}, Slot={Slot}, ReturnedSlot={ReturnedSlot}",
+                player.PlayerId, slot, item?.Slot ?? -1);
+		}
+
+        // 아이템 제거 이벤트 핸들러
+        private void OnPlayerItemRemoved(Player player, int slot, InventoryItem item)
+        {
+            // 제거된 아이템 정보 변환
+            InventoryItemInfo changedItem = new InventoryItemInfo
+            {
+                ItemId = item.ItemId,
+                Quantity = 0,           // 제거되었으므로 0
+                Slot = slot,
+            };
+
+            S_InventoryUpdate packet = new S_InventoryUpdate
+            {
+                ChangedItems = {changedItem },
+                NewGold = player.Inventory.Gold
+            };
+
+            Send( packet );
+
+			_logger.LogInformation( "[Event] Item Removed: PlayerId={PlayerId}, ItemId={ItemId}, Slot={Slot}",
+                player.PlayerId, item.ItemId, slot);
+		}
+
+        // 장비 스탯 변경 이벤트 핸들러
+        private void OnEquipmentStatsChanged(Player player, Dictionary<PlayerEquipment.StatType, int> stats)
+        {
+            S_PlayerStat packet = new S_PlayerStat
+            {
+                Player = player.Info
+            };
+
+			Send( packet );
+
+			_logger.LogDebug( "[Event] Equipment Stats Changed: PlayerId={PlayerId}",
+                player.PlayerId );
+		}
+
+        // 플레이어 죽음 이벤트 핸들러
+        private void OnPlayerDeath(Player player)
+        {
+            S_Despawn packet = new S_Despawn
+            {
+                ObjectIds = {player.PlayerId}
+            };
+
+            if(CurrentRoom != null)
+            {
+                _ = CurrentRoom.BroadcastAsync( packet );
+            }
+
+			_logger.LogWarning( "[Event] Player Death: PlayerId={PlayerId}", player.PlayerId );
+		}
+
+		// 플레이어 상태 업데이트
+		public void UpdatePosition(PosInfo newPosition)
         {
             if(Player == null) return;
 

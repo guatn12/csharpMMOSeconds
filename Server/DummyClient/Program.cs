@@ -16,6 +16,9 @@ using DummyClient.Configuration.Services;
 using System.Threading.Tasks;
 using DummyClient.Packet;
 using System.Linq;
+using DummyClient.Data;
+using DummyClient.Config;
+using Microsoft.VisualBasic;
 
 namespace DummyClient
 {
@@ -106,6 +109,7 @@ namespace DummyClient
 	{
 		public static ServerSession Session;
 		public static PacketManager PacketManagerInstance { get; private set; }
+		public static DataManager DataManagerInstance { get; private set; }
 		private static IServiceProvider _serviceProvider;
 		private static ILogger<Program> _logger;
 
@@ -131,6 +135,13 @@ namespace DummyClient
 		// 포션 정보
 		public static int HealthPotionSlot = -1;
 		public static int HealthPotionItemId = 1001;
+
+		// 스킬 설정
+		public static bool AutoSkillEnabled = false;
+		public static int PrimarySkillId = 1;	// 기본 공격 스킬.
+
+		// 스킬 쿨타임.
+		public static Dictionary<int, DateTime> SkillCooldowns = new Dictionary<int, DateTime>();
 
 		// 인벤토리 자동 조회
 		public static bool InventoryRequested = false;
@@ -194,6 +205,9 @@ namespace DummyClient
 			// New PacketManager and Handler Registration
 			services.AddSingleton<BaseClientPacketHandler, ClientPacketHandler>();
 			services.AddSingleton<PacketManager>();
+
+			services.AddSingleton<GameDataConfig>( sp => new GameDataConfig { DataPath = "GameData" } );
+			services.AddSingleton<DataManager>();
 		}
 
 		private static void RunClient()
@@ -207,6 +221,23 @@ namespace DummyClient
 				_logger.LogInformation( "클라이언트 설정이 변경되었습니다: {ServerHost}:{ServerPort}", newConfig.Connection.ServerHost,
 					newConfig.Connection.ServerPort );
 			} );
+
+			// DataManager 초기화 및 데이터 로드 추가.
+			DataManagerInstance = _serviceProvider.GetRequiredService<DataManager>();
+			_logger.LogInformation( "게임 데이터 로드 중..." );
+			bool loadSuccess = DataManagerInstance.LoadAllDataAsync().GetAwaiter().GetResult();
+
+			if(!loadSuccess)
+			{
+				_logger.LogError( "게임 데이터 로드 실패. 프로그램을 종료합니다." );
+				return;
+			}
+
+			_logger.LogInformation( "게임 데이터 로드 완료:" );
+			_logger.LogInformation( " - 아이템: {ItemCount}개", DataManagerInstance.GetTotalItemCount() );
+			_logger.LogInformation( " - 몬스터: {MonsterCount}개", DataManagerInstance.GetTotalMonsterCount() );
+			_logger.LogInformation( " - 스킬: {SkillCount}개", DataManagerInstance.GetTotalSkillCount() );
+			// DataManager 초기화 끝.
 
 			IPEndPoint endPoint = new IPEndPoint(
 				IPAddress.Parse(config.Connection.ServerHost),
@@ -628,8 +659,35 @@ namespace DummyClient
 						else
 						{
 							// 공격(2초마다)
-							if(AutoAttackEnabled && moveCount % 2 == 0)
+							if(AutoAttackEnabled && moveCount % 2 == 0 && 0 < TargetMonsterId)
 							{
+								// 스킬 시스템 사용
+								int currentMP = MyPlayer.Stats.CurrentMP;
+								int skillId = SelectAttackSkill(currentMP, logger);
+
+								if(0 < skillId)
+								{
+									C_UseSkill useSkillPacket = new C_UseSkill
+									{
+										SkillId = skillId,
+										TargetId = TargetMonsterId
+									};
+
+									session.Send( useSkillPacket );
+									SkillCooldowns[ skillId ] = DateTime.UtcNow;
+
+									var skillData = DataManagerInstance.GetSkill(skillId);
+									logger.LogInformation( "[Client {ClientId}] [Send] C_UseSkill - {SkillName}(ID:{SkillId}) -> {Target}(MP:-{ManaCost}, 쿨다운:{Cooldown}초)",
+										clientId, skillData?.Name ?? "Unknown", skillId, targetName, skillData?.ManaCost ?? 0, skillData?.CooldownSeconds ?? 0 );
+								}
+								else
+								{
+									logger.LogDebug( "[Client {ClientId}] 스킬 사용 불가", clientId );
+								}
+							}
+							else
+							{
+								// 기존 일반 공격
 								var attackPacket = new C_AttackMonster
 								{
 									MonsterId = TargetMonsterId,
@@ -724,6 +782,55 @@ namespace DummyClient
 					break;
 				}
 			}
+		}
+
+		private static int SelectAttackSkill(int currentMP, Microsoft.Extensions.Logging.ILogger logger)
+		{
+			if(DataManagerInstance == null || !DataManagerInstance.IsDataLoaded)
+			{
+				logger.LogWarning( "[Skill] 게임 데이터가 로드되지 않았습니다." );
+				return 0;
+			}
+
+			DateTime now = DateTime.UtcNow;
+
+			// 공격 스킬을 데미지 내림차순으로 가져오기
+			var attackSkills = DataManagerInstance.GetSkillsByType("Attack")
+				.OrderByDescending(s => s.Damage);
+
+			foreach(var skill in attackSkills)
+			{
+				// MP 체크
+				if(currentMP < skill.ManaCost)
+				{
+					logger.LogDebug( "[Skill] {SkillName}(ID:{SkillId}) - MP 부족 (필요:{Required}, 현재:{Current})",
+								skill.Name, skill.Id, skill.ManaCost, currentMP );
+					continue;
+				}
+
+				// 쿨다운 체크
+				if(SkillCooldowns.TryGetValue(skill.Id, out DateTime lastUseTime))
+				{
+					TimeSpan cooldown = TimeSpan.FromSeconds(skill.CooldownSeconds);
+					TimeSpan elapsed = now - lastUseTime;
+
+					if(elapsed < cooldown)
+					{
+						TimeSpan remaining = cooldown - elapsed;
+						logger.LogDebug( "[Skill] {SkillName}(ID:{SkillId}) - 쿨다운중 (남은:{Remaining:F1}초)",
+							skill.Name, skill.Id, remaining.TotalSeconds );
+						continue;
+					}
+				}
+
+				// 사용 가능
+				logger.LogDebug("[Skill] {SkillName}(ID:{SkillId}) 선택 (데미지:{Damage}, MP:{ManaCost})",
+					skill.Name, skill.Id, skill.Damage, skill.ManaCost );
+				return skill.Id;
+			}
+
+			logger.LogDebug( "[Skill] 사용 가능한 스킬 없음" );
+			return 0;
 		}
 	}
 }
