@@ -19,6 +19,8 @@ namespace Server.Room
 	// Room 생성, 관리, 검색을 담당하는 매니저
 	public class RoomManager : IRoomManager, IHostedService, IDisposable
 	{
+		private readonly IRoomFactory _roomFactory;
+		private readonly IServiceProvider _serviceProvider;
 		private readonly ILogger<RoomManager> _logger;
 		private readonly IOptionsMonitor<ServerSettings> _serverSettings;
 		private readonly ILoggerFactory _loggerFactory;
@@ -42,8 +44,11 @@ namespace Server.Room
 		public event EventHandler<PlayerRoomChangedEventArgs> PlayerRoomChanged;
 
 		public RoomManager( ILogger<RoomManager> logger, IOptionsMonitor<ServerSettings> serverSettings,
-			ILoggerFactory loggerFactory, DataManager dataManager, JobQueueManager jobQueueManager, JobPool jobPool )
+			ILoggerFactory loggerFactory, DataManager dataManager, JobQueueManager jobQueueManager, JobPool jobPool,
+			IRoomFactory roomFactory, IServiceProvider serviceProvider)
 		{
+			_roomFactory = roomFactory ?? throw new ArgumentNullException(nameof(roomFactory));
+			_serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_serverSettings = serverSettings ?? throw new ArgumentNullException( nameof( serverSettings ) );
 			_loggerFactory = loggerFactory ?? throw new ArgumentNullException( nameof( loggerFactory ) );
@@ -121,18 +126,7 @@ namespace Server.Room
 					return null;
 				}
 
-				IRoom room = roomType switch
-				{
-					RoomType.Lobby => new LobbyRoom(
-						_loggerFactory.CreateLogger<LobbyRoom>(),
-						Options.Create(_serverSettings.CurrentValue),
-						_dataManager, _jobQueueManager, _jobPool, roomName, false ),
-					RoomType.Battle => throw new NotImplementedException("BattleRoom not implemented yet"),
-					RoomType.Dungeon => throw new NotImplementedException("DungeonRoom not implemented yet"),
-					RoomType.Guild => throw new NotImplementedException("GuildRoom not implemented yet"),
-					RoomType.Private => throw new NotImplementedException("PrivateRoom not implemented yet"),
-					_ => throw new ArgumentException($"Unknown room type: {roomType}")
-				};
+				IRoom room = _roomFactory.CreateRoom(roomType, roomName, maxPlayers, _serviceProvider);
 
 				// 룸 초기화
 				await room.InitializeAsync();
@@ -176,8 +170,6 @@ namespace Server.Room
 					_defaultLobby = lobby;
 					_logger.LogInformation( "Default lobby created: '{LobbyName}' (ID: {RoomId})",
 						lobby.RoomName, lobby.RoomId );
-
-
 				}
 				return lobby;
 			}

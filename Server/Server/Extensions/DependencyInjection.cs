@@ -18,6 +18,8 @@ using System;
 using Npgsql;
 using Server.Database.Services;
 using Server.Services;
+using Server.Services.Combat;
+using Server.Services.Reward;
 
 namespace Server.Extensions
 {
@@ -162,8 +164,15 @@ namespace Server.Extensions
 		/// </summary>
 		private static IServiceCollection AddGameServices( this IServiceCollection services )
 		{
+			// Room Factory 등록
+			services.AddSingleton<IRoomFactory, RoomFactory>();
+
 			// Room 시스템
 			services.AddSingleton<IRoomManager, RoomManager>();
+
+			// Service 등록
+			services.AddScoped<ICombatService, CombatService>();
+			services.AddScoped<IRewardService, RewardService>();
 
 			return services;
 		}
