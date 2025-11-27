@@ -14,6 +14,10 @@ using Server.Game;
 using Server.Data;
 using Server.Utils;
 using Server.Core.Jobs;
+using Server.Services.Combat;
+using Server.Services.Reward;
+using Server.Services.DTOs;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace Server.Room
 {
@@ -59,11 +63,15 @@ namespace Server.Room
 		private readonly JobPool _jobPool;
 		private bool _isMonsterUpdateScheduled = false;	// Timer 누적 방지
 
+		// Service
+		protected readonly ICombatService _combatService;
+		protected readonly IRewardService _rewardService;
+
 		public event EventHandler<PlayerRoomEventArgs> PlayerEntered;
 		public event EventHandler<PlayerRoomEventArgs> PlayerLeft;
 
 		protected BaseRoom( ILogger logger, string roomName, int maxPlayers, DataManager dataManager,
-			JobQueueManager jobQueueManager, JobPool jobPool,
+			JobQueueManager jobQueueManager, JobPool jobPool, ICombatService combatService, IRewardService rewardService,
 			float roomWidth = 100.0f, float roomHeight = 50.0f, float roomDepth = 100.0f,
 			float minX = 0.0f, float minY = 0.0f, float minZ = 0.0f )
 		{
@@ -71,6 +79,9 @@ namespace Server.Room
 			_dataManager = dataManager;
 			_jobQueueManager = jobQueueManager;
 			_jobPool = jobPool;
+
+			_combatService = combatService;
+			_rewardService = rewardService;
 
 			RoomId = GenerateNextRoomId();
 			RoomName = roomName ?? throw new ArgumentNullException( nameof( roomName ) );
@@ -751,65 +762,41 @@ namespace Server.Room
 					return;
 				}
 
-				// 공격 범위 검증 (3D 거리)
-				float distance = Position3DValidator.CalculateDistance3D(session.Player.Position, monster.Position);
-				float attackRange = 5.0f;		// 기본 공격 범위
-
-				if(attackRange < distance)
+				var result = await _combatService.ProcessPlayerAttackMonsterAsync(session.Player, monster);
+				if(result == null)
 				{
-					logger.LogWarning( "Player {PlayerId} out of attack range for monster {MonsterId} (Distance: {Distance})",
-						session.Player.PlayerId, packet.MonsterId, distance );
+					_logger.LogWarning( "Player {PlayerId} tried to attack non-existent or dead monster {MonsterId}",
+						session.Player.PlayerId, monster.MonsterId );
 					return;
 				}
 
-				// 데미지 계산(최소 데미지 보정)
-				int baseDamage = session.Player.GetTotalAttack();
-				int defense = monster.StaticData.Defense;
-				int finalDamage = Math.Max(10, baseDamage - defense);
+				// 공격 쿨다운
+				session.Player.StartAttackCooldown();
 
-				// 크리티컬 계산
-				bool isCritical = new Random().NextDouble() < 0.1;
-				if(isCritical)
+				logger.LogInformation( "Player {PlayerId} attacked Monster {MonsterId} for {Damage} damage( Critical: {IsCritical}) -remain Monster HP({CurrentHP})",
+					session.Player.PlayerId, packet.MonsterId, result.Damage, result.IsCritical, result.TargetCurrentHP);
+
+				// s_damage 패킷 브로드캐스트
+				var damagePacket = new S_Damage
 				{
-					finalDamage = (int)(finalDamage * 1.5f);
-					logger.LogDebug( "Critical hit! Damage increased to {Damage}", finalDamage );
-				}
+					AttackerId = result.AttackerId,
+					TargetId = result.TargetId,
+					Damage = result.Damage,
+					CurrentHP = result.TargetCurrentHP,
+				};
+				await BroadcastAsync( damagePacket );
 
-
-				// 몬스터에게 데미지 적용
-				bool damaged = monster.TakeDamage(finalDamage, session.Player.PlayerId);
-				if(damaged)
+				// 몬스터 상태 업데이트 브로드 캐스트
+				var updatePacket = new S_MonsterUpdate
 				{
-					// 공격 쿨다운 시작 (이동 제한)
-					session.Player.StartAttackCooldown();
+					Monsters = {monster.Info }
+				};
+				await BroadcastAsync( updatePacket );
 
-					logger.LogInformation( "Player {PlayerId} attacked Monster {MonsterId} for {Damage} damage (Critical: {IsCritical}) - remain Monster HP({CurrentHP})",
-						session.Player.PlayerId, packet.MonsterId, finalDamage, isCritical, monster.CurrentHP );
-
-					// S_Damage 패킷 브로드캐스트
-					var damagePacket = new Protocol.S_Damage
-					{
-						AttackerId = session.Player.PlayerId,
-						TargetId = packet.MonsterId,
-						Damage = finalDamage,
-						CurrentHP = monster.CurrentHP
-					};
-
-					await BroadcastAsync( damagePacket );
-
-					// 몬스터 상태 업데이트 브로드캐스트
-					var updatePacket = new Protocol.S_MonsterUpdate
-					{
-						Monsters = {monster.Info }
-					};
-
-					await BroadcastAsync( updatePacket );
-
-					// 몬스터 사망 처리
-					if(!monster.IsAlive)
-					{
-						await HandleMonsterDeathAsync( monster, session.Player.PlayerId );
-					}
+				// 몬스터 사망 처리
+				if(result.TargetDied)
+				{
+					await HandleMonsterDeathAsync(monster, session.Player.PlayerId);
 				}
 			}
 			catch (Exception ex)
@@ -831,82 +818,41 @@ namespace Server.Room
 					return;
 				}
 
-				// 보상 계산
-				int expReward = monster.StaticData.ExpReward;
-				int goldReward = monster.StaticData.GoldReward;
-				List<Protocol.InventoryItemInfo> droppedItems = new();
-
-				// 경험치 지급
-				bool leveledUp = killerSession.Player.GainExperience(expReward);
-				if(leveledUp)
-				{
-					var levelUpPacket = new Protocol.S_LevelUp
-					{
-						PlayerId = killerPlayerId,
-						NewLevel = killerSession.Player.Level,
-						NewMaxHP = killerSession.Player.MaxHP,
-						NewMaxMP = killerSession.Player.MaxMP
-					};
-					await BroadcastAsync( levelUpPacket );
-
-					_logger.LogInformation( "Player {PlayerId} leveled up to {Level}",
-						killerPlayerId, killerSession.Player.Level );
-				}
-
-				// 골드 지급
-				killerSession.Player.AddGold( goldReward );
-
-				// 아이템 드롭 (간단)
-				double randomValue = new Random().NextDouble();
-				_logger.LogInformation("Monster Drop Rating Value: {RandomValue} - Drop Value 0.3 Under", randomValue);
-				if(randomValue < 0.3)
-				{
-					int itemId = 1001;
-					int quantity = 1;
-
-					if (killerSession.Player.AddItem(itemId, quantity))
-					{
-						var itemInfo = new Protocol.InventoryItemInfo
-						{
-							ItemId = itemId,
-							Quantity = quantity,
-							Slot = -1 // 슬롯은 additem에서 자동 할당
-						};
-						droppedItems.Add( itemInfo );
-
-						var itemAddedPacket = new Protocol.S_ItemAdded
-						{
-							Item = itemInfo,
-							Source = $"Monster {monster.Name}",
-						};
-
-						await SendToPlayerAsync( killerSession, itemAddedPacket );
-					}
-				}
+				// 보상
+				var reward = await _rewardService.CalculateMonsterRewardAsync(killerSession.Player, monster);
+				await _rewardService.GiveRewardAsync( killerSession.Player, reward );
 
 				// S_MonsterDie 브로드캐스트
 				var diePacket = new Protocol.S_MonsterDie
 				{
 					MonsterId = monster.MonsterId,
 					KillPlayerId = killerPlayerId,
-					ExpGained = expReward,
-					GoldGained = goldReward,
+					ExpGained = reward.Experience,
+					GoldGained = reward.Gold,
 				};
-
-				diePacket.DroppedItems.AddRange( droppedItems );
+				diePacket.DroppedItems.AddRange( reward.DroppedItem );
 				await BroadcastAsync( diePacket );
 
+				// 레벨업 처리
+				if(reward.LeveledUp)
+				{
+					var levelUpPacket = new S_LevelUp
+					{
+						PlayerId = killerPlayerId,
+						NewLevel = reward.NewLevel,
+						NewMaxHP = reward.NewMaxHP,
+						NewMaxMP = reward.NewMaxMP,
+					};
+					await BroadcastAsync( levelUpPacket );
+
+					_logger.LogInformation( "Player {PlayerId} leveled up to {Level}",
+						killerPlayerId, reward.NewLevel );
+				}
+
 				_logger.LogInformation( "Monster {MonsterId} ({Name}) killed by Player {PlayerId}. Rewards: {Exp} exp, {Gold} gold",
-					monster.MonsterId, monster.Name, killerPlayerId, expReward, goldReward );
+					monster.MonsterId, monster.Name, killerPlayerId, reward.Experience, reward.Gold );
 
 				_monsterSpawner.ScheduleDespawn( monster.MonsterId, TimeSpan.FromSeconds( 5 ) );
-				//// 몬스터 제거 (리스폰은 MOnsterSpawner가 자동 처리)
-				//_monsterSpawner?.DespawnMonster( monster.MonsterId );
-
-				//// S_monsterDespawn 브로드캐스트
-				//var despawnPacket = new Protocol.S_MonsterDespawn();
-				//despawnPacket.MonsterIds.Add( monster.MonsterId );
-				//await BroadcastAsync( despawnPacket );
 			}
 			catch (Exception ex)
 			{

@@ -171,8 +171,8 @@ namespace Server.Extensions
 			services.AddSingleton<IRoomManager, RoomManager>();
 
 			// Service 등록
-			services.AddScoped<ICombatService, CombatService>();
-			services.AddScoped<IRewardService, RewardService>();
+			services.AddSingleton<ICombatService, CombatService>();
+			services.AddSingleton<IRewardService, RewardService>();
 
 			return services;
 		}

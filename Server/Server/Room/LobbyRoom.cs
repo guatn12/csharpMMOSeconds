@@ -5,6 +5,8 @@ using Server.Config;
 using Server.Core.Jobs;
 using Server.Core.Session;
 using Server.Data;
+using Server.Services.Combat;
+using Server.Services.Reward;
 using ServerCore;
 using System;
 using System.Collections.Generic;
@@ -31,9 +33,10 @@ namespace Server.Room
 
 		public LobbyRoom( ILogger<LobbyRoom> logger, IOptions<ServerSettings> ServerSettings,
 			DataManager datamanager, JobQueueManager jobQueueManager, JobPool jobPool,
+			ICombatService combatService, IRewardService rewardService,
 			string roomName = null, bool isDefaultLobby = false ) 
 			: base( logger, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
-				  jobQueueManager, jobPool)
+				  jobQueueManager, jobPool, combatService, rewardService)
 		{
 			_lobbyLogger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_serverSettings = ServerSettings.Value ?? throw new ArgumentNullException(nameof( ServerSettings ) );
