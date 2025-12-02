@@ -19,6 +19,7 @@ using Server.Services.Reward;
 using Server.Services.DTOs;
 using static System.Net.Mime.MediaTypeNames;
 using Server.Room.Handlers.Concrete;
+using Server.Extensions;
 
 namespace Server.Room
 {
@@ -368,48 +369,18 @@ namespace Server.Room
 				if(success)
 				{
 					// 장착된 장비 정보 업데이트
-					var equipmentData = session.Player.GetEquipmentData();
-					response.UpdatedEquipment = new EquipmentInfo();
+					response.UpdatedEquipment = session.Player.ToEquipmentInfo();
+					response.UpdatedStats = session.Player.ToPlayerStats();
 
-					foreach(var kvp in equipmentData)
+					// 스탯 변화가 있으면 플레이어 상태 업데이트 브로드캐스트
+					if(session.Player.HasStatsChanged( oldAttack, oldDefense, oldMaxHP, oldMaxMP ))
 					{
-						switch(kvp.Key)
+						var updatePacket = new S_PlayerUpdate
 						{
-						case PlayerEquipment.EquipSlot.Weapon:
-							response.UpdatedEquipment.WeaponItemId = kvp.Value.ItemId;
-							break;
-						case PlayerEquipment.EquipSlot.Armor:
-							response.UpdatedEquipment.ArmorItemId = kvp.Value.ItemId;
-							break;
-						case PlayerEquipment.EquipSlot.Helmet:
-							response.UpdatedEquipment.HelmetItemId = kvp.Value.ItemId;
-							break;
-						case PlayerEquipment.EquipSlot.Gloves:
-							response.UpdatedEquipment.GlovesItemId = kvp.Value.ItemId;
-							break;
-						}
+							Player = session.Player.Info
+						};
+						await BroadcastAsync( updatePacket, session );
 					}
-
-					response.UpdatedStats = new PlayerStats
-					{
-						Attack = session.Player.GetTotalAttack(),
-						Defense = session.Player.GetTotalDefense(),
-						MaxHP = session.Player.MaxHP,
-						MaxMP = session.Player.MaxMP,
-						CurrentHP = session.Player.CurrentHP,
-						CurrentMP = session.Player.CurrentMP
-					};
-
-					// 스탯 변화가 있으면 플레이어 상태 업데이트 브로드캐스트?
-					//if(oldAttack != session.Player.GetTotalAttack() || oldDefense != session.Player.GetTotalDefense() || 
-					//	oldMaxHP != session.Player.MaxHP || oldMaxMP != session.Player.MaxMP)
-					//{
-					//	var updatePacket = new S_PlayerUpdate
-					//	{
-					//		Player = session.Player.Info
-					//	};
-					//	await BroadcastAsync( updatePacket, session );
-					//}
 
 					logger.LogInformation( "Player {SessionId} equipped item from slot {Slot}to equipment slot {EquipSlot} in Room {RoomId}",
 						session.SessionId, packet.InventorySlot, packet.EquipSlot, RoomId );
@@ -458,41 +429,11 @@ namespace Server.Room
 				if(success)
 				{
 					// 장비 해제 후 정보 업데이트
-					var equipmentData = session.Player.GetEquipmentData();
-					response.UpdatedEquipment = new EquipmentInfo();
-
-					foreach(var kvp in equipmentData)
-					{
-						switch(kvp.Key)
-						{
-						case PlayerEquipment.EquipSlot.Weapon:
-							response.UpdatedEquipment.WeaponItemId = kvp.Value.ItemId;
-							break;
-						case PlayerEquipment.EquipSlot.Armor:
-							response.UpdatedEquipment.ArmorItemId = kvp.Value.ItemId;
-							break;
-						case PlayerEquipment.EquipSlot.Helmet:
-							response.UpdatedEquipment.HelmetItemId = kvp.Value.ItemId;
-							break;
-						case PlayerEquipment.EquipSlot.Gloves:
-							response.UpdatedEquipment.GlovesItemId = kvp.Value.ItemId;
-							break;
-						}
-					}
-
-					response.UpdatedStats = new PlayerStats
-					{
-						Attack = session.Player.GetTotalAttack(),
-						Defense = session.Player.GetTotalDefense(),
-						MaxHP = session.Player.MaxHP,
-						MaxMP = session.Player.MaxMP,
-						CurrentHP = session.Player.CurrentHP,
-						CurrentMP = session.Player.CurrentMP,
-					};
+					response.UpdatedEquipment = session.Player.ToEquipmentInfo();
+					response.UpdatedStats = session.Player.ToPlayerStats();
 
 					// 스탯 변화가 있으면 플레이어 상태 업데이트 브로드캐스트
-					if(oldAttack != session.Player.GetTotalAttack() || oldDefense != session.Player.GetTotalDefense() ||
-						oldMaxHP != session.Player.MaxHP || oldMaxMP != session.Player.MaxMP)
+					if(session.Player.HasStatsChanged(oldAttack, oldDefense, oldMaxHP, oldMaxMP) )
 					{
 						var updatePacket = new S_PlayerUpdate
 						{
