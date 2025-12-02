@@ -157,6 +157,7 @@ namespace Server.Room.Handlers.Concrete
 			var response = new S_UseItem
 			{
 				Success = true,
+				Slot = packet.Slot,
 				Message = "아이템 사용 성공",
 				RemainingQuantity = data?.RemainingQuantity ?? 0,
 			};
