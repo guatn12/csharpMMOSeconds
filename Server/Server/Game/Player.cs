@@ -272,7 +272,7 @@ namespace Server.Game
 			if(State == PlayerState.Dead || State == PlayerState.Disconnected) return false;
 
 			// MP 체크 (임시 - 추후 스킬 데이터로 확장)
-			int requiredMP = skillId * 10; // 임시 MP 계산
+			int requiredMP = 10; // 임시 MP 계산
 			if(CurrentMP < requiredMP) return false;
 
 			return true;

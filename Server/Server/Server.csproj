@@ -63,8 +63,6 @@
 
   <ItemGroup>
     <Folder Include="Database\Configurations\" />
-    <Folder Include="Room\Handlers\Implementations\" />
-    <Folder Include="Room\Handlers\Concrete\" />
   </ItemGroup>
 
 </Project>

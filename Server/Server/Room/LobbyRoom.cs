@@ -92,7 +92,7 @@ namespace Server.Room
 			await base.OnPlayerLeaveAsync( session );
 		}
 
-		protected override async Task OnPlayerMoveAsync(GameSession session, Protocol.C_Move packet)
+		public override async Task OnPlayerMoveAsync(GameSession session, Protocol.C_Move packet)
 		{
 			// 로비에서는 기본 이동만 허용 (특별한 제약 없음)
 			_lobbyLogger.LogDebug( "Player {SessionId} moved in lobby '{RoomName}' to ({X}, {Y}, {Z})",
@@ -101,7 +101,7 @@ namespace Server.Room
 			await base.OnPlayerMoveAsync( session, packet );
 		}
 
-		protected override async Task OnPlayerChatAsync(GameSession session, Protocol.C_Chat packet)
+		public override async Task OnPlayerChatAsync(GameSession session, Protocol.C_Chat packet)
 		{
 			// 로비 채팅 로그
 			_lobbyLogger.LogInformation( "Lobby chat from Player {SessionId} in '{RoomName}': '{Message}'",
@@ -110,7 +110,7 @@ namespace Server.Room
 			await base.OnPlayerChatAsync( session, packet );
 		}
 
-		protected override async Task<bool> ValidatePlayerMoveAsync(GameSession session, Protocol.C_Move packet)
+		public override async Task<bool> ValidatePlayerMoveAsync(GameSession session, Protocol.C_Move packet)
 		{
 			// 로비에서는 모든 이동 허용 (기본 검증만)
 			if (packet?.PosInfo == null)
@@ -132,7 +132,7 @@ namespace Server.Room
 			return await base.ValidatePlayerMoveAsync( session, packet);
 		}
 
-		protected override async Task<bool> ValidatePlayerChatAsync(GameSession session, Protocol.C_Chat packet)
+		public override async Task<bool> ValidatePlayerChatAsync(GameSession session, Protocol.C_Chat packet)
 		{
 			// 로비 채팅 검증
 			if(string.IsNullOrWhiteSpace( packet?.Message ))

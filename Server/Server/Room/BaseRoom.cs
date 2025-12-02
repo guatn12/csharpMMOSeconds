@@ -18,6 +18,7 @@ using Server.Services.Combat;
 using Server.Services.Reward;
 using Server.Services.DTOs;
 using static System.Net.Mime.MediaTypeNames;
+using Server.Room.Handlers.Concrete;
 
 namespace Server.Room
 {
@@ -61,7 +62,7 @@ namespace Server.Room
 
 		private readonly JobQueueManager _jobQueueManager;
 		private readonly JobPool _jobPool;
-		private bool _isMonsterUpdateScheduled = false;	// Timer 누적 방지
+		private bool _isMonsterUpdateScheduled = false; // Timer 누적 방지
 
 		// Service
 		protected readonly ICombatService _combatService;
@@ -283,132 +284,17 @@ namespace Server.Room
 
 		public virtual async Task HandlePlayerMoveAsync( GameSession session, Protocol.C_Move packet, ILogger logger )
 		{
-			if(!ContainsPlayer( session ) || packet?.PosInfo == null)
-				return;
-
-			try
-			{
-				// 이동 검증 (하위 클래스에서 재정의 가능)
-				if(!await ValidatePlayerMoveAsync( session, packet ))
-				{
-					// 검증 실패 시 현재 위치를 클라이언트에 재전송 (동기화)
-					PosInfo currentPos = await session.GetCurrentPositionAsync();
-					if(currentPos != null)
-					{
-						var correctionPacket = new Protocol.S_Move
-						{
-							PlayerId = session.SessionId,
-							PosInfo = currentPos
-						};
-						await SendToPlayerAsync(session, correctionPacket );
-						logger.LogWarning("위치 검증 실패로 클라이언트 위치 동기화: Player {SessionId}", session.SessionId);
-					}
-
-					return;
-				}
-
-				// GameSession을 통해 Redis 기반 3D 위치 업데이트
-				bool positionUpdated = await session.UpdatePositionAsync(packet.PosInfo);
-				if(!positionUpdated)
-				{
-					logger.LogWarning( "Player {PlayerId} 위치 업데이트 실패 (경계 밖 또는 오류)", session.SessionId );
-					return;
-				}
-
-				// 룸별 이동 처리
-				await OnPlayerMoveAsync( session, packet );
-
-				// 다른 플레이어들에게 브로드캐스트
-				var moveResponse = new Protocol.S_Move
-				{
-					PlayerId = session.SessionId,
-					PosInfo = packet.PosInfo
-				};
-
-				await BroadcastAsync( moveResponse, session );
-
-				logger.LogDebug( "Player {SessionId} moved in room {RoomId} to ({X}, {Y}, {Z})",
-					session.SessionId, RoomId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ );
-			}
-			catch(Exception e)
-			{
-				logger.LogError( e, "Failed to handle move for player {SessionId} in room {RoomId}",
-					session.SessionId, RoomId );
-			}
+			await new MovePacketHandler( this ).HandleAsync( session, packet, logger );
 		}
 
 		public virtual async Task HandlePlayerChatAsync( GameSession session, Protocol.C_Chat packet, ILogger logger )
 		{
-			if(!ContainsPlayer( session ) || string.IsNullOrWhiteSpace( packet?.Message ))
-				return;
-
-			try
-			{
-				// 채팅 검증 (하위 클래스에서 재정의 가능)
-				if(!await ValidatePlayerChatAsync( session, packet ))
-					return;
-
-				// 룸별 채팅 처리
-				await OnPlayerChatAsync( session, packet );
-
-				// 룸 내 브로드캐스트
-				var chatResponse = new Protocol.S_Chat
-				{
-					PlayerId= session.SessionId,
-					Message = packet.Message,
-				};
-
-				await BroadcastAsync( chatResponse, session );
-
-				logger.LogDebug( "Player {SessionId} chatted in room {RoomId}: '{Message}'",
-					session.SessionId, RoomId, packet.Message );
-			}
-			catch(Exception ex)
-			{
-				logger.LogError( ex, "Failed to handle chat for player {SessionId} in room {RoomId}",
-					session.SessionId, RoomId );
-			}
+			await new ChatPacketHandler(this).HandleAsync( session, packet, logger );
 		}
 
 		public virtual async Task HandlePlayerPlayerInfoAsync( GameSession session, C_PlayerInfo packet, ILogger logger )
 		{
-			if(!ContainsPlayer( session ) || packet?.TargetPlayerId < 0 ||
-				!ContainsPlayerToPlayerId( packet.TargetPlayerId ))
-				return;
-
-			try
-			{
-				// 플레이어 정보를 찾는데 검증이 필요할지 의문.
-				if(!await ValidatePlayerInfoAsync( session, packet ))
-					return;
-
-				GameSession targetSession = FindPlayerToPlayerId(packet.TargetPlayerId);
-				if(targetSession == null)
-				{
-					logger.LogWarning( "TargetPlayer {PlayerId} Not Found int Room {RoomId}",
-						packet.TargetPlayerId, RoomId );
-
-					Protocol.S_PlayerStat errorResponse = new Protocol.S_PlayerStat();
-					await SendToPlayerAsync( session, errorResponse );
-					return;
-				}
-
-				// 데이터 탐색 및 전달.
-				Protocol.S_PlayerStat response = new Protocol.S_PlayerStat
-				{
-					Player = targetSession.Player.Info
-				};
-
-				await SendToPlayerAsync( session, response );
-
-				logger.LogDebug( "TargetPlayer (Id: {PlayerId}, Name: {PlayerName}) Find in Room {RoomId}",
-					targetSession.Player.PlayerId, targetSession.Player.PlayerName, RoomId );
-			}
-			catch(Exception e)
-			{
-				logger.LogError( e, "Failed to handle PlayerInfo Find player {TargetPlayerId} in room {RoomId}",
-					packet.TargetPlayerId, RoomId );
-			}
+			await new PlayerInfoPacketHandler(this).HandleAsync( session, packet, logger );
 		}
 
 		public virtual async Task HandlePlayerUseSkillAsync( GameSession session, C_UseSkill packet, ILogger logger )
@@ -445,126 +331,17 @@ namespace Server.Room
 			}
 		}
 
-		public virtual async Task HandlePlayerInventoryRequestAsync(GameSession session, C_InventoryRequest packet, ILogger logger )
+		public virtual async Task HandlePlayerInventoryRequestAsync( GameSession session, C_InventoryRequest packet, ILogger logger )
 		{
-			if(!ContainsPlayer( session ) || packet == null)
-				return;
-
-			try
-			{
-				// 플레이어 인벤토리 데이터 조회
-				InventoryModel inventoryData = session.Player.GetInventoryData();
-				var equipmentData = session.Player.GetEquipmentData();
-
-				// 응답 패킷 생성
-				var response = new S_InventoryData
-				{
-					Gold = session.Player.GetGold(),
-					MaxSlots = 50
-				};
-
-				// 인벤토리 아이템들 추가
-				foreach(var item in inventoryData.Items)
-				{
-					var itemInfo = new InventoryItemInfo
-					{
-						ItemId = item.ItemId,
-						Quantity = item.Quantity,
-						Slot = item.Slot,
-						EnhancementLevel = item.Enhancement?.Level ?? 0,
-						CustomName = item.CustomName ?? string.Empty,
-						AcquiredAt = item.AcquiredAt?.Ticks ?? 0
-					};
-
-					// Options 복사
-					if(item.Options != null)
-					{
-						foreach(var option in item.Options)
-						{
-							itemInfo.Options[ option.Key ] = option.Value;
-						}
-					}
-
-					response.Items.Add( itemInfo );
-				}
-
-				await SendToPlayerAsync( session, response );
-
-				logger.LogDebug( "Sent inventory data to Player {SessionId} in Room{RoomId}: {ItemCount} items, {Gold} gold",
-					session.SessionId, RoomId, response.Items.Count, response.Gold);
-			}
-			catch ( Exception ex )
-			{
-				logger.LogError( ex, "Failed to handle inventory request for Player {SessionId} in Room {RoomId}",
-					session.SessionId, RoomId);
-
-				// 에러 응답 전송
-				var errorResponse = new S_InventoryData{Gold = 0, MaxSlots = 50};
-				await SendToPlayerAsync( session, errorResponse );
-			}
+			await new InventoryRequestPacketHandler(this).HandleAsync( session, packet, logger );
 		}
 
-		public virtual async Task HandlePlayerUseItemAsync(GameSession session, C_UseItem packet, ILogger logger)
+		public virtual async Task HandlePlayerUseItemAsync( GameSession session, C_UseItem packet, ILogger logger )
 		{
-			if(!ContainsPlayer( session ) || packet == null ||
-				packet.Slot < 0 || 50 <= packet.Slot || packet.Quantity <= 0)
-				return;
-
-			try
-			{
-				// 아이템 사용 전 상태 저장
-				int oldHP = session.Player.CurrentHP;
-				int oldMP = session.Player.CurrentMP;
-				InventoryItem item = session.Player.Inventory.GetItem(packet.Slot);
-
-				bool success = session.Player.UseItem(packet.Slot, packet.Quantity);
-
-				var response = new S_UseItem
-				{
-					Success = success,
-					Slot = packet.Slot,
-					RemainingQuantity = success ? (item?.Quantity ?? 0) : 0,
-					Message = success ? "아이템을 사용했습니다." : "아이템 사용에 실패했습니다."
-				};
-
-				await SendToPlayerAsync( session, response );
-
-				if(success)
-				{
-					// HP/MP 변화가 있으면 플레이어 상태 업데이트 브로드캐스트
-					if(oldHP != session.Player.CurrentHP || oldMP != session.Player.CurrentMP)
-					{
-						var updatePacket = new S_PlayerUpdate
-						{
-							Player = session.Player.Info
-						};
-						await BroadcastAsync( updatePacket, session );
-					}
-
-					logger.LogInformation("Player {SessionId} used item from slot{Slot}x{Quantity} in Room {RoomId}",
-						session.SessionId, packet.Slot, packet.Quantity, RoomId);
-				}
-				else
-				{
-					 logger.LogWarning("Player {SessionId} failed to use item from slot {Slot}in Room {RoomId}",
-						 session.SessionId, packet.Slot, RoomId);
-				}
-			}
-			catch (Exception ex)
-			{
-				 logger.LogError(ex, "Failed to handle use item for Player {SessionId} in Room{RoomId}",
-					 session.SessionId, RoomId);
-
-				var eerrorResponse = new S_UseItem
-				{
-					Success = false,
-					Message = "서버 오류가 발생했습니다."
-				};
-				await SendToPlayerAsync ( session, eerrorResponse );
-			}
+			await new UseItemPacketHandler(this).HandleAsync( session, packet, logger );
 		}
 
-		public virtual async Task HandlePlayerEquipItemAsync(GameSession session, C_EquipItem packet, ILogger logger)
+		public virtual async Task HandlePlayerEquipItemAsync( GameSession session, C_EquipItem packet, ILogger logger )
 		{
 			if(!ContainsPlayer( session ) || packet == null || packet.InventorySlot < 0 || 50 <= packet.InventorySlot ||
 				packet.EquipSlot < 0 || 10 < packet.EquipSlot)
@@ -588,7 +365,7 @@ namespace Server.Room
 					EquipSlot = packet.EquipSlot,
 				};
 
-				if(success )
+				if(success)
 				{
 					// 장착된 장비 정보 업데이트
 					var equipmentData = session.Player.GetEquipmentData();
@@ -634,28 +411,28 @@ namespace Server.Room
 					//	await BroadcastAsync( updatePacket, session );
 					//}
 
-					 logger.LogInformation("Player {SessionId} equipped item from slot {Slot}to equipment slot {EquipSlot} in Room {RoomId}",
-						 session.SessionId, packet.InventorySlot, packet.EquipSlot, RoomId);
+					logger.LogInformation( "Player {SessionId} equipped item from slot {Slot}to equipment slot {EquipSlot} in Room {RoomId}",
+						session.SessionId, packet.InventorySlot, packet.EquipSlot, RoomId );
 				}
 				else
 				{
-					logger.LogWarning("Player {SessionId} failed to equip item from slot{Slot} in Room {RoomId}",
-						session.SessionId, packet.InventorySlot, RoomId);
+					logger.LogWarning( "Player {SessionId} failed to equip item from slot{Slot} in Room {RoomId}",
+						session.SessionId, packet.InventorySlot, RoomId );
 				}
 
 				await SendToPlayerAsync( session, response );
 			}
-			catch (Exception ex)
+			catch(Exception ex)
 			{
-				logger.LogError(ex, "Failed to handle equip item for Player {SessionId} in Room {RoomId}",
-					session.SessionId, RoomId);
-				
+				logger.LogError( ex, "Failed to handle equip item for Player {SessionId} in Room {RoomId}",
+					session.SessionId, RoomId );
+
 				var errorResponse = new S_ItemEquipped { Success = false };
-				await SendToPlayerAsync(session, errorResponse);
+				await SendToPlayerAsync( session, errorResponse );
 			}
 		}
 
-		public virtual async Task HandlePlayerUnequipItemAsync(GameSession session, C_UnequipItem packet,  ILogger logger)
+		public virtual async Task HandlePlayerUnequipItemAsync( GameSession session, C_UnequipItem packet, ILogger logger )
 		{
 			if(!ContainsPlayer( session ) || packet == null || packet.EquipSlot < 1 || 10 < packet.EquipSlot)
 				return;
@@ -725,23 +502,23 @@ namespace Server.Room
 					}
 
 					logger.LogInformation( "Player {SessionId} unequipped item from slot{Slot} in Room {RoomId}",
-						session.SessionId, packet.EquipSlot, RoomId);
+						session.SessionId, packet.EquipSlot, RoomId );
 				}
 				else
 				{
-					logger.LogWarning("Player {SessionId} failed to unequip item from slot{Slot} in Room {RoomId}",
-						session.SessionId, packet.EquipSlot, RoomId);
+					logger.LogWarning( "Player {SessionId} failed to unequip item from slot{Slot} in Room {RoomId}",
+						session.SessionId, packet.EquipSlot, RoomId );
 				}
 
 				await SendToPlayerAsync( session, response );
 			}
-			catch (Exception ex)
+			catch(Exception ex)
 			{
-				logger.LogError(ex, "Failed to handle unequip item for Player {SessionId} inRoom {RoomId}",
-					session.SessionId, RoomId);
-				
+				logger.LogError( ex, "Failed to handle unequip item for Player {SessionId} inRoom {RoomId}",
+					session.SessionId, RoomId );
+
 				var errorResponse = new S_ItemUnequipped { Success = false };
-				await SendToPlayerAsync(session, errorResponse);
+				await SendToPlayerAsync( session, errorResponse );
 			}
 		}
 
@@ -774,7 +551,7 @@ namespace Server.Room
 				session.Player.StartAttackCooldown();
 
 				logger.LogInformation( "Player {PlayerId} attacked Monster {MonsterId} for {Damage} damage( Critical: {IsCritical}) -remain Monster HP({CurrentHP})",
-					session.Player.PlayerId, packet.MonsterId, result.Damage, result.IsCritical, result.TargetCurrentHP);
+					session.Player.PlayerId, packet.MonsterId, result.Damage, result.IsCritical, result.TargetCurrentHP );
 
 				// s_damage 패킷 브로드캐스트
 				var damagePacket = new S_Damage
@@ -796,17 +573,17 @@ namespace Server.Room
 				// 몬스터 사망 처리
 				if(result.TargetDied)
 				{
-					await HandleMonsterDeathAsync(monster, session.Player.PlayerId);
+					await HandleMonsterDeathAsync( monster, session.Player.PlayerId );
 				}
 			}
-			catch (Exception ex)
+			catch(Exception ex)
 			{
 				logger.LogError( ex, "Failed to handle attack monster for Player {PlayerId} in Room {RoomId}",
 					session.Player.PlayerId, RoomId );
 			}
 		}
 
-		protected virtual async Task HandleMonsterDeathAsync(Monster monster, long killerPlayerId)
+		protected virtual async Task HandleMonsterDeathAsync( Monster monster, long killerPlayerId )
 		{
 			try
 			{
@@ -854,7 +631,7 @@ namespace Server.Room
 
 				_monsterSpawner.ScheduleDespawn( monster.MonsterId, TimeSpan.FromSeconds( 5 ) );
 			}
-			catch (Exception ex)
+			catch(Exception ex)
 			{
 				_logger.LogError( ex, "Failed to handle monster death for Monster {MonsterId} in Room {RoomId}",
 					monster.MonsterId, RoomId );
@@ -884,11 +661,11 @@ namespace Server.Room
 			}
 		}
 		protected virtual Task OnPlayerLeaveAsync( GameSession session ) => Task.CompletedTask;
-		protected virtual Task OnPlayerMoveAsync( GameSession session, Protocol.C_Move packet ) => Task.CompletedTask;
-		protected virtual Task OnPlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.CompletedTask;
+		public virtual Task OnPlayerMoveAsync( GameSession session, Protocol.C_Move packet ) => Task.CompletedTask;
+		public virtual Task OnPlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.CompletedTask;
 		protected virtual Task OnPlayerUseSkillAsync( GameSession session, Protocol.C_UseSkill packet ) => Task.CompletedTask;
 
-		protected virtual Task<bool> ValidatePlayerMoveAsync( GameSession session, Protocol.C_Move packet )
+		public virtual Task<bool> ValidatePlayerMoveAsync( GameSession session, Protocol.C_Move packet )
 		{
 			// 기본 3D 위치 검증
 			bool isValid = Utils.Position3DValidator.IsValidPosition(packet.PosInfo, this);
@@ -896,15 +673,15 @@ namespace Server.Room
 			if(!isValid)
 			{
 				_logger.LogWarning( "Invalid move attempt by player {SessionId} in room{ RoomId}: Position ({X}, {Y}, {Z}) is outside room bounds ({MinX}-{MaxX},{ MinY}-{ MaxY}, { MinZ}-{ MaxZ})",
-					session.SessionId, RoomId,packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ,
+					session.SessionId, RoomId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ,
 					MinX, MaxX, MinY, MaxY, MinZ, MaxZ );
 			}
 
 			return Task.FromResult( isValid );
 		}
-		protected virtual Task<bool> ValidatePlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.FromResult( true );
-		protected virtual Task<bool> ValidatePlayerInfoAsync( GameSession session, Protocol.C_PlayerInfo packet ) => Task.FromResult( true );
-		protected virtual Task<bool> ValidatePlayerUseSkillAsync( GameSession session, Protocol.C_UseSkill packet ) => Task.FromResult( true );
+		public virtual Task<bool> ValidatePlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.FromResult( true );
+		public virtual Task<bool> ValidatePlayerInfoAsync( GameSession session, Protocol.C_PlayerInfo packet ) => Task.FromResult( true );
+		public virtual Task<bool> ValidatePlayerUseSkillAsync( GameSession session, Protocol.C_UseSkill packet ) => Task.FromResult( true );
 
 		// 몬스터 초기화 메서드 추가
 		protected virtual void InitializeMonsterSpawner()
@@ -937,7 +714,7 @@ namespace Server.Room
 		/// MonsterSpawner에서 딜레이 Despawn이 완료되었을 때 호출됨
 		/// JobQueue Worker 스레드에서 실행되므로 스레드 안전
 		/// </summary>
-		private void OnMonsterDespawned(long monsterId)
+		private void OnMonsterDespawned( long monsterId )
 		{
 			try
 			{
@@ -946,7 +723,7 @@ namespace Server.Room
 				despawnPacket.MonsterIds.Add( monsterId );
 
 				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
-				BroadcastAsync(despawnPacket).GetAwaiter().GetResult();
+				BroadcastAsync( despawnPacket ).GetAwaiter().GetResult();
 
 				_logger.LogInformation( "Broadcasted S_MonsterDespawn for Monster {MonsterId} in Room {RoomId}",
 					monsterId, RoomId );
@@ -962,7 +739,7 @@ namespace Server.Room
 		/// MonsterSpawner에서 몬스터 리스폰이 완료되었을 때 호출됨
 		/// JobQueue Worker 스레드에서 실행되므로 스레드 안전
 		/// </summary>
-		private void OnMonsterSpawned(Monster monster)
+		private void OnMonsterSpawned( Monster monster )
 		{
 			try
 			{
@@ -1050,7 +827,7 @@ namespace Server.Room
 				}, TaskScheduler.Default );
 		}
 
-		
+
 
 		private static int GenerateNextRoomId()
 		{
@@ -1095,13 +872,13 @@ namespace Server.Room
 			}
 		}
 
-		private int GetLastInventorySlot(Player player )
+		private int GetLastInventorySlot( Player player )
 		{
 			InventoryModel inventoryData = player.GetInventoryData();
 			return inventoryData.Items.LastOrDefault()?.Slot ?? -1;
 		}
 
-		private bool ValidateSession(GameSession session, ILogger logger)
+		private bool ValidateSession( GameSession session, ILogger logger )
 		{
 			if(session?.Player == null)
 			{
@@ -1116,7 +893,7 @@ namespace Server.Room
 			if(packet == null || packet.Slot < 0 || packet.Slot >= 50 || packet.Quantity <= 0 || packet.Quantity > 10)
 			{
 				logger.LogWarning( "Invalid use item packet: Slot={Slot},Quantity={Quantity}",
-					packet?.Slot ?? -1, packet?.Quantity ?? -1);
+					packet?.Slot ?? -1, packet?.Quantity ?? -1 );
 				return false;
 			}
 			return true;
@@ -1128,9 +905,9 @@ namespace Server.Room
 			GC.SuppressFinalize( this );
 		}
 
-		public Monster GetMonster(long monsterId)
+		public Monster GetMonster( long monsterId )
 		{
-			return _monsterSpawner?.GetMonster(monsterId);
+			return _monsterSpawner?.GetMonster( monsterId );
 		}
 
 		protected virtual void Dispose( bool disposing )
