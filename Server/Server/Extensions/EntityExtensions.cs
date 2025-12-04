@@ -23,7 +23,7 @@ namespace Server.Extensions
 				ItemId = item.ItemId,
 				Quantity = item.Quantity,
 				Slot = item.Slot,
-				EnhancementLevel = item.Enhancement.Level,
+				EnhancementLevel = item.Enhancement == null ? 0 : item.Enhancement.Level,
 				CustomName = item.CustomName ?? string.Empty,
 				AcquiredAt = item.AcquiredAt?.ToUnixTimeSeconds() ?? 0
 			};

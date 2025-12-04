@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Server.Game
+namespace Server.Game.Monsters
 {
 	public class MonsterAI
 	{

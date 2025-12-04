@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Game;
+using Server.Game.Monsters;
 using Server.Services.DTOs;
 using Server.Utils;
 using System;

@@ -11,7 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Server.Game
+namespace Server.Game.Monsters
 {
 	/// <summary>
 	/// 몬스터 스폰 지점 정보

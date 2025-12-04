@@ -20,6 +20,7 @@ using Server.Services.DTOs;
 using static System.Net.Mime.MediaTypeNames;
 using Server.Room.Handlers.Concrete;
 using Server.Extensions;
+using Server.Game.Monsters;
 
 namespace Server.Room
 {
@@ -57,7 +58,8 @@ namespace Server.Room
 		public bool IsFull => MaxPlayers <= _players.Count;
 
 		// 몬스터
-		protected MonsterSpawner _monsterSpawner;
+		//protected MonsterSpawner _monsterSpawner;
+		protected IMonsterManager MonsterManager { get; private set; }
 		protected readonly DataManager _dataManager;
 		private System.Threading.Timer _monsterUpdateTimer;
 
@@ -118,7 +120,8 @@ namespace Server.Room
 			}
 
 			// 몬스터 스폰 시스템 초기화
-			InitializeMonsterSpawner();
+			//InitializeMonsterSpawner();
+			await InitializeMonsterManagerAsync();
 
 			await OnInitializeAsync();
 
@@ -142,14 +145,14 @@ namespace Server.Room
 			_monsterUpdateTimer = null;
 
 			// 이벤트 구독 해제
-			if(_monsterSpawner != null)
+			if(MonsterManager != null)
 			{
-				_monsterSpawner.OnMonsterDespawned -= OnMonsterDespawned;
+				MonsterManager.OnMonsterDespawned -= OnMonsterDespawned;
+				MonsterManager.OnMonsterSpawned -= OnMonsterSpawned;
 			}
 
-			// 모든 몬스터 제거
-			_monsterSpawner?.ClearAllMonsters();
-			_monsterSpawner = null;
+			MonsterManager?.Dispose();
+			MonsterManager = null;
 
 			// 모든 플레이어 강제 퇴장
 			List<GameSession> playersToRemove = _players.Values.ToList();
@@ -472,7 +475,7 @@ namespace Server.Room
 			try
 			{
 				// 몬스터 존재 확인
-				Monster monster = _monsterSpawner?.GetMonster(packet.MonsterId);
+				Monster monster = MonsterManager?.GetMonster(packet.MonsterId);
 				if(monster == null || !monster.IsAlive)
 				{
 					_logger.LogWarning( "Player {PlayerId} tried to attack non-existent or dead monster {MonsterId}",
@@ -570,7 +573,7 @@ namespace Server.Room
 				_logger.LogInformation( "Monster {MonsterId} ({Name}) killed by Player {PlayerId}. Rewards: {Exp} exp, {Gold} gold",
 					monster.MonsterId, monster.Name, killerPlayerId, reward.Experience, reward.Gold );
 
-				_monsterSpawner.ScheduleDespawn( monster.MonsterId, TimeSpan.FromSeconds( 5 ) );
+				MonsterManager.DespawnMonster( monster.MonsterId, TimeSpan.FromSeconds( 5 ) );
 			}
 			catch(Exception ex)
 			{
@@ -584,9 +587,9 @@ namespace Server.Room
 		protected virtual async Task OnPlayerEnterAsync( GameSession session )
 		{
 			// 현재 스폰된 몬스터 정보 전송
-			if(_monsterSpawner != null)
+			if(MonsterManager != null)
 			{
-				var aliveMonsters = _monsterSpawner.GetAliveMonsters();
+				var aliveMonsters = MonsterManager.GetAliveMonsters();
 				if(0 < aliveMonsters.Count)
 				{
 					var monsterSpawnPacket = new Protocol.S_MonsterSpawn();
@@ -625,21 +628,30 @@ namespace Server.Room
 		public virtual Task<bool> ValidatePlayerUseSkillAsync( GameSession session, Protocol.C_UseSkill packet ) => Task.FromResult( true );
 
 		// 몬스터 초기화 메서드 추가
-		protected virtual void InitializeMonsterSpawner()
+		protected virtual async Task InitializeMonsterManagerAsync()
 		{
-			_monsterSpawner = new MonsterSpawner( this, _dataManager, _logger );
+			// Room 타입별로 다른 Policy 적용
+			var policy = GetMonsterSpawnPolicy();
 
-			// Despawn 이벤트 구독 (JobQueue에서 실행됨)
-			_monsterSpawner.OnMonsterDespawned += OnMonsterDespawned;
+			// MonsterManager 생성
+			MonsterManager = new MonsterManager(room: this, _dataManager, _logger, policy);
 
-			// Spawn 이벤트 구독 (JobQueue에서 실행됨)
-			_monsterSpawner.OnMonsterSpawned += OnMonsterSpawned;
+			// MonsterManager 초기화
+			await MonsterManager.InitializeAsync();
 
-			// 기본 스폰 포인트 설정(하위 클래스에서 재정의 가능)
+			// MonsterSpawner 이벤트 구독 (MonsterManager를 통해)
+			MonsterManager.OnMonsterDespawned += OnMonsterDespawned;
+			MonsterManager.OnMonsterSpawned += OnMonsterSpawned;
+
+			// 스폰 포인트 설정 (BaseRoom이 담당)
 			SetupDefaultSpawnPoints();
 
 			// 초기 몬스터 스폰
-			_monsterSpawner.SpawnInitialMonsters();
+			MonsterManager.SpawnInitialMonsters();
+
+			// MonsterSpawner 이벤트 구독 (BaseRoom에서 패킷 브로드캐스트)
+			// Note: MonsterSpawner는 MonsterManager 내부에 있으므로 직접 접근 불가
+			// 대신 MonsterManager가 이벤트를 중계해야 함 (추후 개선 필요)
 
 			// 주기적 업데이트 타이머 시작 (100ms마다)
 			_monsterUpdateTimer = new System.Threading.Timer(
@@ -649,6 +661,11 @@ namespace Server.Room
 				period: TimeSpan.FromMilliseconds( 100 ) );
 
 			_logger.LogInformation( "Monster spawner initialized for room {RoomId}", RoomId );
+		}
+
+		protected virtual MonsterSpawnPolicy GetMonsterSpawnPolicy()
+		{
+			return MonsterSpawnPolicy.Default;
 		}
 
 		/// <summary>
@@ -709,21 +726,21 @@ namespace Server.Room
 			float centerY = MinY;
 			float centerZ = MinZ + RoomDepth / 2;
 
-			_monsterSpawner.AddSpawnPoint( 2201, new PosInfo
+			MonsterManager.AddSpawnPoint( 2201, new PosInfo
 			{
 				PosX = centerX - 5,
 				PosY = centerY,
 				PosZ = centerZ
 			} );
 
-			_monsterSpawner.AddSpawnPoint( 2201, new PosInfo
+			MonsterManager.AddSpawnPoint( 2201, new PosInfo
 			{
 				PosX = centerX + 5,
 				PosY = centerY,
 				PosZ = centerZ
 			} );
 
-			_monsterSpawner.AddSpawnPoint( 2001, new PosInfo
+			MonsterManager.AddSpawnPoint( 2001, new PosInfo
 			{
 				PosX = centerX,
 				PosY = centerY,
@@ -741,9 +758,9 @@ namespace Server.Room
 				return;
 			}
 
-			if(_monsterSpawner == null)
+			if(MonsterManager == null)
 			{
-				_logger.LogWarning( "MonsterSpawner is null for room {RoomId}", RoomId );
+				_logger.LogWarning( "MonsterManager is null for room {RoomId}", RoomId );
 				return;
 			}
 
@@ -751,7 +768,7 @@ namespace Server.Room
 
 			// MonsterUpdateJob 생성 및 초기화
 			MonsterUpdateJob job = _jobPool.Get<MonsterUpdateJob>();
-			job.Initialize( _monsterSpawner, RoomId, _logger );
+			job.Initialize( MonsterManager, RoomId, _logger );
 
 			// JobQueue에 비동기 추가
 			_ = _jobQueueManager.PushAsync( job )
@@ -848,7 +865,7 @@ namespace Server.Room
 
 		public Monster GetMonster( long monsterId )
 		{
-			return _monsterSpawner?.GetMonster( monsterId );
+			return MonsterManager?.GetMonster( monsterId );
 		}
 
 		protected virtual void Dispose( bool disposing )

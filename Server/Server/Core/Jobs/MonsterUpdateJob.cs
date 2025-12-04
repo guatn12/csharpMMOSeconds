@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
-using Server.Game;
+using Server.Game.Monsters;
 using ServerCore;
 using System;
 using System.Collections.Generic;
@@ -15,16 +15,16 @@ namespace Server.Core.Jobs
 	/// </summary>
 	public class MonsterUpdateJob : IJob
 	{
-		private MonsterSpawner _monsterSpawner;
+		private IMonsterManager _monsterManager;
 		private ILogger _logger;
 		private int _roomId;
 
 		/// <summary>
 		/// Job 실행에 필요한 컨텍스트 초기화
 		/// </summary>
-		public void Initialize(MonsterSpawner monsterSpawner, int roomId, ILogger logger)
+		public void Initialize(IMonsterManager monsterManager, int roomId, ILogger logger)
 		{
-			_monsterSpawner = monsterSpawner;
+			_monsterManager = monsterManager;
 			_roomId = roomId;
 			_logger = logger;
 		}
@@ -37,7 +37,7 @@ namespace Server.Core.Jobs
 		{
 			try
 			{
-				_monsterSpawner.Update();
+				_monsterManager.Update();
 			}
 			catch(Exception ex)
 			{
@@ -50,7 +50,7 @@ namespace Server.Core.Jobs
 		/// </summary>
 		public void Clear()
 		{
-			_monsterSpawner = null;
+			_monsterManager = null;
 			_roomId = 0;
 			_logger = null;
 		}

@@ -5,6 +5,7 @@ using Server.Config;
 using Server.Core.Jobs;
 using Server.Core.Session;
 using Server.Data;
+using Server.Game.Monsters;
 using Server.Services.Combat;
 using Server.Services.Reward;
 using ServerCore;
@@ -166,6 +167,33 @@ namespace Server.Room
 
 			_lobbyLogger.LogInformation( "LobbyRoom '{RoomName}' (ID: {RoomId}) cleanup completed",
 				  RoomName, RoomId );
+		}
+
+		protected override MonsterSpawnPolicy GetMonsterSpawnPolicy()
+		{
+			return MonsterSpawnPolicy.LobbyDefault;
+		}
+
+		protected override void SetupDefaultSpawnPoints()
+		{
+			float centerX = MinX + RoomWidth / 2;
+			float centerY = MinY;
+			float centerZ = MinZ + RoomDepth / 2;
+
+			// 로비는 평화로운 슬라임만 2마리
+			MonsterManager.AddSpawnPoint( 2201, new Protocol.PosInfo
+			{
+				PosX = centerX - 10,
+				PosY = centerY,
+				PosZ = centerZ
+			} );
+
+			MonsterManager.AddSpawnPoint( 2201, new Protocol.PosInfo
+			{
+				PosX = centerX + 10,
+				PosY = centerY,
+				PosZ = centerZ
+			} );
 		}
 
 		// 로비 환경 설정(초기화 시 호출)
