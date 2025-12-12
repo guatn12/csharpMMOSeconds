@@ -62,14 +62,8 @@ namespace Server.Core.Host
 
 		public async Task StartAsync(CancellationToken token)
 		{
-			// 로거 초기화
-			Log.Logger = new LoggerConfiguration()
-				.WriteTo.Console()
-				.CreateLogger();
-
 			try
 			{
-
 				// Redis 연결 테스트 추가
 				await TestRedisConnectionAsync();
 

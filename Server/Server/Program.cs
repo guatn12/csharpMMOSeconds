@@ -21,11 +21,6 @@ namespace Server
 	{
 		static async Task Main( string[] args )
 		{
-			// 로거 초기화
-			Log.Logger = new LoggerConfiguration()
-				.WriteTo.Console()
-				.CreateLogger();
-
 			try
 			{
 				// Generic Host 빌더 사용
@@ -40,7 +35,9 @@ namespace Server
 						services.AddAppServices(context.Configuration);
 						services.AddHostedService<ServerHost>();	// 핵심.
 					})
-					.UseSerilog()
+					.UseSerilog((context, services, configuration) => configuration
+						.ReadFrom.Configuration(context.Configuration)
+						.Enrich.FromLogContext())
 					.Build();
 
 				await host.RunAsync();

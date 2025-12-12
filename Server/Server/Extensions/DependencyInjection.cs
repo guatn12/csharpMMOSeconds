@@ -187,15 +187,12 @@ namespace Server.Extensions
 		/// </summary>
 		private static IServiceCollection AddLoggingServices( this IServiceCollection services, IConfiguration configuration )
 		{
+			// Serilog는 Program.cs의 UseSerilog()에서 설정됨
 			services.AddLogging( loggingBuilder =>
 			{
 				loggingBuilder.ClearProviders();
 				loggingBuilder.AddSerilog( dispose: true );
 			} );
-
-			Log.Logger = new LoggerConfiguration()
-				.ReadFrom.Configuration( configuration )
-				.CreateLogger();
 
 			return services;
 		}
