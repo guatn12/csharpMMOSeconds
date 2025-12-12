@@ -43,6 +43,11 @@ namespace DummyClient
 		{
 			SessionId = GenerateNextSessionId();
 			_logger.LogInformation( "OnConnected: {endPoint}", endPoint );
+
+			// C_EnterGame 패킷 전송
+			Protocol.C_EnterGame enterGamePacket = new Protocol.C_EnterGame();
+			Send(enterGamePacket);
+			_logger.LogInformation("C_EnterGame 패킷 전송 완료");
 		}
 
 		public override void OnDisConnected( EndPoint endPoint )

@@ -11,42 +11,47 @@ extend google.protobuf.MessageOptions {
 }
 
 enum MsgId {
-	S_ENTER_GAME = 0;
-	S_LEAVE_GAME = 1;
-	S_SPAWN = 2;
-	S_DESPAWN = 3;
-	C_MOVE = 4;
-	S_MOVE = 5;
-	C_CHAT = 6;
-	S_CHAT = 7;
-	S_PLAYER_UPDATE = 8;	// 플레이어 상태 변경 알림
-	S_PLAYER_STAT = 9;		// 플레이어 스탯 정보
-	C_PLAYER_INFO = 10;		// 플레이어 정보 요청
-	C_USE_SKILL = 11;		// 플레이어 스킬 사용
-	S_DAMAGE = 12;			// 데미지 처리
-	S_HEAL = 13;			// 회복 처리
-	S_LEVEL_UP = 14;		// 레벨업 알림
+	C_ENTER_GAME = 0;		// 게임 입장 요청 (클라이언트 → 서버)
+	S_ENTER_GAME = 1;
+	S_LEAVE_GAME = 2;
+	S_SPAWN = 3;
+	S_DESPAWN = 4;
+	C_MOVE = 5;
+	S_MOVE = 6;
+	C_CHAT = 7;
+	S_CHAT = 8;
+	S_PLAYER_UPDATE = 9;	// 플레이어 상태 변경 알림
+	S_PLAYER_STAT = 10;		// 플레이어 스탯 정보
+	C_PLAYER_INFO = 11;		// 플레이어 정보 요청
+	C_USE_SKILL = 12;		// 플레이어 스킬 사용
+	S_DAMAGE = 13;			// 데미지 처리
+	S_HEAL = 14;			// 회복 처리
+	S_LEVEL_UP = 15;		// 레벨업 알림
 
 	// 인벤토리
-	C_INVENTORY_REQUEST = 15;	// 인벤토리 조회 요청
-	S_INVENTORY_DATA = 16;		// 인벤토리 데이터 전송
-	C_USE_ITEM = 17;			// 아이템 사용
-	S_USE_ITEM = 18;			// 아이템 사용 결과
-	C_EQUIP_ITEM = 19;			// 아이템(장비) 장착
-	S_ITEM_EQUIPPED = 20;		// 아이템(장비) 장착 결과
-	C_UNEQUIP_ITEM = 21;		// 아이템(장비) 해제
-	S_ITEM_UNEQUIPPED = 22;		// 아이템(장비) 해제 결과
-	S_ITEM_ADDED = 23;			// 아이템 획득 알림
-	S_INVENTORY_UPDATE = 24;	// 인벤토리 변경 알림
+	C_INVENTORY_REQUEST = 16;	// 인벤토리 조회 요청
+	S_INVENTORY_DATA = 17;		// 인벤토리 데이터 전송
+	C_USE_ITEM = 18;			// 아이템 사용
+	S_USE_ITEM = 19;			// 아이템 사용 결과
+	C_EQUIP_ITEM = 20;			// 아이템(장비) 장착
+	S_ITEM_EQUIPPED = 21;		// 아이템(장비) 장착 결과
+	C_UNEQUIP_ITEM = 22;		// 아이템(장비) 해제
+	S_ITEM_UNEQUIPPED = 23;		// 아이템(장비) 해제 결과
+	S_ITEM_ADDED = 24;			// 아이템 획득 알림
+	S_INVENTORY_UPDATE = 25;	// 인벤토리 변경 알림
 
 	// 몬스터
-	S_MONSTER_SPAWN = 25;		// 몬스터 스폰 알림
-	S_MONSTER_DESPAWN = 26;		// 몬스터 제거 알림
-	S_MONSTER_MOVE = 27;		// 몬스터 이동 알림
-	C_ATTACK_MONSTER = 28;		// 몬스터 공격 요청
-	S_MONSTER_ATTACK = 29;		// 몬스터가 플레이어 공격
-	S_MONSTER_DIE = 30;			// 몬스터 사망 알림
-	S_MONSTER_UPDATE = 31;		// 몬스터 상태 업데이트
+	S_MONSTER_SPAWN = 26;		// 몬스터 스폰 알림
+	S_MONSTER_DESPAWN = 27;		// 몬스터 제거 알림
+	S_MONSTER_MOVE = 28;		// 몬스터 이동 알림
+	C_ATTACK_MONSTER = 29;		// 몬스터 공격 요청
+	S_MONSTER_ATTACK = 30;		// 몬스터가 플레이어 공격
+	S_MONSTER_DIE = 31;			// 몬스터 사망 알림
+	S_MONSTER_UPDATE = 32;		// 몬스터 상태 업데이트
+}
+
+message C_EnterGame {
+	option (handler_name) = "SystemPacketHandler";
 }
 
 // 서버 -> 클라이언트

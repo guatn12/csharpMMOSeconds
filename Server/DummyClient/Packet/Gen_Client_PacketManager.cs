@@ -56,6 +56,7 @@ namespace DummyClient.Packet
 
         private void Register()
         {
+            _packetTypeToId.Add(typeof(Protocol.C_EnterGame), PacketID.C_EnterGame);
             _onRecv.Add((ushort)PacketID.S_EnterGame, HandlePacket<S_EnterGame>(_handler.On_S_EnterGame));
             _onRecv.Add((ushort)PacketID.S_LeaveGame, HandlePacket<S_LeaveGame>(_handler.On_S_LeaveGame));
             _onRecv.Add((ushort)PacketID.S_Spawn, HandlePacket<S_Spawn>(_handler.On_S_Spawn));

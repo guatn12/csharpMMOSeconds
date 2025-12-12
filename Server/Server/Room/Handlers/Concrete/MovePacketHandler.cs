@@ -3,6 +3,7 @@ using Protocol;
 using Server.Core.Session;
 using Server.Room.Handlers.Implementations;
 using Server.Room.Handlers.Strategies;
+using Server.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,11 +21,15 @@ namespace Server.Room.Handlers.Concrete
 	/// </summary>
 	public class MovePacketHandler : PacketHandlerBase<C_Move, S_Move>
 	{
+		private readonly PlayerPositionService _playerPositionService;
+
 		#region 생성자
-		public MovePacketHandler( BaseRoom room )
+		public MovePacketHandler( BaseRoom room, PlayerPositionService playerPositionService )
 			: base( room,
 				  validators: null, responder: new BroadcastResponder<S_Move>( includeSelf: false ) )
-		{ }
+		{
+			_playerPositionService = playerPositionService;
+		}
 		#endregion
 
 		#region virtual 메서드 재정의 (선택)
@@ -62,7 +67,7 @@ namespace Server.Room.Handlers.Concrete
 				session.SessionId, validationResult.ErrorMessage );
 
 			// 현재 위치를 클라이언트에 재전송(동기화)
-			PosInfo currentPos = await session.GetCurrentPositionAsync();
+			PosInfo currentPos = await _playerPositionService.GetPositionAsync(session.PlayerId);
 			if(currentPos != null)
 			{
 				var correctionPacket = new S_Move
@@ -88,17 +93,19 @@ namespace Server.Room.Handlers.Concrete
 		/// </summary>
 		protected override async Task<PacketProcessResult> ProcessPacketAsync( GameSession session, C_Move packet, ILogger logger )
 		{
-			// Redis 기반 3D 위치 업데이트
-			bool positionUpdated = await session.UpdatePositionAsync(packet.PosInfo);
-
-			if(!positionUpdated)
+			try
 			{
-				logger.LogWarning("위치 업데이트 실패: Session={SessionId}", session.SessionId);
+				// Redis 기반 3D 위치 업데이트
+				await _playerPositionService.UpdatePositionAsync(session.PlayerId, packet.PosInfo);
+
+				// 성공 posinfo를 data로 전달.
+				return PacketProcessResult.Ok( packet.PosInfo );
+			}
+			catch( Exception ex )
+			{
+				logger.LogWarning( "위치 업데이트 실패: Session={SessionId}", session.SessionId );
 				return PacketProcessResult.Fail( "위치 업데이트에 실패했습니다." );
 			}
-
-			// 성공 posinfo를 data로 전달.
-			return PacketProcessResult.Ok(packet.PosInfo);
 		}
 
 		/// <summary>

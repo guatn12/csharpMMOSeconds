@@ -19,11 +19,9 @@ namespace Server.Core.Session
 {
     public class GameSession : ServerCore.Session
     {
-        private readonly RedisService _redisService;
         private readonly ILogger<GameSession> _logger;
-        private readonly IRoomManager _roomManager;
         private readonly PacketManager _packetManager;
-        private readonly PlayerPositionService _playerPositionService;
+        private readonly ISessionManager _sessionManager;
         private IRoom _currentRoom;
         private readonly object _roomLock = new object();
 
@@ -51,22 +49,12 @@ namespace Server.Core.Session
         public string PlayerName => Player.PlayerName ?? $"Player_{Player.PlayerId}";
         public long PlayerId => Player.PlayerId;
 
-        private static long _nextSessionId = 1;
-
-        public GameSession( ILogger<GameSession> logger, IRoomManager roomManager, 
-            RedisService redisService, PacketManager packetManager,
-            PlayerPositionService playerPositionService)
+        public GameSession( ILogger<GameSession> logger, PacketManager packetManager, ISessionManager sessionManager, long sessionId)
         {
             _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-            _roomManager = roomManager ?? throw new ArgumentNullException( nameof( _roomManager ) );
-            _redisService = redisService;
             _packetManager = packetManager;
-            _playerPositionService = playerPositionService;
-        }
-
-        private static long GenerateNextSessionId()
-        {
-            return System.Threading.Interlocked.Increment( ref _nextSessionId );
+            _sessionManager = sessionManager;
+            SessionId = sessionId;
         }
 
 		public void Send( IMessage packet )
@@ -108,35 +96,17 @@ namespace Server.Core.Session
 
 		public override void OnConnected( EndPoint endPoint )
 		{
-            SessionId = GenerateNextSessionId();
-            //LogManager.Info("Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
-			_logger.LogInformation( "Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
+            _logger.LogInformation( "Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
 
             // 플레이어 정보 초기화.
             InitializePlayer();
 
-            // redis에 세션 정보 저장.
-            _ = Task.Run( async () =>
-            {
-                var sessionInfo = new
-                {
-                    SessionId = SessionId,
-                    ConnectedAt = DateTime.UtcNow,
-                    EndPoint = endPoint.ToString(),
-                    PlayerId = Player.Info.PlayerId
-                };
-
-                await _redisService.SetSessionAsync( SessionId, sessionInfo, TimeSpan.FromHours( 2 ) );
-                _logger.LogDebug( "Redis에 세션 정보 저장 완료: SessionId={SessionId}", SessionId );
-            } );
-
-			// 기본 로비에 자동 입장 시도.
-			_ = Task.Run( async () => await TryJoinDefaultLobbyAsync() );
+            // 세션 매니저에 세션 등록
+            _sessionManager.RegisterSession( this );
 		}
 
 		public override void OnDisConnected( EndPoint endPoint )
 		{
-			//LogManager.Info("Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", this.SessionId, endPoint);
 			_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
 
             // Player 이벤트 구독 해제 추가
@@ -153,135 +123,12 @@ namespace Server.Core.Session
                 Player.OnDeath -= OnPlayerDeath;
             }
 
-            // Redis에서 세션 정보 삭제
-            _ = Task.Run( async () =>
-            {
-                await _redisService.DeleteSessionAsync( SessionId );
-                _logger.LogDebug( "Redis에서 세션 정보 삭제 완료: SessionId={SessionId}", SessionId );
-            } );
-
-            // Redis 에서 플레이어 위치 정보 삭제.
-            _ = Task.Run( async () =>
-            {
-                await _playerPositionService.RemovePositionAsync( Player.PlayerId );
-                _logger.LogDebug( "플레이어 위치 정보 삭제 완료: PlayerId={PlayerId}",
-                    Player.PlayerId );
-            } );
-
-			// 플레이어 상태를 Disconnected상태로 처리
+           // 플레이어 상태를 Disconnected상태로 처리
 			Player?.Disconnect();
 
-			// 모든 룸에서 퇴장 처리
-			_ = Task.Run( async () => await LeaveAllRoomsAsync() );
+            // 세션 매니저에서 세션 해제
+            _sessionManager.UnregisterSession( SessionId );
 		}
-
-		// 기본 로비 입장 시도
-		public async Task<bool> TryJoinDefaultLobbyAsync()
-        {
-            try
-            {
-                _logger.LogDebug( "Attempting to join default lobby for Player {SessionId}", SessionId );
-
-                RoomEnterResult result = await _roomManager.JoinDefaultLobbyAsync(this);
-                if(result == RoomEnterResult.Success)
-                {
-                    S_EnterGame enterPacket = new S_EnterGame
-                    {
-                        Player = Player.Info
-                    };
-                    
-                    await SendAsync( enterPacket );
-
-                    _logger.LogInformation( "Player {SessionId} successfully joined default lobby (Room: {RoomId})",
-                        SessionId, CurrentRoom?.RoomId );
-                    return true;
-                }
-                else
-                {
-                    _logger.LogWarning( "Player {SessionId} failed to join default lobby: {Result}",
-                        SessionId, result );
-                    return false;
-                }
-            }
-            catch(Exception ex)
-            {
-                _logger.LogError( ex, "Error joining default lobby for Player {SessionId}", SessionId );
-                return false;
-            }
-        }
-
-        // 특정 룸으로 이동
-        public async Task<RoomEnterResult> MoveToRoomAsync( int roomId )
-        {
-            try
-            {
-                _logger.LogDebug( "Player {SessionId} attempting to move to Room {RoomId}", SessionId, roomId );
-
-                IRoom previousRoom = CurrentRoom;
-                RoomEnterResult result = await _roomManager.MovePlayerToRoomAsync(this, roomId);
-
-                if(result == RoomEnterResult.Success)
-                {
-                    _logger.LogInformation( "Player {SessionId} moved from Room {PreviousRoomId} to Room {NewRoomId}",
-                          SessionId, previousRoom?.RoomId, CurrentRoom?.RoomId );
-                }
-
-                return result;
-            }
-            catch(Exception ex)
-            {
-                _logger.LogError( ex, "Error moving Player {SessionId} to Room {RoomId}", SessionId, roomId );
-                return RoomEnterResult.UnknownError;
-            }
-        }
-
-        // 현재 룸에서 퇴장
-        public async Task<bool> LeaveCurrentRoomAsync()
-        {
-            IRoom room = CurrentRoom;
-            if(room == null)
-            {
-                _logger.LogDebug( "Player {SessionId} is not in any room", SessionId );
-                return false;
-            }
-
-            try
-            {
-                _logger.LogDebug( "Player {SessionId} leaving Room {RoomId}", SessionId, room.RoomId );
-
-                bool success = await room.TryLeaveAsync(this);
-                if(success)
-                {
-                    CurrentRoom = null;
-                    _logger.LogInformation( "Player {SessionId} left Room {RoomId}", SessionId, room.RoomId );
-                }
-
-                return success;
-            }
-            catch(Exception ex)
-            {
-                _logger.LogError( ex, "Error leaving room for Player {SessionId}", SessionId );
-                return false;
-            }
-        }
-
-        // 모든 룸에서 퇴장 (연결 해제 시 호출)
-        public async Task LeaveAllRoomsAsync()
-        {
-            try
-            {
-                bool success = await _roomManager.RemovePlayerFromAllRoomsAsync(this);
-                if(success)
-                {
-                    CurrentRoom = null;
-                    _logger.LogInformation( "Player {SessionId} removed from all rooms", SessionId );
-                }
-            }
-            catch(Exception ex)
-            {
-                _logger.LogError( ex, "Error removing Player {SessionId} from all rooms", SessionId );
-            }
-        }
 
         // 플레이어 초기화
         private void InitializePlayer()
@@ -537,84 +384,6 @@ namespace Server.Core.Session
 
 			_logger.LogWarning( "[Event] Player Death: PlayerId={PlayerId}", player.PlayerId );
 		}
-
-		// 플레이어 상태 업데이트
-		public void UpdatePosition(PosInfo newPosition)
-        {
-            if(Player == null) return;
-
-            Player.UpdatePosition(newPosition);
-        }
-
-        // 플레이어 위치 업데이트 (Room 기반 검증 포함)
-        public async Task<bool> UpdatePositionAsync(PosInfo newPosition)
-        {
-            try
-            {
-                if(CurrentRoom == null)
-                {
-                    _logger.LogWarning( "플레이어 {PlayerId}가 룸에 속하지 않은 상태에서 위치 업데이트 시도.", Player.PlayerId );
-                    return false;
-                }
-
-                // PlayerPositionService를 통해 룸 기반 검증과 함께 위치 업데이트
-                bool isValidPosition = await _playerPositionService.UpdatePositionWithValidationAsync(
-                    Player.PlayerId, newPosition, (BaseRoom)CurrentRoom);
-
-                if(isValidPosition)
-                {
-                    // 플레이어 로컬 위치 정보도 업데이트
-                    Player.UpdatePosition( newPosition );
-
-                    _logger.LogDebug( "플레이어 위치 업데이트 성공: PlayerId={PlayerId}, Position=({X}, {Y}, {Z})",
-                        Player.PlayerId, newPosition.PosX, newPosition.PosY, newPosition.PosZ );
-                }
-                else
-                {
-                    _logger.LogWarning( "플레이어 위치 업데이트 실패 (경계 밖): PlayerId={PlayerId}, Position=({X}, {Y}, {Z})",
-                        Player.PlayerId, newPosition.PosX, newPosition.PosY, newPosition.PosZ );
-                }
-
-                return isValidPosition;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError( ex, "플레이어 위치 업데이트 중 오류 : PlayerId = {PlayerId}", Player.PlayerId );
-                return false;
-            }
-        }
-
-        //현재 플레이어 위치 조회
-        public async Task<PosInfo> GetCurrentPositionAsync()
-        {
-            try
-            {
-                return await _playerPositionService.GetPositionAsync( Player.PlayerId );
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError( ex, "플레이어 위치 조회 중 오류 : PlayerId={PlayerId}", Player.PlayerId );
-                return null;
-            }
-        }
-
-        // 주변 플레이어 조회
-        public async Task<List<(long PlayerId, PosInfo Position)>> GetNearbyPlayersAsync(float radius = 100.0f)
-        {
-            try
-            {
-                if(CurrentRoom == null)
-                    return new List<(long PlayerId, PosInfo Position)>();
-
-                return await _playerPositionService.GetNearbyPlayersInRoomAsync( Player.PlayerId,
-                    radius, (BaseRoom)CurrentRoom );
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError( ex, "주변 플레이어 조회 중 오류 : PlayerId={PlayerId}", Player.PlayerId );
-                return new List<(long PlayerId, PosInfo Position)>();
-            }
-        }
 
         public bool TakeDamage( int damage)
         {

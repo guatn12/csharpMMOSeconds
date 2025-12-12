@@ -6,6 +6,7 @@ using Server.Core.Jobs;
 using Server.Core.Session;
 using Server.Data;
 using Server.Game.Monsters;
+using Server.Services;
 using Server.Services.Combat;
 using Server.Services.Reward;
 using ServerCore;
@@ -35,9 +36,10 @@ namespace Server.Room
 		public LobbyRoom( ILogger<LobbyRoom> logger, IOptions<ServerSettings> ServerSettings,
 			DataManager datamanager, JobQueueManager jobQueueManager, JobPool jobPool,
 			ICombatService combatService, IRewardService rewardService,
+			PlayerPositionService playerPositionService,
 			string roomName = null, bool isDefaultLobby = false ) 
 			: base( logger, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
-				  jobQueueManager, jobPool, combatService, rewardService)
+				  jobQueueManager, jobPool, combatService, rewardService, playerPositionService)
 		{
 			_lobbyLogger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_serverSettings = ServerSettings.Value ?? throw new ArgumentNullException(nameof( ServerSettings ) );
@@ -295,26 +297,19 @@ namespace Server.Room
 				var spawnPosition = Utils.Position3DValidator.GetSpawnPosition(this, new Random());
 
 				// GameSession을 통해 Redis에 위치 업데이트
-				bool positionSet = await session.UpdatePositionAsync(spawnPosition);
+				await _playerPositionService.UpdatePositionAsync(session.PlayerId, spawnPosition );
 
-				if (positionSet)
+				// 클라이언트에 위치 정보 전송
+				var spawnPacket = new Protocol.S_Move
 				{
-					// 클라이언트에 위치 정보 전송
-					var spawnPacket = new Protocol.S_Move
-					{
-						PlayerId = session.SessionId,
-						PosInfo = spawnPosition
-					};
+					PlayerId = session.SessionId,
+					PosInfo = spawnPosition
+				};
 
-					await SendToPlayerAsync( session, spawnPacket );
+				await SendToPlayerAsync( session, spawnPacket );
 
-					_lobbyLogger.LogDebug( "Player {SessionId} 로비 스폰 위치 설정: ({X}, {Y}, {Z})",
-						session.SessionId, spawnPosition.PosX, spawnPosition.PosY, spawnPosition.PosZ );
-				}
-				else
-				{
-					_lobbyLogger.LogWarning( "Player {SessionId} 스폰 위치 설정 실패", session.SessionId );
-				}
+				_lobbyLogger.LogDebug( "Player {SessionId} 로비 스폰 위치 설정: ({X}, {Y}, {Z})",
+					session.SessionId, spawnPosition.PosX, spawnPosition.PosY, spawnPosition.PosZ );
 			}
 			catch (Exception ex)
 			{

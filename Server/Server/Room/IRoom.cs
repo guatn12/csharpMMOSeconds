@@ -41,6 +41,7 @@ namespace Server.Room
 		// 룸 내 특정 플레이어에게 전달
 		Task SendToPlayerAsync( GameSession session, IMessage packet );
 		// 플레이어 이동 / 채팅 처리.
+		Task HandlePlayerEnterGameAsync(GameSession session, Protocol.C_EnterGame packet, ILogger logger );
 		Task HandlePlayerMoveAsync( GameSession session, Protocol.C_Move packet, ILogger logger );
 		Task HandlePlayerChatAsync(GameSession session, Protocol.C_Chat packet, ILogger logger );
 		Task HandlePlayerPlayerInfoAsync(GameSession session, Protocol.C_PlayerInfo packet, ILogger logger );

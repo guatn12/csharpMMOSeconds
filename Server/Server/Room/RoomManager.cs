@@ -20,6 +20,7 @@ namespace Server.Room
 	public class RoomManager : IRoomManager, IHostedService, IDisposable
 	{
 		private readonly IRoomFactory _roomFactory;
+		private readonly ISessionManager _sessionManager;
 		private readonly IServiceProvider _serviceProvider;
 		private readonly ILogger<RoomManager> _logger;
 		private readonly IOptionsMonitor<ServerSettings> _serverSettings;
@@ -45,10 +46,11 @@ namespace Server.Room
 
 		public RoomManager( ILogger<RoomManager> logger, IOptionsMonitor<ServerSettings> serverSettings,
 			ILoggerFactory loggerFactory, DataManager dataManager, JobQueueManager jobQueueManager, JobPool jobPool,
-			IRoomFactory roomFactory, IServiceProvider serviceProvider)
+			IRoomFactory roomFactory, IServiceProvider serviceProvider, ISessionManager sessionManager )
 		{
-			_roomFactory = roomFactory ?? throw new ArgumentNullException(nameof(roomFactory));
-			_serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+			_roomFactory = roomFactory ?? throw new ArgumentNullException( nameof( roomFactory ) );
+			_sessionManager = sessionManager;
+			_serviceProvider = serviceProvider ?? throw new ArgumentNullException( nameof( serviceProvider ) );
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_serverSettings = serverSettings ?? throw new ArgumentNullException( nameof( serverSettings ) );
 			_loggerFactory = loggerFactory ?? throw new ArgumentNullException( nameof( loggerFactory ) );
@@ -59,6 +61,7 @@ namespace Server.Room
 			_rooms = new ConcurrentDictionary<int, IRoom>();
 
 			_logger.LogInformation( "RoomManager created with settings monitoring enabled" );
+			
 		}
 
 		public async Task StartAsync( CancellationToken cancellationToken )
@@ -341,8 +344,7 @@ namespace Server.Room
 
 		public Task<IRoom> FindPlayerCurrentRoomAsync( GameSession session )
 		{
-			IRoom currentRoom = _rooms.Values.FirstOrDefault(r => r.ContainsPlayer(session));
-			return Task.FromResult( currentRoom );
+			return Task.FromResult(session.CurrentRoom);
 		}
 
 		public async Task<bool> RemovePlayerFromAllRoomsAsync( GameSession session )
@@ -350,16 +352,45 @@ namespace Server.Room
 			try
 			{
 				bool removed = false;
-				List<IRoom> roomsWithPlayer = _rooms.Values.Where(r => r.ContainsPlayer(session)).ToList();
+				int roomsChecked = 0;
 
-				foreach(var room in roomsWithPlayer)
+				// 1. CurrentRoom 먼저 처리
+				var currentRoom = session.CurrentRoom;
+				if(currentRoom != null)
 				{
-					if(await room.TryLeaveAsync(session))
+					if(await currentRoom.TryLeaveAsync(session))
 					{
 						removed = true;
-						_logger.LogDebug( "Player {SessionId} removed from Room {RoomId}",
-							session.SessionId, room.RoomId );
+						_logger.LogDebug("Player {SessionId} removed from CurrentRoom {RoomId}", session.SessionId, currentRoom.RoomId );
 					}
+					roomsChecked++;
+				}
+
+				// 2. 나머지 Room 검사 (혹시 모를 잔존 제거)
+				var otherRooms = _rooms.Values.Where(r => r.RoomId != currentRoom?.RoomId && r.ContainsPlayer(session)).ToList();
+
+				if(otherRooms.Any() )
+				{
+					// 비정상 상황
+					_logger.LogWarning( "Player {SessionId} found in {Count} additional rooms beyond CurrentRoom! Cleaning up...",
+						session.SessionId, otherRooms.Count );
+
+					foreach(var room in otherRooms)
+					{
+						if(await room.TryLeaveAsync( session ))
+						{
+							removed = true;
+							roomsChecked++;
+							_logger.LogWarning( "Player {SessionId} removed from unexpected Room {RoomId}",
+								session.SessionId, room.RoomId );
+						}
+					}
+				}
+
+				if(removed)
+				{
+					_logger.LogDebug("Player {SessionId} cleanup complete. Checked {RoomsChecked} room(s)", session.SessionId,
+						roomsChecked);
 				}
 
 				return removed;

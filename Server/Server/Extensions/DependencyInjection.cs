@@ -96,21 +96,11 @@ namespace Server.Extensions
 			// 네트워킹 핵심
 			services.AddSingleton<Listener>();
 			services.AddSingleton<PacketManager>();
+			services.AddSingleton<ISessionManager, SessionManager>();
 
 			// Job Queue 시스템
 			services.AddSingleton<JobPool>();
 			services.AddSingleton( JobQueueManager.Instance );
-
-			// GameSession 팩토리
-			services.AddTransient<GameSession>( provider =>
-			{
-				ILogger<GameSession> logger = provider.GetRequiredService<ILogger<GameSession>>();
-				IRoomManager roomManager = provider.GetRequiredService<IRoomManager>();
-				RedisService redisService = provider.GetRequiredService<RedisService>();
-				PacketManager packetManager = provider.GetRequiredService<PacketManager>();
-				PlayerPositionService playerPositionService = provider.GetRequiredService<PlayerPositionService>();
-				return new GameSession( logger, roomManager, redisService, packetManager, playerPositionService );
-			} );
 
 			// DB 서비스
 			DatabaseConfig databaseConfig = configuration.GetSection("ServerSettings:Database").Get<DatabaseConfig>()

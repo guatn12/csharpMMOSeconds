@@ -29,6 +29,7 @@ namespace Server.Core.Host
 		private readonly PacketManager _packetManager;
 		private readonly Listener _listener;
 		private readonly IServiceProvider _serviceProvider;
+		private readonly ISessionManager _sessionManager;
 		private CancellationTokenSource _cancellationTokenSource;
 
 		public ServerHost(
@@ -41,7 +42,8 @@ namespace Server.Core.Host
 			PerformanceMonitoringService performanceMonitoringService,
 			PacketManager packetManager,
 			Listener listener,
-			IServiceProvider serviceProvider )
+			IServiceProvider serviceProvider,
+			ISessionManager sessionManager )
 		{
 			_logger = logger;
 			_serverSettings = serverSettings;
@@ -55,6 +57,7 @@ namespace Server.Core.Host
 			_serviceProvider = serviceProvider;
 
 			_cancellationTokenSource = new CancellationTokenSource();
+			_sessionManager = sessionManager;
 		}
 
 		public async Task StartAsync(CancellationToken token)
@@ -235,7 +238,7 @@ namespace Server.Core.Host
 			};
 
 			// 리스너 시작
-			_listener.Init( endPoint, () => _serviceProvider.GetRequiredService<GameSession>(), settings.Network.ListenBacklog );
+			_listener.Init( endPoint, () => _sessionManager.CreateSession(), settings.Network.ListenBacklog );
 			_logger.LogInformation( "서버 리스닝 시작: {EndPoint}", endPoint );
 		}
 	}

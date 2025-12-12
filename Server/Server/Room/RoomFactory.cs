@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Server.Config;
 using Server.Core.Jobs;
 using Server.Data;
+using Server.Services;
 using Server.Services.Combat;
 using Server.Services.Reward;
 using ServerCore;
@@ -40,11 +41,13 @@ namespace Server.Room
 		{
 			var combatService = serviceProvider.GetRequiredService<ICombatService>();
 			var rewardService = serviceProvider.GetRequiredService<IRewardService>();
+			var playerPositionService = serviceProvider.GetRequiredService<PlayerPositionService>();
 
 			return roomType switch
 			{
-				RoomType.Lobby => new LobbyRoom( _loggerFactory.CreateLogger<LobbyRoom>(), _serverSettings, _dataManager, _jobQueueManager,
-				_jobPool, combatService, rewardService, roomName, isDefaultLobby: false ),
+				RoomType.Lobby => new LobbyRoom( _loggerFactory.CreateLogger<LobbyRoom>(), _serverSettings, _dataManager, 
+				_jobQueueManager, _jobPool, combatService, rewardService, playerPositionService, roomName, 
+				isDefaultLobby: false ),
 
 				RoomType.Battle => throw new NotImplementedException( "BattleRoom not implemented yet"),
 				RoomType.Dungeon => throw new NotImplementedException( "DungeonRoom not implemented yet"),

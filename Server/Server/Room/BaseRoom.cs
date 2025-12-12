@@ -21,6 +21,7 @@ using static System.Net.Mime.MediaTypeNames;
 using Server.Room.Handlers.Concrete;
 using Server.Extensions;
 using Server.Game.Monsters;
+using Server.Services;
 
 namespace Server.Room
 {
@@ -70,12 +71,14 @@ namespace Server.Room
 		// Service
 		protected readonly ICombatService _combatService;
 		protected readonly IRewardService _rewardService;
+		protected readonly PlayerPositionService _playerPositionService;
 
 		public event EventHandler<PlayerRoomEventArgs> PlayerEntered;
 		public event EventHandler<PlayerRoomEventArgs> PlayerLeft;
 
 		protected BaseRoom( ILogger logger, string roomName, int maxPlayers, DataManager dataManager,
 			JobQueueManager jobQueueManager, JobPool jobPool, ICombatService combatService, IRewardService rewardService,
+			PlayerPositionService playerPositionService,
 			float roomWidth = 100.0f, float roomHeight = 50.0f, float roomDepth = 100.0f,
 			float minX = 0.0f, float minY = 0.0f, float minZ = 0.0f )
 		{
@@ -86,6 +89,7 @@ namespace Server.Room
 
 			_combatService = combatService;
 			_rewardService = rewardService;
+			_playerPositionService = playerPositionService;
 
 			RoomId = GenerateNextRoomId();
 			RoomName = roomName ?? throw new ArgumentNullException( nameof( roomName ) );
@@ -286,9 +290,14 @@ namespace Server.Room
 			}
 		}
 
+		public virtual Task HandlePlayerEnterGameAsync( GameSession session, Protocol.C_EnterGame packet, ILogger logger )
+		{
+			return Task.CompletedTask;
+		}
+
 		public virtual async Task HandlePlayerMoveAsync( GameSession session, Protocol.C_Move packet, ILogger logger )
 		{
-			await new MovePacketHandler( this ).HandleAsync( session, packet, logger );
+			await new MovePacketHandler( this, _playerPositionService ).HandleAsync( session, packet, logger );
 		}
 
 		public virtual async Task HandlePlayerChatAsync( GameSession session, Protocol.C_Chat packet, ILogger logger )

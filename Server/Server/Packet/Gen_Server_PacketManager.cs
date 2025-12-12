@@ -1,5 +1,6 @@
 // [자동 생성] 새로운 제네릭 Job 시스템용 PacketManager
 // Target: Server
+// [수동 수정] IRoomManager 주입 및 C_EnterGame 특별 처리 추가 (Option B)
 
 using Google.Protobuf;
 using Protocol;
@@ -19,6 +20,7 @@ namespace Server.Packet
         private readonly JobPool _jobPool;
         private readonly JobQueueManager _jobQueueManager;
         private readonly ILogger<PacketManager> _logger;
+        private readonly IRoomManager _roomManager;
         private readonly Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>> _onRecv;
         private static readonly Dictionary<Type, Func<GameSession, IRoom, IMessage, ILogger, ValueTask>> _packetLogicMap;
         private readonly Dictionary<Type, PacketID> _packetTypeToId;
@@ -27,6 +29,8 @@ namespace Server.Packet
         {
             _packetLogicMap = new Dictionary<Type, Func<GameSession, IRoom, IMessage, ILogger, ValueTask>>
             {
+                [typeof(C_EnterGame)] = async (session, room, packet, logger) =>
+                    await (room?.HandlePlayerEnterGameAsync(session, (C_EnterGame)packet, logger) ?? Task.CompletedTask),
                 [typeof(C_Move)] = async (session, room, packet, logger) =>
                     await (room?.HandlePlayerMoveAsync(session, (C_Move)packet, logger) ?? Task.CompletedTask),
                 [typeof(C_Chat)] = async (session, room, packet, logger) =>
@@ -48,18 +52,21 @@ namespace Server.Packet
             };
         }
 
-        public PacketManager(JobPool jobPool, JobQueueManager jobQueueManager, ILogger<PacketManager> logger)
-        {
-            _jobPool = jobPool ?? throw new ArgumentNullException(nameof(jobPool));
-            _jobQueueManager = jobQueueManager ?? throw new ArgumentNullException(nameof(jobQueueManager));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _onRecv = new Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>>();
-            _packetTypeToId = new Dictionary<Type, PacketID>();
-            Register();
-        }
+        public PacketManager( JobPool jobPool, JobQueueManager jobQueueManager, ILogger<PacketManager> logger, 
+            IRoomManager roomManager )
+		{
+			_jobPool = jobPool ?? throw new ArgumentNullException( nameof( jobPool ) );
+			_jobQueueManager = jobQueueManager ?? throw new ArgumentNullException( nameof( jobQueueManager ) );
+			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
+			_roomManager = roomManager;
+			_onRecv = new Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>>();
+			_packetTypeToId = new Dictionary<Type, PacketID>();
+			Register();
+		}
 
-        private void Register()
+		private void Register()
         {
+            _onRecv.Add((ushort)PacketID.C_EnterGame, HandleC_EnterGameAsync);
             _onRecv.Add((ushort)PacketID.C_Move, HandleC_MoveAsync);
             _onRecv.Add((ushort)PacketID.C_Chat, HandleC_ChatAsync);
             _onRecv.Add((ushort)PacketID.C_PlayerInfo, HandleC_PlayerInfoAsync);
@@ -92,6 +99,13 @@ namespace Server.Packet
             _packetTypeToId.Add(typeof(S_MonsterAttack), PacketID.S_MonsterAttack);
             _packetTypeToId.Add(typeof(S_MonsterDie), PacketID.S_MonsterDie);
             _packetTypeToId.Add(typeof(S_MonsterUpdate), PacketID.S_MonsterUpdate);
+        }
+
+        private async ValueTask HandleC_EnterGameAsync(GameSession session, ArraySegment<byte> buffer)
+        {
+            var packet = new C_EnterGame();
+            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+            await HandlePacketLogic<C_EnterGame>(session, packet);
         }
 
         private async ValueTask HandleC_MoveAsync(GameSession session, ArraySegment<byte> buffer)
@@ -161,6 +175,27 @@ namespace Server.Packet
         {
             try
             {
+                // [수동 수정] C_EnterGame 특별 처리
+                if(typeof(T) == typeof(C_EnterGame))
+                {
+                    var EnterRoom = session.CurrentRoom;
+                    if(EnterRoom == null)
+                    {
+                        // 첫 입장: 기본 로비 입장 시도
+                        _logger.LogInformation( "플레이어 {SessionId} 게임 입장 요청 - 기본 로비 입장 시도",
+                            session.SessionId );
+                        await _roomManager.JoinDefaultLobbyAsync(session);
+                        return;
+                    }
+                    else
+                    {
+                        // 이미 Room에 있음:경고 로그
+                        _logger.LogWarning("플레이어 {SessionId}는 이미 Room {RoomId}에 입장해 있습니다.",
+                            session.SessionId, EnterRoom.RoomId );
+                        return;
+                    }
+                }
+
                 var room = session.CurrentRoom;
                 
                 // 핸들러 검색
