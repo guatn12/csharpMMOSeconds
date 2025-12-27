@@ -2,8 +2,9 @@ using System;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Collections.Generic; // Added for List<Tuple> and HashSet
-using System.Linq; // Added for Distinct
+using System.Collections.Generic;
+using System.Linq;
+using System.ComponentModel;
 
 namespace PacketGenerator
 {
@@ -33,9 +34,9 @@ namespace PacketGenerator
 		{
 			while(currentDir != null)
 			{
-				if(0 < Directory.GetFiles(currentDir, "*.sln").Length)
+				if(0 < Directory.GetFiles( currentDir, "*.sln" ).Length)
 				{
-					currentDir = Directory.GetParent(currentDir).FullName;
+					currentDir = Directory.GetParent( currentDir ).FullName;
 					return currentDir;
 				}
 				currentDir = Directory.GetParent( currentDir )?.FullName;
@@ -44,13 +45,13 @@ namespace PacketGenerator
 			return null;
 		}
 
-		static void ParseProto(string protoText, string outputDir)
+		static void ParseProto( string protoText, string outputDir )
 		{
 			// 정규식을 사용하여 MsgId enum 블록 추출
 			Match idMatch = Regex.Match(protoText, @"enum\s+MsgId\s*\{([\s\S]*?)\}");
-			if (!idMatch.Success)
+			if(!idMatch.Success)
 			{
-				Console.WriteLine("Could not find MsgId enum in .proto file.");
+				Console.WriteLine( "Could not find MsgId enum in .proto file." );
 				return;
 			}
 
@@ -60,63 +61,87 @@ namespace PacketGenerator
 			var idRegex = new Regex(@"(\w+)\s*=\s*(\d+);");
 			var matches = idRegex.Matches(idBlock);
 
-			// Extract message names and their handler_name options
-			List<Tuple<string, string, string>> packetInfoList = new List<Tuple<string, string, string>>();
-			Regex messageRegex = new Regex(@"message\s+(\w+)\s*\{[^}]*?option\s+\(handler_name\)\s*=\s*""(\w+)"";", RegexOptions.Singleline);
-			MatchCollection messageMatches = messageRegex.Matches(protoText);
+			List<Tuple<string, string, string>> packetCategoryList = new List<Tuple<string, string, string>>();
+			Regex categoryRegex = new Regex(@"message\s+(\w+)\s*\{[^}]*?option\s+\(category\)\s*=\s*(\w+);", RegexOptions.Singleline);
+			MatchCollection categoryMatches = categoryRegex.Matches(protoText);
 
-			foreach (Match messageMatch in messageMatches)
+			foreach(Match categoryMatch in categoryMatches)
 			{
-				string messageName = messageMatch.Groups[1].Value.Trim(); // Add .Trim() here
-				string handlerName = messageMatch.Groups[2].Value;
+				string messageName = categoryMatch.Groups[1].Value.Trim();
+				string categoryName = categoryMatch.Groups[2].Value.Trim();
 				string packetType = "";
-				if (messageName.StartsWith("C_"))
-				{
+
+				if(messageName.StartsWith( "C_" ))
 					packetType = "C_";
-				}
-				else if (messageName.StartsWith("S_"))
-				{
+				else if(messageName.StartsWith( "S_" ))
 					packetType = "S_";
-				}
-				packetInfoList.Add(Tuple.Create(messageName, handlerName, packetType));
+
+				packetCategoryList.Add( Tuple.Create( messageName, categoryName, packetType ) );
 			}
 
 			// 서버용 PacketID enum 생성
 			StringBuilder serverPacketEnum = new StringBuilder();
-			GeneratePacketEnum(matches, serverPacketEnum, "Server");
-			File.WriteAllText("Gen_Server_PacketID.cs", serverPacketEnum.ToString());
+			GeneratePacketEnum( matches, serverPacketEnum, "Server" );
+			File.WriteAllText( "Gen_Server_PacketID.cs", serverPacketEnum.ToString() );
 
 			// 클라이언트(unity)용 PacketID enum 생성
 			StringBuilder clientPacketEnum = new StringBuilder();
-			GeneratePacketEnum(matches, clientPacketEnum, "Client");
-			File.WriteAllText("Gen_Client_PacketID.cs", clientPacketEnum.ToString());
+			GeneratePacketEnum( matches, clientPacketEnum, "Client" );
+			File.WriteAllText( "Gen_Client_PacketID.cs", clientPacketEnum.ToString() );
 
 			// 서버용 PacketManager 생성 ( 새로운 구조 )
 			StringBuilder ServerManager = new StringBuilder();
-			GeneratePacketManager(matches, ServerManager, "Server", packetInfoList);
-			File.WriteAllText("Gen_Server_PacketManager.cs", ServerManager.ToString());
+			GeneratePacketManager( matches, ServerManager, "Server", packetCategoryList );
+			File.WriteAllText( "Gen_Server_PacketManager.cs", ServerManager.ToString() );
 
 			// 클라이언트(unity)용 Packetmanager 생성
 			StringBuilder ClientManager = new StringBuilder();
-			GeneratePacketManager(matches, ClientManager, "Client", packetInfoList);
-			File.WriteAllText("Gen_Client_PacketManager.cs", ClientManager.ToString());
+			GeneratePacketManager( matches, ClientManager, "Client", packetCategoryList );
+			File.WriteAllText( "Gen_Client_PacketManager.cs", ClientManager.ToString() );
 
 			// 클라이언트(unreal)용 c++ 헤더 생성
 			StringBuilder unrealHeader = new StringBuilder();
-			GenerateUnrealHeader(matches, unrealHeader);
-			File.WriteAllText("Gen_PacketID.h", unrealHeader.ToString());
+			GenerateUnrealHeader( matches, unrealHeader );
+			File.WriteAllText( "Gen_PacketID.h", unrealHeader.ToString() );
 
-			// Generate IPacketHandler interfaces (Removed calls to GenerateIPacketHandler)
+			// IPacketHandler 인터페이스 생성
+			GenerateIPacketHandler();
+
+			// Category별 핸들러 생성
+			var packetHandlerList = packetCategoryList.Where( p => p.Item3 == "C_" )
+				.Select(p => p.Item2)
+				.Distinct()
+				.ToList();
+
+			Console.WriteLine( $"\n{packetHandlerList.Count}개 카테고리의 핸들러 생성 중..." );
+			foreach ( var category in packetHandlerList )
+			{
+				string handlerProperty = ToCamelCase(category) + "PacketHandler";  // "RoomPacketHandler"
+				GeneratePacketHandlers( packetCategoryList, category, handlerProperty );
+			}
+
+			Console.WriteLine( "모든 핸들러 생성 완료\n" );
+
+			Console.WriteLine( $"\n=== 생성 완료 요약 ===" );
+			Console.WriteLine( $"- IPacketHandler.cs" );
+			Console.WriteLine( $"- Gen_Server_PacketManager.cs" );
+			Console.WriteLine( $"- Gen_Client_PacketManager.cs" );
+			foreach(var category in packetHandlerList)
+			{
+				string handlerProperty = ToCamelCase(category) + "PacketHandler";
+				Console.WriteLine( $"- {handlerProperty}.Generated.cs" );
+			}
+			Console.WriteLine( $"=====================\n" );
 		}
 
-		static void GeneratePacketEnum (MatchCollection matches, StringBuilder sb, string target)
+		static void GeneratePacketEnum( MatchCollection matches, StringBuilder sb, string target )
 		{
 			sb.AppendLine( "// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다." );
 			sb.AppendLine( $"// Target: {target}" );
 			sb.AppendLine();
 			sb.AppendLine( "public enum PacketID" );
 			sb.AppendLine( "{" );
-			foreach( Match match in matches )
+			foreach(Match match in matches)
 			{
 				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
 
@@ -125,160 +150,236 @@ namespace PacketGenerator
 			sb.AppendLine( "}" );
 		}
 
-		static void GeneratePacketManager(MatchCollection matches, StringBuilder sb, string target, List<Tuple<string, string, string>> packetInfoList)
+		static void GeneratePacketManager( MatchCollection matches, StringBuilder sb, string target,
+			List<Tuple<string, string, string>> packetCategoryList )
 		{
-			if (target == "Server")
+			if(target == "Server")
 			{
-				GenerateNewServerPacketManager( matches, sb, packetInfoList );
+				GenerateNewServerPacketManager( matches, sb, packetCategoryList );
 			}
 			else // client
 			{
-				GenerateNewClientPacketManager( matches, sb, packetInfoList );
+				GenerateNewClientPacketManager( matches, sb, packetCategoryList );
 			}
 		}
 
-		private static void GenerateNewServerPacketManager(MatchCollection matches, StringBuilder sb, List<Tuple<string, string, string>> packetInfoList)
+		private static void GenerateNewServerPacketManager( MatchCollection matches, StringBuilder sb,
+			List<Tuple<string, string, string>> packetCategoryList )
 		{
-			sb.AppendLine( "// [자동 생성] 새로운 제네릭 Job 시스템용 PacketManager" );
-			sb.AppendLine( "// Target: Server" );
-			sb.AppendLine();
-			sb.AppendLine( "using Google.Protobuf;" );
-			sb.AppendLine( "using Protocol;" );
-			sb.AppendLine( "using Microsoft.Extensions.Logging;" );
-			sb.AppendLine( "using Server.Core.Jobs;" );
-			sb.AppendLine( "using Server.Core.Session;" );
-			sb.AppendLine( "using Server.Room;" );
-			sb.AppendLine( "using ServerCore;" );
-			sb.AppendLine( "using System;" );
-			sb.AppendLine( "using System.Collections.Generic;" );
-			sb.AppendLine( "using System.Threading.Tasks;" );
-			sb.AppendLine();
-			sb.AppendLine( "namespace Server.Packet" );
-			sb.AppendLine( "{" );
-			sb.AppendLine( "    public class PacketManager" );
-			sb.AppendLine( "    {" );
+			// 1. 헤더 및 using 문
+			sb.Append( """
+				// [자동 생성] Category 핸들러 시스템용 PacketManager
+				// Target: Server
 
-			// 필드 선언
-			sb.AppendLine( "        private readonly JobPool _jobPool;" );
-			sb.AppendLine( "        private readonly JobQueueManager _jobQueueManager;" );
-			sb.AppendLine( "        private readonly ILogger<PacketManager> _logger;" );
-			sb.AppendLine( "        private readonly Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>> _onRecv;" );
-			sb.AppendLine( "        private static readonly Dictionary<Type, Func<GameSession, IRoom, IMessage, ILogger, ValueTask>> _packetLogicMap;" );
-			sb.AppendLine( "        private readonly Dictionary<Type, PacketID> _packetTypeToId;" );
-			sb.AppendLine();
+				using Google.Protobuf;
+				using Protocol;
+				using Microsoft.Extensions.Logging;
+				using Server.Core.Session;
+				using System;
+				using System.Collections.Generic;
+				using System.Threading.Tasks;
+				using Server.Packet.Handlers;
 
-			// 정적 생성자 - 패킷 로직 매핑
-			sb.AppendLine( "        static PacketManager()" );
-			sb.AppendLine( "        {" );
-			sb.AppendLine( "            _packetLogicMap = new Dictionary<Type, Func<GameSession, IRoom, IMessage, ILogger, ValueTask>>" );
-			sb.AppendLine( "            {" );
-
-			foreach(Match match in matches)
-			{
-				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
-
-				if(pName.StartsWith( "C_" ))
+				namespace Server.Packet
 				{
-					// C_Move → HandlePlayerMoveAsync, C_Chat → HandlePlayerChatAsync
-					string methodName = pName.Replace("C_", "HandlePlayer") + "Async";
-					sb.AppendLine( $"                [typeof({pName})] = async (session, room, packet, logger) =>" );
-					sb.AppendLine( $"                    await (room?.{methodName}(session, ({pName})packet, logger) ?? Task.CompletedTask)," );
-				}
-			}
+					public class PacketManager
+					{
+						private readonly ILogger<PacketManager> _logger;
+						private readonly Dictionary<Type, PacketID> _packetTypeToId;
+						private readonly Dictionary<PacketID, PacketCategory> _packetCategoryCache = new();
 
-			sb.AppendLine( "            };" );
-			sb.AppendLine( "        }" );
+				""" );
+
+			// 2. 생성자
+			sb.Append( """
+						public PacketManager(ILogger<PacketManager> logger)
+						{
+							_logger = logger;
+							_packetTypeToId = new Dictionary<Type, PacketID>();
+							Register();
+						}
+				""" );
 			sb.AppendLine();
 
-			// 생성자
-			sb.AppendLine( "        public PacketManager(JobPool jobPool, JobQueueManager jobQueueManager, ILogger<PacketManager> logger)" );
-			sb.AppendLine( "        {" );
-			sb.AppendLine( "            _jobPool = jobPool ?? throw new ArgumentNullException(nameof(jobPool));" );
-			sb.AppendLine( "            _jobQueueManager = jobQueueManager ?? throw new ArgumentNullException(nameof(jobQueueManager));" );
-			sb.AppendLine( "            _logger = logger ?? throw new ArgumentNullException(nameof(logger));" );
-			sb.AppendLine( "            _onRecv = new Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>>();" );
-			sb.AppendLine( "            _packetTypeToId = new Dictionary<Type, PacketID>();" );
-			sb.AppendLine( "            Register();" );
-			sb.AppendLine( "        }" );
-			sb.AppendLine();
-
-			// Register 메서드
+			// 3. Register 메서드 시작
 			sb.AppendLine( "        private void Register()" );
 			sb.AppendLine( "        {" );
 
+			// S_ 패킷 타입 등록
 			foreach(Match match in matches)
 			{
 				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
-
-				if(pName.StartsWith( "C_" ))
-				{
-					sb.AppendLine( $"            _onRecv.Add((ushort)PacketID.{pName}, Handle{pName}Async);" );
-				}
-			}
-
-			// S_ 패킷들을 _packetTypeToId에 등록 (서버가 클라이언트에게 전송하는 패킷)
-			foreach(Match match in matches)
-			{
-				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
-
 				if(pName.StartsWith( "S_" ))
 				{
 					sb.AppendLine( $"            _packetTypeToId.Add(typeof({pName}), PacketID.{pName});" );
 				}
 			}
 
-			sb.AppendLine( "        }" );
-			sb.AppendLine();
+			var categoryList = packetCategoryList
+				.Where(p => p.Item3 == "C_")
+				.GroupBy(p => p.Item2)
+				.ToList();
 
-			// 개별 핸들러 메서드들 생성
-			foreach(Match match in matches)
+			foreach(var categoryGroup in categoryList)
 			{
-				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
+				string categoryName = ToCamelCase(categoryGroup.Key);
+				sb.AppendLine( $"            // {categoryName} 카테고리" );
 
-				if(pName.StartsWith( "C_" ))
+				foreach(var categoryData in categoryGroup)
 				{
-					sb.AppendLine( $"        private async ValueTask Handle{pName}Async(GameSession session, ArraySegment<byte> buffer)" );
-					sb.AppendLine( "        {" );
-					sb.AppendLine( $"            var packet = new {pName}();" );
-					sb.AppendLine( "            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);" );
-					sb.AppendLine( $"            await HandlePacketLogic<{pName}>(session, packet);" );
-					sb.AppendLine( "        }" );
-					sb.AppendLine();
+					sb.AppendLine( $"            _packetCategoryCache.Add(PacketID.{categoryData.Item1}, PacketCategory.{categoryName});" );
 				}
 			}
 
-			// 제네릭 핸들러 메서드
-			sb.AppendLine( "        private async ValueTask HandlePacketLogic<T>(GameSession session, T packet) where T : IMessage" );
-			sb.AppendLine( "        {" );
-			sb.AppendLine( "            try" );
-			sb.AppendLine( "            {" );
-			sb.AppendLine( "                var room = session.CurrentRoom;" );
-			sb.AppendLine( "                " );
-			sb.AppendLine( "                // 핸들러 검색" );
-			sb.AppendLine( "                if (!_packetLogicMap.TryGetValue(typeof(T), out var handler))" );
-			sb.AppendLine( "                {" );
-			sb.AppendLine( "                    _logger.LogWarning(\"No handler found for packet type: {PacketType}\", typeof(T).Name);" );
-			sb.AppendLine( "                    return;" );
-			sb.AppendLine( "                }" );
-			sb.AppendLine();
-			sb.AppendLine( "                // PacketJob 생성 및 설정" );
-			sb.AppendLine( "                var job = _jobPool.Get<PacketJob<T>>();" );
-			sb.AppendLine( "                job.Initialize(session, room, packet, _logger);" );
-			sb.AppendLine( "                job.SetHandler(handler);" );
-			sb.AppendLine();
-			sb.AppendLine( "                // Job Queue에 추가" );
-			sb.AppendLine( "                await _jobQueueManager.PushAsync(job);" );
-			sb.AppendLine( "            }" );
-			sb.AppendLine( "            catch (Exception ex)" );
-			sb.AppendLine( "            {" );
-			sb.AppendLine( "                _logger.LogError(ex, \"Error handling packet {PacketType} from session {SessionId}\"," );
-			sb.AppendLine( "                    typeof(T).Name, session.SessionId);" );
-			sb.AppendLine( "            }" );
 			sb.AppendLine( "        }" );
 			sb.AppendLine();
 
-			// HandlePacket 메서드
-			sb.AppendLine( "        public async ValueTask HandlePacket(GameSession session, ArraySegment<byte> buffer)" );
+			// 6. HandlePacket 메서드
+			sb.Append( """
+						public async ValueTask HandlePacket(GameSession session, ArraySegment<byte> buffer)
+						{
+							ushort count = 0;
+							ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);
+							count += 2;
+							ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + count);
+							count += 2;
+
+
+							PacketCategory packetCategory = GetPacketCategory((PacketID)id);
+							_logger.LogDebug("Packet received: ID={PacketId}, Category={Category}", id, packetCategory);
+
+							// CurrentRoom 확인
+							if(packetCategory != PacketCategory.System)
+							{
+								if(session.CurrentRoom == null)
+								{
+									_logger.LogWarning( "Player {PlayerId} not in any room for packet {PacketId}", session.PlayerId, id.ToString() );
+									return;
+								}
+							}
+							
+							var room = session.CurrentRoom;
+							
+							IPacketHandler packetHandler = packetCategory switch
+							{
+								PacketCategory.System => room?.SystemPacketHandler,
+								PacketCategory.Inventory => room?.InventoryPacketHandler,
+								PacketCategory.Room => room?.RoomPacketHandler,
+								PacketCategory.Combat => room?.CombatPacketHandler,
+								_ => null
+							};
+
+							if(packetHandler != null)
+							{
+								await packetHandler.HandleAsync( session, id, buffer );
+							}
+							else
+							{
+								_logger.LogWarning( "No handler for category: {Category}", packetCategory );
+							}
+						}
+
+
+				""" );
+
+			// 7. MakeSendPacket 메서드
+			sb.Append( """
+						public ArraySegment<byte> MakeSendPacket(IMessage packet)
+						{
+							if (!_packetTypeToId.TryGetValue(packet.GetType(), out var packetId))
+							{
+								_logger.LogWarning("Unknown packet type for MakeSendPacket: {PacketType}", packet.GetType().Name);
+								return new ArraySegment<byte>();
+							}
+
+							ushort size = (ushort)packet.CalculateSize();
+							byte[] buffer = new byte[size + 4];
+							Array.Copy(BitConverter.GetBytes((ushort)(size + 4)), 0, buffer, 0, sizeof(ushort));
+							Array.Copy(BitConverter.GetBytes((ushort)packetId), 0, buffer, 2, sizeof(ushort));
+							packet.WriteTo(new System.IO.MemoryStream(buffer, 4, size));
+							return new ArraySegment<byte>(buffer);
+						}
+
+
+				""" );
+
+			sb.Append( """
+						private PacketCategory GetPacketCategory(PacketID id)
+						{
+							return _packetCategoryCache.TryGetValue(id, out var category) ? category : PacketCategory.NoneCategory;
+						}
+					}
+				}
+				""" );
+		}
+
+		private static void GenerateNewClientPacketManager( MatchCollection matches, StringBuilder sb,
+			List<Tuple<string, string, string>> packetCategoryList )
+		{
+			sb.AppendLine( "// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다." );
+			sb.AppendLine( "// Target: Client (신규 구조 - Inheritance Model)" );
+			sb.AppendLine();
+			sb.AppendLine( "using ServerCore;" );
+			sb.AppendLine( "using System;" );
+			sb.AppendLine( "using System.Collections.Generic;" );
+			sb.AppendLine( "using System.Threading.Tasks;" );
+			sb.AppendLine( "using Google.Protobuf;" );
+			sb.AppendLine( "using Protocol;" );
+			sb.AppendLine( "using Microsoft.Extensions.Logging;" );
+			sb.AppendLine();
+			sb.AppendLine( "namespace DummyClient.Packet" );
+			sb.AppendLine( "{" );
+			sb.AppendLine( "    public abstract class BaseClientPacketHandler" );
+			sb.AppendLine( "    {" );
+
+			// Generate handler method stubs
+			foreach(Match match in matches)
+			{
+				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
+				if(pName.StartsWith( "S_" ))
+				{
+					sb.AppendLine( $"        public virtual ValueTask On_{pName}(Session session, {pName} packet) {{ Console.WriteLine(\"Received but not handled: {pName}\"); return ValueTask.CompletedTask; }}" );
+				}
+			}
+
+			sb.AppendLine( "    }" );
+			sb.AppendLine();
+
+			sb.AppendLine( "    public class PacketManager" );
+			sb.AppendLine( "    {" );
+			sb.AppendLine( "        private readonly ILogger<PacketManager> _logger;" );
+			sb.AppendLine( "        private readonly BaseClientPacketHandler _handler;" );
+			sb.AppendLine( "        private readonly Dictionary<ushort, Func<Session, ArraySegment<byte>, ValueTask>> _onRecv;" );
+			sb.AppendLine( "        private readonly Dictionary<Type, PacketID> _packetTypeToId;" );
+			sb.AppendLine();
+			sb.AppendLine( "        public PacketManager(ILogger<PacketManager> logger, BaseClientPacketHandler handler)" );
+			sb.AppendLine( "        {" );
+			sb.AppendLine( "            _logger = logger ?? throw new ArgumentNullException(nameof(logger));" );
+			sb.AppendLine( "            _handler = handler ?? throw new ArgumentNullException(nameof(handler));" );
+			sb.AppendLine( "            _onRecv = new Dictionary<ushort, Func<Session, ArraySegment<byte>, ValueTask>>();" );
+			sb.AppendLine( "            _packetTypeToId = new Dictionary<Type, PacketID>();" );
+			sb.AppendLine( "            Register();" );
+			sb.AppendLine( "        }" );
+			sb.AppendLine();
+			sb.AppendLine( "        private void Register()" );
+			sb.AppendLine( "        {" );
+
+			foreach(Match match in matches)
+			{
+				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
+				if(pName.StartsWith( "S_" ))
+				{
+					sb.AppendLine( $"            _onRecv.Add((ushort)PacketID.{pName}, HandlePacket<{pName}>(_handler.On_{pName}));" );
+				}
+				else if(pName.StartsWith( "C_" ))
+				{
+					sb.AppendLine( $"            _packetTypeToId.Add(typeof(Protocol.{pName}), PacketID.{pName});" );
+				}
+			}
+
+			sb.AppendLine( "        }" );
+			sb.AppendLine();
+			sb.AppendLine( "        public async ValueTask HandlePacket(Session session, ArraySegment<byte> buffer)" );
 			sb.AppendLine( "        {" );
 			sb.AppendLine( "            ushort count = 0;" );
 			sb.AppendLine( "            ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);" );
@@ -292,16 +393,30 @@ namespace PacketGenerator
 			sb.AppendLine( "            }" );
 			sb.AppendLine( "            else" );
 			sb.AppendLine( "            {" );
-			sb.AppendLine( "                _logger.LogWarning(\"Unknown packet ID: {PacketId} from session {SessionId}\", id, session.SessionId);" );
+			sb.AppendLine( "                _logger.LogWarning(\"Unknown packet ID: {PacketId}\", id);" );
 			sb.AppendLine( "            }" );
 			sb.AppendLine( "        }" );
 			sb.AppendLine();
-			sb.AppendLine( "        // 패킷 직렬화 및 전송용 버퍼 생성" );
+			sb.AppendLine( "        private Func<Session, ArraySegment<byte>, ValueTask> HandlePacket<T>(Func<Session, T, ValueTask> handler) where T : IMessage, new()" );
+			sb.AppendLine( "        {" );
+			sb.AppendLine( "            return async (session, buffer) =>" );
+			sb.AppendLine( "            {" );
+			sb.AppendLine( "                try" );
+			sb.AppendLine( "                {" );
+			sb.AppendLine( "                    var packet = new T();" );
+			sb.AppendLine( "                    packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);" );
+			sb.AppendLine( "                    await handler(session, packet);" );
+			sb.AppendLine( "                }" );
+			sb.AppendLine( "                catch (Exception ex)" );
+			sb.AppendLine( "                {" );
+			sb.AppendLine( "                    _logger.LogError(ex, \"Error handling packet {PacketType}\", typeof(T).Name);" );
+			sb.AppendLine( "                }" );
+			sb.AppendLine( "            };" );
+			sb.AppendLine( "        }" );
+			sb.AppendLine();
 			sb.AppendLine( "        public ArraySegment<byte> MakeSendPacket(IMessage packet)" );
 			sb.AppendLine( "        {" );
-			sb.AppendLine( "            PacketID packetId;" );
-			sb.AppendLine( "            bool getValue = _packetTypeToId.TryGetValue(packet.GetType(), out packetId);" );
-			sb.AppendLine( "            if (!getValue)" );
+			sb.AppendLine( "            if (!_packetTypeToId.TryGetValue(packet.GetType(), out var packetId))" );
 			sb.AppendLine( "            {" );
 			sb.AppendLine( "                _logger.LogWarning(\"Unknown packet type for MakeSendPacket: {PacketType}\", packet.GetType().Name);" );
 			sb.AppendLine( "                return new ArraySegment<byte>();" );
@@ -318,126 +433,7 @@ namespace PacketGenerator
 			sb.AppendLine( "}" );
 		}
 
-		private static void GenerateNewClientPacketManager(MatchCollection matches, StringBuilder sb, List<Tuple<string, string, string>> packetInfoList)
-		{
-			sb.AppendLine("// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다.");
-			sb.AppendLine("// Target: Client (신규 구조 - Inheritance Model)");
-			sb.AppendLine();
-			sb.AppendLine("using ServerCore;");
-			sb.AppendLine("using System;");
-			sb.AppendLine("using System.Collections.Generic;");
-			sb.AppendLine("using System.Threading.Tasks;");
-			sb.AppendLine("using Google.Protobuf;");
-			sb.AppendLine("using Protocol;");
-			sb.AppendLine("using Microsoft.Extensions.Logging;");
-			sb.AppendLine();
-			sb.AppendLine("namespace DummyClient.Packet");
-			sb.AppendLine("{");
-			sb.AppendLine("    public abstract class BaseClientPacketHandler");
-			sb.AppendLine("    {");
-
-			// Generate handler method stubs
-			foreach(Match match in matches)
-			{
-				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
-				if(pName.StartsWith( "S_" ))
-				{
-					sb.AppendLine( $"        public virtual ValueTask On_{pName}(Session session, {pName} packet) {{ Console.WriteLine(\"Received but not handled: {pName}\"); return ValueTask.CompletedTask; }}" );
-				}
-			}
-
-			sb.AppendLine("    }");
-			sb.AppendLine();
-
-			sb.AppendLine("    public class PacketManager");
-			sb.AppendLine("    {");
-			sb.AppendLine("        private readonly ILogger<PacketManager> _logger;");
-			sb.AppendLine("        private readonly BaseClientPacketHandler _handler;");
-			sb.AppendLine("        private readonly Dictionary<ushort, Func<Session, ArraySegment<byte>, ValueTask>> _onRecv;");
-			sb.AppendLine("        private readonly Dictionary<Type, PacketID> _packetTypeToId;");
-			sb.AppendLine();
-			sb.AppendLine("        public PacketManager(ILogger<PacketManager> logger, BaseClientPacketHandler handler)");
-			sb.AppendLine("        {");
-			sb.AppendLine("            _logger = logger ?? throw new ArgumentNullException(nameof(logger));");
-			sb.AppendLine("            _handler = handler ?? throw new ArgumentNullException(nameof(handler));");
-			sb.AppendLine("            _onRecv = new Dictionary<ushort, Func<Session, ArraySegment<byte>, ValueTask>>();");
-			sb.AppendLine("            _packetTypeToId = new Dictionary<Type, PacketID>();");
-			sb.AppendLine("            Register();");
-			sb.AppendLine("        }");
-			sb.AppendLine();
-			sb.AppendLine("        private void Register()");
-			sb.AppendLine("        {");
-
-			foreach (Match match in matches)
-			{
-				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
-				if (pName.StartsWith("S_"))
-				{
-					sb.AppendLine($"            _onRecv.Add((ushort)PacketID.{pName}, HandlePacket<{pName}>(_handler.On_{pName}));");
-				}
-				else if (pName.StartsWith("C_"))
-				{
-					sb.AppendLine($"            _packetTypeToId.Add(typeof(Protocol.{pName}), PacketID.{pName});");
-				}
-			}
-
-			sb.AppendLine("        }");
-			sb.AppendLine();
-			sb.AppendLine("        public async ValueTask HandlePacket(Session session, ArraySegment<byte> buffer)");
-			sb.AppendLine("        {");
-			sb.AppendLine("            ushort count = 0;");
-			sb.AppendLine("            ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);");
-			sb.AppendLine("            count += 2;");
-			sb.AppendLine("            ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + count);");
-			sb.AppendLine("            count += 2;");
-			sb.AppendLine();
-			sb.AppendLine("            if (_onRecv.TryGetValue(id, out var handler))");
-			sb.AppendLine("            {");
-			sb.AppendLine("                await handler(session, new ArraySegment<byte>(buffer.Array, buffer.Offset + count, size - count));");
-			sb.AppendLine("            }");
-			sb.AppendLine("            else");
-			sb.AppendLine("            {");
-			sb.AppendLine("                _logger.LogWarning(\"Unknown packet ID: {PacketId}\", id);");
-			sb.AppendLine("            }");
-			sb.AppendLine("        }");
-			sb.AppendLine();
-			sb.AppendLine("        private Func<Session, ArraySegment<byte>, ValueTask> HandlePacket<T>(Func<Session, T, ValueTask> handler) where T : IMessage, new()");
-			sb.AppendLine("        {");
-			sb.AppendLine("            return async (session, buffer) =>");
-			sb.AppendLine("            {");
-			sb.AppendLine("                try");
-			sb.AppendLine("                {");
-			sb.AppendLine("                    var packet = new T();");
-			sb.AppendLine("                    packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);");
-			sb.AppendLine("                    await handler(session, packet);");
-			sb.AppendLine("                }");
-			sb.AppendLine("                catch (Exception ex)");
-			sb.AppendLine("                {");
-			sb.AppendLine("                    _logger.LogError(ex, \"Error handling packet {PacketType}\", typeof(T).Name);");
-			sb.AppendLine("                }");
-			sb.AppendLine("            };");
-			sb.AppendLine("        }");
-			sb.AppendLine();
-			sb.AppendLine("        public ArraySegment<byte> MakeSendPacket(IMessage packet)");
-			sb.AppendLine("        {");
-			sb.AppendLine("            if (!_packetTypeToId.TryGetValue(packet.GetType(), out var packetId))");
-			sb.AppendLine("            {");
-			sb.AppendLine("                _logger.LogWarning(\"Unknown packet type for MakeSendPacket: {PacketType}\", packet.GetType().Name);");
-			sb.AppendLine("                return new ArraySegment<byte>();");
-			sb.AppendLine("            }");
-			sb.AppendLine();
-			sb.AppendLine("            ushort size = (ushort)packet.CalculateSize();");
-			sb.AppendLine("            byte[] buffer = new byte[size + 4];");
-			sb.AppendLine("            Array.Copy(BitConverter.GetBytes((ushort)(size + 4)), 0, buffer, 0, sizeof(ushort));");
-			sb.AppendLine("            Array.Copy(BitConverter.GetBytes((ushort)packetId), 0, buffer, 2, sizeof(ushort));");
-			sb.AppendLine("            packet.WriteTo(new System.IO.MemoryStream(buffer, 4, size));");
-			sb.AppendLine("            return new ArraySegment<byte>(buffer);");
-			sb.AppendLine("        }");
-			sb.AppendLine("    }");
-			sb.AppendLine("}");
-		}
-
-		static void GenerateUnrealHeader(MatchCollection matches, StringBuilder sb)
+		static void GenerateUnrealHeader( MatchCollection matches, StringBuilder sb )
 		{
 			sb.AppendLine( "// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다." );
 			sb.AppendLine( "// Target: Unreal Engine (C++)" );
@@ -449,7 +445,7 @@ namespace PacketGenerator
 			sb.AppendLine( "enum class EPacketID : uint16" );
 			sb.AppendLine( "{" );
 
-			foreach(Match match in matches )
+			foreach(Match match in matches)
 			{
 				string name = match.Groups[1].Value.Trim();
 				string pName = MakeEnumNameToCamelName(name);
@@ -457,72 +453,127 @@ namespace PacketGenerator
 				sb.AppendLine( $"\t{pName} = {match.Groups[ 2 ].Value.Trim()}," );
 			}
 
-			sb.AppendLine("};");
+			sb.AppendLine( "};" );
 		}
 
-		static void GenerateIPacketHandler(List<Tuple<string, string, string>> packetInfoList, string target)
+		static void GenerateIPacketHandler()
 		{
-			// Collect unique handler names
-			HashSet<string> handlerNames = new HashSet<string>();
-			foreach (var packetInfo in packetInfoList)
-			{
-				// Only consider packets relevant to the target (Server receives C_, Client receives S_)
-				if ((target == "Server" && packetInfo.Item3 == "C_") || (target == "Client" && packetInfo.Item3 == "S_"))
-				{
-					handlerNames.Add(packetInfo.Item2);
-				}
-			}
+			var sb = new StringBuilder();
 
-			// Generate individual handler interfaces
-			foreach (string handlerName in handlerNames)
-			{
-				StringBuilder sb = new StringBuilder();
-				sb.AppendLine("// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다.");
-				sb.AppendLine($"// Target: {target}");
-				sb.AppendLine();
-				sb.AppendLine("using ServerCore;");
-				sb.AppendLine("using Protocol;");
-				sb.AppendLine();
-				sb.AppendLine($"public interface I{handlerName}");
-				sb.AppendLine("{");
+			sb.Append( """
+				// [자동 생성] IPacketHandler 인터페이스
+				using System;
+				using System.Threading.Tasks;
+				using Server.Core.Session;
 
-				foreach (var packetInfo in packetInfoList)
+				namespace Server.Packet.Handlers
 				{
-					if (packetInfo.Item2 == handlerName)
+					public interface IPacketHandler
 					{
-						string pName = MakeEnumNameToCamelName(packetInfo.Item1);
-						// Only generate handler methods for packets relevant to the target
-						if ((target == "Server" && pName.StartsWith("C_")) || (target == "Client" && pName.StartsWith("S_")))
-						{
-							sb.AppendLine($"\tvoid On_{pName}(Session session, {pName} packet);" );
-						}
+						ValueTask HandleAsync(GameSession session, ushort id, ArraySegment<byte> buffer);
 					}
 				}
-				sb.AppendLine("}");
-				File.WriteAllText($"Gen_{handlerName}.cs", sb.ToString());
+				""" );
+
+			File.WriteAllText( "IPacketHandler.cs", sb.ToString() );
+			Console.WriteLine( "IPacketHandler.cs 생성 완료" );
+		}
+
+		static void GeneratePacketHandlers( List<Tuple<string, string, string>> packetCategoryList, string category, string handlerName )
+		{
+			var sb = new StringBuilder();
+
+			// 카테고리별 그룹화
+			var categoryPackets = packetCategoryList
+				.Where( p => p.Item2 == category && p.Item3 == "C_")
+				.Select(p => p.Item1)
+				.ToList();
+
+			if(categoryPackets.Count == 0)
+			{
+				Console.WriteLine( $"{handlerName}: {category} 카테고리에 클라이언트 패킷 없음" );
+				return;
 			}
 
-			// Generate main IPacketHandler interface
-			StringBuilder mainSb = new StringBuilder();
-			mainSb.AppendLine("// [자동 생성] Protocol.proto 파일을 기반으로 자동 생성된 코드입니다.");
-			mainSb.AppendLine($"// Target: {target}");
-			mainSb.AppendLine();
-			mainSb.AppendLine("using ServerCore;");
-			mainSb.AppendLine("using Protocol;");
-			mainSb.AppendLine();
-			mainSb.AppendLine("public interface IPacketHandler");
-			mainSb.AppendLine("{");
-			foreach (string handlerName in handlerNames)
+			// Dictionary 초기화 코드 생성
+			sb.AppendLine( $"// [자동 생성] {handlerName} Dictionary 초기화" );
+			sb.AppendLine( "using Protocol;" );
+			sb.AppendLine( "using Google.Protobuf;" );
+			sb.AppendLine( "using System;" );
+			sb.AppendLine( "using System.Threading.Tasks;" );
+			sb.AppendLine( "using System.Collections.Generic;" );
+			sb.AppendLine( "using Server.Core.Session;" );
+			sb.AppendLine( "using Microsoft.Extensions.Logging;" );
+			sb.AppendLine( "//test" );
+			sb.AppendLine();
+			sb.AppendLine( "namespace Server.Packet.Handlers" );
+			sb.AppendLine("{");
+			sb.AppendLine( $"\tpublic partial class {handlerName} : IPacketHandler" );
+			sb.AppendLine( "\t{" );
+			sb.AppendLine( "\t\t/// <summary>" );
+			sb.AppendLine( "\t\t/// 테스트 및 디버깅용 Dictionary." );
+			sb.AppendLine( "\t\t/// 역직렬화된 IMessage 객체를 직접 처리할 때 사용." );
+			sb.AppendLine( "\t\t/// 런타임 패킷 처리는 _onRecv Dictionary 사용." );
+			sb.AppendLine( "\t\t/// </summary>" );
+			sb.AppendLine( "\t\tpublic Dictionary<Type, Func<GameSession, IMessage, Task>> Handlers {  get; private set; }" );
+			sb.AppendLine( "\t\tprivate Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>> _onRecv;" );
+			sb.AppendLine();
+			sb.AppendLine( "\t\tprivate void InitializeHandlers()" );
+			sb.AppendLine( "\t\t{" );
+			sb.AppendLine( "\t\t\tHandlers = new Dictionary<Type, Func<GameSession, IMessage, Task>>();" );
+			sb.AppendLine( "\t\t\t_onRecv = new Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>>();" );
+			sb.AppendLine();
+
+			foreach(var packetName in categoryPackets)
 			{
-				mainSb.AppendLine($"\tI{handlerName} {handlerName} {{ get; }}"); // Properties for each specific handler interface
+				sb.AppendLine( $"\t\t\tHandlers.Add(typeof({packetName}), async (s, p) => await Handle{packetName}Async( s, ({packetName})p));" );
+				sb.AppendLine( $"\t\t\t_onRecv.Add((ushort)PacketID.{packetName}, Handle{packetName}Async);" );
 			}
-			mainSb.AppendLine("}");
-			File.WriteAllText($"Gen_IPacketHandler.cs", mainSb.ToString());
+			
+			sb.AppendLine( "\t\t}" );
+			sb.AppendLine();
+			sb.Append( $$"""
+						public async ValueTask HandleAsync(GameSession session, ushort id, ArraySegment<byte> buffer)
+						{
+							if(_onRecv.TryGetValue(id, out var handler))
+							{
+								await handler(session, buffer);
+							}
+							else
+							{
+								_logger.LogWarning( "{{handlerName}} _onRecv Dictionary Not Found id {id.ToString()}"  );
+							}
+						}
+
+				""" );
+
+			// 개별 핸들러 메서드들 (C_ 패킷)
+			foreach(var packetName in categoryPackets)
+			{
+				sb.Append( $$"""
+						private async ValueTask Handle{{packetName}}Async(GameSession session, ArraySegment<byte> buffer)
+						{
+							var packet = new {{packetName}}();
+							packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+							await Handle{{packetName}}Async(session, packet);
+						}
+
+
+					""" );
+			}
+
+			sb.AppendLine( "\t}" );
+			sb.AppendLine( "}" );
+
+			// 파일 저장
+			string fileName = $"{handlerName}.Generated.cs";
+			File.WriteAllText( fileName, sb.ToString() );
+			Console.WriteLine( $"{handlerName}.Generated.cs 생성 완료 ({categoryPackets.Count}개 패킷 )" );
 		}
 
 		static private string MakeEnumNameToCamelName( string name )
 		{
-			if (string.IsNullOrEmpty(name))
+			if(string.IsNullOrEmpty( name ))
 				return string.Empty;
 
 			string cName = "";
@@ -540,6 +591,15 @@ namespace PacketGenerator
 			}
 
 			return cName;
+		}
+
+		static string ToCamelCase( string input )
+		{
+			if(string.IsNullOrEmpty( input ))
+				return input;
+
+			// "SYSTEM" → "System", "ROOM" → "Room"
+			return char.ToUpper( input[ 0 ] ) + input.Substring( 1 ).ToLower();
 		}
 	}
 }

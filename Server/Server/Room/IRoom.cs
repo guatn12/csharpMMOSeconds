@@ -1,11 +1,8 @@
 ﻿using Google.Protobuf;
-using Microsoft.Extensions.Logging;
 using Server.Core.Session;
-using ServerCore;
+using Server.Packet.Handlers;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Server.Room
@@ -20,6 +17,12 @@ namespace Server.Room
 
 		RoomType RoomType { get; }
 		RoomState State { get; }
+
+		// Category 핸들러
+		SystemPacketHandler SystemPacketHandler { get;  }
+		RoomPacketHandler RoomPacketHandler { get; }
+		CombatPacketHandler CombatPacketHandler { get; }
+		InventoryPacketHandler InventoryPacketHandler { get; }
 		#endregion
 
 		// 현재 룸에 있는 플레이어 리스트 (읽기 전용)
@@ -40,18 +43,6 @@ namespace Server.Room
 		Task BroadcastAsync( IMessage packet, GameSession excludeSession = null );
 		// 룸 내 특정 플레이어에게 전달
 		Task SendToPlayerAsync( GameSession session, IMessage packet );
-		// 플레이어 이동 / 채팅 처리.
-		Task HandlePlayerEnterGameAsync(GameSession session, Protocol.C_EnterGame packet, ILogger logger );
-		Task HandlePlayerMoveAsync( GameSession session, Protocol.C_Move packet, ILogger logger );
-		Task HandlePlayerChatAsync(GameSession session, Protocol.C_Chat packet, ILogger logger );
-		Task HandlePlayerPlayerInfoAsync(GameSession session, Protocol.C_PlayerInfo packet, ILogger logger );
-		Task HandlePlayerUseSkillAsync(GameSession session, Protocol.C_UseSkill packet, ILogger logger );
-		Task HandlePlayerInventoryRequestAsync( GameSession session, Protocol.C_InventoryRequest packet, ILogger logger );
-		Task HandlePlayerUseItemAsync( GameSession session, Protocol.C_UseItem packet, ILogger logger );
-		Task HandlePlayerEquipItemAsync( GameSession session, Protocol.C_EquipItem packet, ILogger logger );
-		Task HandlePlayerUnequipItemAsync( GameSession session, Protocol.C_UnequipItem packet, ILogger logger );
-		Task HandlePlayerAttackMonsterAsync(GameSession session, Protocol.C_AttackMonster packet, ILogger logger );
-
 		//룸 초기화
 		Task InitializeAsync();
 		// 룸 정리 및 종료

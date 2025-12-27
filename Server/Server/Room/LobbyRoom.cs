@@ -33,12 +33,12 @@ namespace Server.Room
 		// 로비가 기본 로비인지 여부
 		public bool IsDefaultLobby { get; private set; }
 
-		public LobbyRoom( ILogger<LobbyRoom> logger, IOptions<ServerSettings> ServerSettings,
+		public LobbyRoom( ILogger<LobbyRoom> logger, ILoggerFactory loggerFactory, IOptions<ServerSettings> ServerSettings,
 			DataManager datamanager, JobQueueManager jobQueueManager, JobPool jobPool,
 			ICombatService combatService, IRewardService rewardService,
 			PlayerPositionService playerPositionService,
 			string roomName = null, bool isDefaultLobby = false ) 
-			: base( logger, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
+			: base( logger, loggerFactory, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
 				  jobQueueManager, jobPool, combatService, rewardService, playerPositionService)
 		{
 			_lobbyLogger = logger ?? throw new ArgumentNullException( nameof( logger ) );

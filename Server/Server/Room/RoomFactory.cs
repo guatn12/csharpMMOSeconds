@@ -45,7 +45,7 @@ namespace Server.Room
 
 			return roomType switch
 			{
-				RoomType.Lobby => new LobbyRoom( _loggerFactory.CreateLogger<LobbyRoom>(), _serverSettings, _dataManager, 
+				RoomType.Lobby => new LobbyRoom( _loggerFactory.CreateLogger<LobbyRoom>(), _loggerFactory, _serverSettings, _dataManager, 
 				_jobQueueManager, _jobPool, combatService, rewardService, playerPositionService, roomName, 
 				isDefaultLobby: false ),
 

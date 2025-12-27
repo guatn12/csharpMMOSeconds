@@ -237,7 +237,7 @@ namespace Server.Game
 			if(DateTime.UtcNow - _lastAttackTime < _attackCooldown)
 				return false;
 
-			return CanPerformAction() && State != PlayerState.Combat;
+			return CanPerformAction() && State != PlayerState.InCombat;
 		}
 
 		// 고급 상태 관리 메서드
@@ -246,12 +246,12 @@ namespace Server.Game
 			if(!CanPerformAction()) return;
 
 			_combatTargetId = target.PlayerId;
-			SetState( PlayerState.Combat );
+			SetState( PlayerState.InCombat );
 		}
 
 		public void ExitCombat()
 		{
-			if(State == PlayerState.Combat)
+			if(State == PlayerState.InCombat)
 			{
 				_combatTargetId = 0;
 				SetState( PlayerState.Idle );

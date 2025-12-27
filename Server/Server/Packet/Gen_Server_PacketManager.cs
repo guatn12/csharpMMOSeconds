@@ -1,81 +1,30 @@
-// [자동 생성] 새로운 제네릭 Job 시스템용 PacketManager
+// [자동 생성] Category 핸들러 시스템용 PacketManager
 // Target: Server
-// [수동 수정] IRoomManager 주입 및 C_EnterGame 특별 처리 추가 (Option B)
 
 using Google.Protobuf;
 using Protocol;
 using Microsoft.Extensions.Logging;
-using Server.Core.Jobs;
 using Server.Core.Session;
-using Server.Room;
-using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Server.Packet.Handlers;
 
 namespace Server.Packet
 {
-    public class PacketManager
-    {
-        private readonly JobPool _jobPool;
-        private readonly JobQueueManager _jobQueueManager;
-        private readonly ILogger<PacketManager> _logger;
-        private readonly IRoomManager _roomManager;
-        private readonly Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>> _onRecv;
-        private static readonly Dictionary<Type, Func<GameSession, IRoom, IMessage, ILogger, ValueTask>> _packetLogicMap;
-        private readonly Dictionary<Type, PacketID> _packetTypeToId;
-
-        static PacketManager()
-        {
-            _packetLogicMap = new Dictionary<Type, Func<GameSession, IRoom, IMessage, ILogger, ValueTask>>
-            {
-                [typeof(C_EnterGame)] = async (session, room, packet, logger) =>
-                    await (room?.HandlePlayerEnterGameAsync(session, (C_EnterGame)packet, logger) ?? Task.CompletedTask),
-                [typeof(C_Move)] = async (session, room, packet, logger) =>
-                    await (room?.HandlePlayerMoveAsync(session, (C_Move)packet, logger) ?? Task.CompletedTask),
-                [typeof(C_Chat)] = async (session, room, packet, logger) =>
-                    await (room?.HandlePlayerChatAsync(session, (C_Chat)packet, logger) ?? Task.CompletedTask),
-                [typeof(C_PlayerInfo)] = async (session, room, packet, logger) =>
-                    await (room?.HandlePlayerPlayerInfoAsync(session, (C_PlayerInfo)packet, logger) ?? Task.CompletedTask),
-                [typeof(C_UseSkill)] = async (session, room, packet, logger) =>
-                    await (room?.HandlePlayerUseSkillAsync(session, (C_UseSkill)packet, logger) ?? Task.CompletedTask),
-                [typeof(C_InventoryRequest)] = async (session, room, packet, logger) =>
-                    await (room?.HandlePlayerInventoryRequestAsync(session, (C_InventoryRequest)packet, logger) ?? Task.CompletedTask),
-                [typeof(C_UseItem)] = async (session, room, packet, logger) =>
-                    await (room?.HandlePlayerUseItemAsync(session, (C_UseItem)packet, logger) ?? Task.CompletedTask),
-                [typeof(C_EquipItem)] = async (session, room, packet, logger) =>
-                    await (room?.HandlePlayerEquipItemAsync(session, (C_EquipItem)packet, logger) ?? Task.CompletedTask),
-                [typeof(C_UnequipItem)] = async (session, room, packet, logger) =>
-                    await (room?.HandlePlayerUnequipItemAsync(session, (C_UnequipItem)packet, logger) ?? Task.CompletedTask),
-                [typeof(C_AttackMonster)] = async (session, room, packet, logger) =>
-                    await (room?.HandlePlayerAttackMonsterAsync(session, (C_AttackMonster)packet, logger) ?? Task.CompletedTask),
-            };
-        }
-
-        public PacketManager( JobPool jobPool, JobQueueManager jobQueueManager, ILogger<PacketManager> logger, 
-            IRoomManager roomManager )
+	public class PacketManager
+	{
+		private readonly ILogger<PacketManager> _logger;
+		private readonly Dictionary<Type, PacketID> _packetTypeToId;
+		private readonly Dictionary<PacketID, PacketCategory> _packetCategoryCache = new();
+		public PacketManager(ILogger<PacketManager> logger)
 		{
-			_jobPool = jobPool ?? throw new ArgumentNullException( nameof( jobPool ) );
-			_jobQueueManager = jobQueueManager ?? throw new ArgumentNullException( nameof( jobQueueManager ) );
-			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
-			_roomManager = roomManager;
-			_onRecv = new Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>>();
+			_logger = logger;
 			_packetTypeToId = new Dictionary<Type, PacketID>();
 			Register();
 		}
-
-		private void Register()
+        private void Register()
         {
-            _onRecv.Add((ushort)PacketID.C_EnterGame, HandleC_EnterGameAsync);
-            _onRecv.Add((ushort)PacketID.C_Move, HandleC_MoveAsync);
-            _onRecv.Add((ushort)PacketID.C_Chat, HandleC_ChatAsync);
-            _onRecv.Add((ushort)PacketID.C_PlayerInfo, HandleC_PlayerInfoAsync);
-            _onRecv.Add((ushort)PacketID.C_UseSkill, HandleC_UseSkillAsync);
-            _onRecv.Add((ushort)PacketID.C_InventoryRequest, HandleC_InventoryRequestAsync);
-            _onRecv.Add((ushort)PacketID.C_UseItem, HandleC_UseItemAsync);
-            _onRecv.Add((ushort)PacketID.C_EquipItem, HandleC_EquipItemAsync);
-            _onRecv.Add((ushort)PacketID.C_UnequipItem, HandleC_UnequipItemAsync);
-            _onRecv.Add((ushort)PacketID.C_AttackMonster, HandleC_AttackMonsterAsync);
             _packetTypeToId.Add(typeof(S_EnterGame), PacketID.S_EnterGame);
             _packetTypeToId.Add(typeof(S_LeaveGame), PacketID.S_LeaveGame);
             _packetTypeToId.Add(typeof(S_Spawn), PacketID.S_Spawn);
@@ -99,125 +48,20 @@ namespace Server.Packet
             _packetTypeToId.Add(typeof(S_MonsterAttack), PacketID.S_MonsterAttack);
             _packetTypeToId.Add(typeof(S_MonsterDie), PacketID.S_MonsterDie);
             _packetTypeToId.Add(typeof(S_MonsterUpdate), PacketID.S_MonsterUpdate);
-        }
-
-        private async ValueTask HandleC_EnterGameAsync(GameSession session, ArraySegment<byte> buffer)
-        {
-            var packet = new C_EnterGame();
-            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-            await HandlePacketLogic<C_EnterGame>(session, packet);
-        }
-
-        private async ValueTask HandleC_MoveAsync(GameSession session, ArraySegment<byte> buffer)
-        {
-            var packet = new C_Move();
-            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-            await HandlePacketLogic<C_Move>(session, packet);
-        }
-
-        private async ValueTask HandleC_ChatAsync(GameSession session, ArraySegment<byte> buffer)
-        {
-            var packet = new C_Chat();
-            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-            await HandlePacketLogic<C_Chat>(session, packet);
-        }
-
-        private async ValueTask HandleC_PlayerInfoAsync(GameSession session, ArraySegment<byte> buffer)
-        {
-            var packet = new C_PlayerInfo();
-            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-            await HandlePacketLogic<C_PlayerInfo>(session, packet);
-        }
-
-        private async ValueTask HandleC_UseSkillAsync(GameSession session, ArraySegment<byte> buffer)
-        {
-            var packet = new C_UseSkill();
-            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-            await HandlePacketLogic<C_UseSkill>(session, packet);
-        }
-
-        private async ValueTask HandleC_InventoryRequestAsync(GameSession session, ArraySegment<byte> buffer)
-        {
-            var packet = new C_InventoryRequest();
-            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-            await HandlePacketLogic<C_InventoryRequest>(session, packet);
-        }
-
-        private async ValueTask HandleC_UseItemAsync(GameSession session, ArraySegment<byte> buffer)
-        {
-            var packet = new C_UseItem();
-            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-            await HandlePacketLogic<C_UseItem>(session, packet);
-        }
-
-        private async ValueTask HandleC_EquipItemAsync(GameSession session, ArraySegment<byte> buffer)
-        {
-            var packet = new C_EquipItem();
-            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-            await HandlePacketLogic<C_EquipItem>(session, packet);
-        }
-
-        private async ValueTask HandleC_UnequipItemAsync(GameSession session, ArraySegment<byte> buffer)
-        {
-            var packet = new C_UnequipItem();
-            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-            await HandlePacketLogic<C_UnequipItem>(session, packet);
-        }
-
-        private async ValueTask HandleC_AttackMonsterAsync(GameSession session, ArraySegment<byte> buffer)
-        {
-            var packet = new C_AttackMonster();
-            packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-            await HandlePacketLogic<C_AttackMonster>(session, packet);
-        }
-
-        private async ValueTask HandlePacketLogic<T>(GameSession session, T packet) where T : IMessage
-        {
-            try
-            {
-                // [수동 수정] C_EnterGame 특별 처리
-                if(typeof(T) == typeof(C_EnterGame))
-                {
-                    var EnterRoom = session.CurrentRoom;
-                    if(EnterRoom == null)
-                    {
-                        // 첫 입장: 기본 로비 입장 시도
-                        _logger.LogInformation( "플레이어 {SessionId} 게임 입장 요청 - 기본 로비 입장 시도",
-                            session.SessionId );
-                        await _roomManager.JoinDefaultLobbyAsync(session);
-                        return;
-                    }
-                    else
-                    {
-                        // 이미 Room에 있음:경고 로그
-                        _logger.LogWarning("플레이어 {SessionId}는 이미 Room {RoomId}에 입장해 있습니다.",
-                            session.SessionId, EnterRoom.RoomId );
-                        return;
-                    }
-                }
-
-                var room = session.CurrentRoom;
-                
-                // 핸들러 검색
-                if (!_packetLogicMap.TryGetValue(typeof(T), out var handler))
-                {
-                    _logger.LogWarning("No handler found for packet type: {PacketType}", typeof(T).Name);
-                    return;
-                }
-
-                // PacketJob 생성 및 설정
-                var job = _jobPool.Get<PacketJob<T>>();
-                job.Initialize(session, room, packet, _logger);
-                job.SetHandler(handler);
-
-                // Job Queue에 추가
-                await _jobQueueManager.PushAsync(job);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error handling packet {PacketType} from session {SessionId}",
-                    typeof(T).Name, session.SessionId);
-            }
+            // System 카테고리
+            _packetCategoryCache.Add(PacketID.C_EnterGame, PacketCategory.System);
+            // Room 카테고리
+            _packetCategoryCache.Add(PacketID.C_Move, PacketCategory.Room);
+            _packetCategoryCache.Add(PacketID.C_Chat, PacketCategory.Room);
+            _packetCategoryCache.Add(PacketID.C_PlayerInfo, PacketCategory.Room);
+            _packetCategoryCache.Add(PacketID.C_UseSkill, PacketCategory.Room);
+            // Inventory 카테고리
+            _packetCategoryCache.Add(PacketID.C_InventoryRequest, PacketCategory.Inventory);
+            _packetCategoryCache.Add(PacketID.C_UseItem, PacketCategory.Inventory);
+            _packetCategoryCache.Add(PacketID.C_EquipItem, PacketCategory.Inventory);
+            _packetCategoryCache.Add(PacketID.C_UnequipItem, PacketCategory.Inventory);
+            // Combat 카테고리
+            _packetCategoryCache.Add(PacketID.C_AttackMonster, PacketCategory.Combat);
         }
 
         public async ValueTask HandlePacket(GameSession session, ArraySegment<byte> buffer)
@@ -228,22 +72,37 @@ namespace Server.Packet
             ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + count);
             count += 2;
 
-            if (_onRecv.TryGetValue(id, out var handler))
+			// CurrentRoom 확인
+			var room = session.CurrentRoom;
+			if(room == null)
+			{
+				_logger.LogWarning( "Player {PlayerId} not in any room for packet {PacketId}", session.PlayerId, id.ToString() );
+				return;
+			}
+
+            PacketCategory packetCategory = GetPacketCategory((PacketID)id);
+            IPacketHandler packetHandler = packetCategory switch
             {
-                await handler(session, new ArraySegment<byte>(buffer.Array, buffer.Offset + count, size - count));
-            }
-            else
-            {
-                _logger.LogWarning("Unknown packet ID: {PacketId} from session {SessionId}", id, session.SessionId);
-            }
+                PacketCategory.System => room.SystemPacketHandler,
+                PacketCategory.Inventory => room.InventoryPacketHandler,
+                PacketCategory.Room => room.RoomPacketHandler,
+                PacketCategory.Combat => room.CombatPacketHandler,
+                _ => null
+            };
+
+			if(packetHandler != null)
+			{
+				await packetHandler.HandleAsync( session, id, buffer );
+			}
+			else
+			{
+				_logger.LogWarning( "No handler for category: {Category}", packetCategory );
+			}
         }
 
-        // 패킷 직렬화 및 전송용 버퍼 생성
         public ArraySegment<byte> MakeSendPacket(IMessage packet)
         {
-            PacketID packetId;
-            bool getValue = _packetTypeToId.TryGetValue(packet.GetType(), out packetId);
-            if (!getValue)
+            if (!_packetTypeToId.TryGetValue(packet.GetType(), out var packetId))
             {
                 _logger.LogWarning("Unknown packet type for MakeSendPacket: {PacketType}", packet.GetType().Name);
                 return new ArraySegment<byte>();
@@ -256,5 +115,10 @@ namespace Server.Packet
             packet.WriteTo(new System.IO.MemoryStream(buffer, 4, size));
             return new ArraySegment<byte>(buffer);
         }
+
+		private PacketCategory GetPacketCategory(PacketID id)
+		{
+			return _packetCategoryCache.TryGetValue(id, out var category) ? category : PacketCategory.NoneCategory;
+		}
     }
 }

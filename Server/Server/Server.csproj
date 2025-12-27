@@ -63,6 +63,7 @@
 
   <ItemGroup>
     <Folder Include="Database\Configurations\" />
+    <Folder Include="Packet\Handlers\GenerateHandlers\" />
   </ItemGroup>
 
 </Project>

@@ -3,11 +3,16 @@ package Protocol;
 
 import "google/protobuf/descriptor.proto"; // descriptor를 사용하기 위해 import
 
-// 1. 커스텀 옵션을 정의.
-//    'string' 타입이고, 'handler_name'이라는 이름을 가지며,
-//    500001번 필드 번호를 사용합니다. (충돌을 피하기 위해 높은 번호 사용)
+enum PacketCategory {
+	NONE_CATEGORY = 0;			// 카테고리 없음 - 미사용 오류 분별용
+	SYSTEM = 1;					// 시스템 레벨 (입장/퇴장)
+	ROOM = 2;					// Room 레벨
+	COMBAT = 3;					// 전투 관련
+	INVENTORY = 4;				// 인벤토리 관련
+}
+
 extend google.protobuf.MessageOptions {
-	string handler_name = 500001;
+	PacketCategory category = 500002;
 }
 
 enum MsgId {
@@ -51,48 +56,48 @@ enum MsgId {
 }
 
 message C_EnterGame {
-	option (handler_name) = "SystemPacketHandler";
+	option (category) = SYSTEM;
 }
 
 // 서버 -> 클라이언트
 // 게임 입장
 message S_EnterGame {
-	option (handler_name) = "SystemPacketHandler";
+	option (category) = SYSTEM;
 	PlayerInfo player = 1;
 }
 
 // 서버 -> 클라이언트
 // 플레이어가 게임을 떠났을 때,
 message S_LeaveGame {
-	option (handler_name) = "SystemPacketHandler";
+	option (category) = SYSTEM;
 	int64 playerId = 1;
 }
 
 // 서버 -> 클라이언트
 // 새로운 플레이어, 몬스터 등이 시야에 나왔을 때.
 message S_Spawn {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	repeated PlayerInfo players = 1;
 }
 
 // 서버 -> 클라이언트
 // 플레이어 / 몬스터 등이 시야에서 사라졌을 때.
 message S_Despawn {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	repeated int64 objectIds = 1;
 }
 
 // 클라이언트 -> 서버
 // 이동 했을 때 주기적으로 전송.
 message C_Move {
-	option (handler_name) = "MovementPacketHandler";
+	option (category) = ROOM;
 	PosInfo posInfo = 1;
 }
 
 // 서버 -> 클라이언트
 // 다른 플레이어 / 몬스터가 이동했을 때 브로드 캐스팅.
 message S_Move {
-	option (handler_name) = "MovementPacketHandler";
+	option (category) = ROOM;
 	int64 playerId = 1;
 	PosInfo posInfo = 2;
 }
@@ -100,39 +105,39 @@ message S_Move {
 // 클라이언트 -> 서버
 // 클라이언트가 채팅 전송.
 message C_Chat {
-	option (handler_name) = "ChatPacketHandler";
+	option (category) = ROOM;
 	string message = 1;
 }
 
 message S_Chat {
-	option (handler_name) = "ChatPacketHandler";
+	option (category) = ROOM;
 	int64 playerId = 1;
 	string message = 2;
 }
 
 message S_PlayerUpdate {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	PlayerInfo player = 1;
 }
 
 message S_PlayerStat {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	PlayerInfo player = 1;
 }
 
 message C_PlayerInfo {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	int64 targetPlayerId = 1;	// 조회할 플레이어 ID (0이면 자신)
 }
 
 message C_UseSkill {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	int32 skillId = 1;
 	int64 targetId = 2;	// 타겟 Id (0이면 자기 자신)
 }
 
 message S_Damage {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	int64 attackerId = 1;
 	int64 targetId = 2;
 	int32 damage = 3;
@@ -140,7 +145,7 @@ message S_Damage {
 }
 
 message S_Heal {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	int64 healerId = 1;
 	int64 targetId = 2;
 	int32 healAmount = 3;
@@ -148,7 +153,7 @@ message S_Heal {
 }
 
 message S_LevelUp {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	int64 playerId = 1;
 	int32 newLevel = 2;
 	int32 newMaxHP = 3;
@@ -156,24 +161,24 @@ message S_LevelUp {
 }
 
 message C_InventoryRequest {
-	option (handler_name) = "InventoryPacketHandler";
+	option (category) = INVENTORY;
 }
 
 message S_InventoryData {
-	option (handler_name) = "InventoryPacketHandler";
+	option (category) = INVENTORY;
 	repeated InventoryItemInfo items = 1;
 	int64 gold = 2;
 	int32 maxSlots = 3;
 }
 
 message C_UseItem {
-	option (handler_name) = "InventoryPacketHandler";
+	option (category) = INVENTORY;
 	int32 slot = 1;				// 인벤 슬롯
 	int32 quantity = 2;			// 사용할 수량 (기본 1)
 }
 
 message S_UseItem {
-	option (handler_name) = "InventoryPacketHandler";
+	option (category) = INVENTORY;
 	bool success = 1;
 	int32 slot = 2;
 	int32 remainingQuantity = 3;
@@ -181,13 +186,13 @@ message S_UseItem {
 }
 
 message C_EquipItem {
-	option (handler_name) = "InventoryPacketHandler";
-	int32 inventorySlot = 1;		// 인벤토리 슬롯 
+	option (category) = INVENTORY;
+	int32 inventorySlot = 1;		// 인벤토리 슬롯
 	int32 equipSlot = 2;			// 장착 슬롯 (0 = 무기, 1 = 갑옷)
 }
 
 message S_ItemEquipped {
-	option (handler_name) = "InventoryPacketHandler";
+	option (category) = INVENTORY;
 	bool success = 1;
 	int32 inventorySlot = 2;
 	int32 equipSlot = 3;
@@ -196,12 +201,12 @@ message S_ItemEquipped {
 }
 
 message C_UnequipItem {
-	option (handler_name) = "InventoryPacketHandler";
+	option (category) = INVENTORY;
 	int32 equipSlot = 1;		// 해제할 장착 슬롯
 }
 
 message S_ItemUnequipped {
-	option (handler_name) = "InventoryPacketHandler";
+	option (category) = INVENTORY;
 	bool success = 1;
 	int32 equipSlot = 2;
 	int32 returnedToSlot = 3;			// 인벤토리로 돌아간 슬롯?
@@ -210,48 +215,48 @@ message S_ItemUnequipped {
 }
 
 message S_ItemAdded {
-	option (handler_name) = "InventoryPacketHandler";
+	option (category) = INVENTORY;
 	InventoryItemInfo item = 1;
 	string source = 2;			// 획득 경로
 }
 
 message S_InventoryUpdate {
-	option (handler_name) = "InventoryPacketHandler";
+	option (category) = INVENTORY;
 	repeated InventoryItemInfo changedItems = 1;
 	int64 newGold = 2;
 }
 
 // 몬스터
 message S_MonsterSpawn {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	repeated MonsterInfo monsters = 1;
 }
 
 message S_MonsterDespawn {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	repeated int64 monsterIds = 1;
 }
 
 message S_MonsterMove {
-	option (handler_name) = "CombatPacketHandler";
+	option (category) = COMBAT;
 	repeated MonsterInfo monsters = 1;
 }
 
 message C_AttackMonster {
-	option (handler_name) = "CombatPacketHandler";
+	option (category) = COMBAT;
 	int64 monsterId = 1;
 	int32 skillId = 2;				// 사용할 스킬 (기본 공격은 0)
 }
 
 message S_MonsterAttack {
-	option (handler_name) = "CombatPacketHandler";
+	option (category) = COMBAT;
 	int64 monsterId = 1;
 	int64 targetPlayerId = 2;
 	int32 damage = 3;
 }
 
 message S_MonsterDie {
-	option (handler_name) = "CombatPacketHandler";
+	option (category) = COMBAT;
 	int64 monsterId = 1;
 	int64 killPlayerId = 2;
 	int64 expGained = 3;
@@ -260,7 +265,7 @@ message S_MonsterDie {
 }
 
 message S_MonsterUpdate {
-	option (handler_name) = "GamePlayPacketHandler";
+	option (category) = ROOM;
 	repeated MonsterInfo monsters = 1;
 }
 
@@ -274,7 +279,7 @@ enum PlayerState {
 	JUMPING = 3;
 	FLYING = 4;
 	FALLING = 5;
-	COMBAT = 6;
+	IN_COMBAT = 6;		// 전투 중인 상태 (PacketCategory.COMBAT과 충돌 방지)
 	DEAD = 7;
 	DISCONNECTED = 8;
 }
