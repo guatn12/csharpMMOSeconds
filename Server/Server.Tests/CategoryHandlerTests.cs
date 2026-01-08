@@ -42,7 +42,9 @@ namespace Server.Tests
 			);
 
 			var mockPacketManagerLogger = new Mock<ILogger<PacketManager>>();
-			_packetManager = new PacketManager(mockPacketManagerLogger.Object);
+			var mockSystemPacketHandlerLogger = new Mock<ILogger<SystemPacketHandler>>();
+			_packetManager = new PacketManager( mockPacketManagerLogger.Object,
+				new SystemPacketHandler( mockSystemPacketHandlerLogger.Object ) );
 		}
 
 		/// <summary>

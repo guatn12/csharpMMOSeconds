@@ -20,6 +20,7 @@ using Server.Database.Services;
 using Server.Services;
 using Server.Services.Combat;
 using Server.Services.Reward;
+using Server.Packet.Handlers;
 
 namespace Server.Extensions
 {
@@ -95,6 +96,7 @@ namespace Server.Extensions
 		{
 			// 네트워킹 핵심
 			services.AddSingleton<Listener>();
+			services.AddSingleton<SystemPacketHandler>();
 			services.AddSingleton<PacketManager>();
 			services.AddSingleton<ISessionManager, SessionManager>();
 

@@ -1,0 +1,47 @@
+# version: '3.8'
+
+services:
+  postgres_db:
+    image: postgres:16-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1q2w3e4r@!
+      POSTGRES_DB: mmo_db
+    ports:
+      - "5432:5432"
+    volumes:
+      # ✅ Postgres 데이터는 유지 (테이블과 데이터를 보존)
+      - postgres-data:/var/lib/postgresql/data
+    restart: always
+
+  redis_cache:
+    image: redis:8-alpine
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+    # ❌ Redis 볼륨은 제거. 'down'할 때마다 데이터가 초기화됩니다.
+    # volumes:
+    #   - redis-data:/data
+    restart: always
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin4_container
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@local.host"
+      PGADMIN_DEFAULT_PASSWORD: "1q2w3e4r@!"
+    ports:
+      - "5050:80"
+    volumes:
+      # ✅ pgAdmin 설정은 유지 (서버 연결 정보를 보존)
+      - pgadmin-data:/var/lib/pgadmin
+    restart: always
+    depends_on:
+      - postgres_db
+
+volumes:
+  postgres-data:
+  pgadmin-data:
+  # ❌ 최상위 redis-data 정의도 제거
+  # redis-data:

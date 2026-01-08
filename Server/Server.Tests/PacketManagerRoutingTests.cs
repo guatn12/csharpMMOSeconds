@@ -29,7 +29,9 @@ namespace Server.Tests
 		public PacketManagerRoutingTests()
 		{
 			_mockLogger = new Mock<ILogger<PacketManager>>();
-			_packetManager = new PacketManager( _mockLogger.Object );
+			var mockSystemPacketHandler = new Mock<ILogger<SystemPacketHandler>>();
+			_packetManager = new PacketManager( _mockLogger.Object,
+				new SystemPacketHandler( mockSystemPacketHandler.Object ) );
 
 			// SessionManager 생성 (모든 의존성을 null로 전달)
 			var mockLogger = new Mock<ILogger<SessionManager>>();
@@ -43,7 +45,7 @@ namespace Server.Tests
 			);
 
 			var mockIRoom = new Mock<IRoom>();
-			var mockSystemPacketHandler = new Mock<SystemPacketHandler>();
+			//var mockSystemPacketHandler = new Mock<SystemPacketHandler>();
 			var mockCombatPacketHandler = new Mock<CombatPacketHandler>();
 			var mockInventoryPacketHandler = new Mock<InventoryPacketHandler>();
 			var mockRoomPacketHandler = new Mock<RoomPacketHandler>();
@@ -124,10 +126,10 @@ namespace Server.Tests
 		/// <summary>
 		/// Mock IRoom 생성
 		/// </summary>
-		private Mock<IRoom> CreateMockRoom(int roomId = 1)
+		private Mock<IRoom> CreateMockRoom( int roomId = 1 )
 		{
 			var mockRoom = new Mock<IRoom>();
-			mockRoom.Setup(r => r.RoomId).Returns(roomId);
+			mockRoom.Setup( r => r.RoomId ).Returns( roomId );
 			mockRoom.Setup( r => r.RoomName ).Returns( "TestRoom" );
 			mockRoom.Setup( r => r.ContainsPlayer( It.IsAny<GameSession>() ) ).Returns( true );
 			mockRoom.Setup( r => r.ContainsPlayerToPlayerId( It.IsAny<long>() ) ).Returns( true );
@@ -138,7 +140,7 @@ namespace Server.Tests
 		/// <summary>
 		/// GameSession의 CurrentRoom을 Reflection으로 설정
 		/// </summary>
-		private void SetCurrentRoom(GameSession session, IRoom room)
+		private void SetCurrentRoom( GameSession session, IRoom room )
 		{
 			var field = typeof(GameSession).GetField("_currentRoom", BindingFlags.Instance | BindingFlags.NonPublic);
 			field?.SetValue( session, room );

@@ -17,10 +17,12 @@ namespace Server.Packet
 		private readonly ILogger<PacketManager> _logger;
 		private readonly Dictionary<Type, PacketID> _packetTypeToId;
 		private readonly Dictionary<PacketID, PacketCategory> _packetCategoryCache = new();
-		public PacketManager(ILogger<PacketManager> logger)
+		private readonly SystemPacketHandler _systemPacketHandler;
+		public PacketManager(ILogger<PacketManager> logger, SystemPacketHandler systemHandler)
 		{
 			_logger = logger;
 			_packetTypeToId = new Dictionary<Type, PacketID>();
+			_systemPacketHandler = systemHandler;
 			Register();
 		}
         private void Register()
@@ -64,31 +66,48 @@ namespace Server.Packet
             _packetCategoryCache.Add(PacketID.C_AttackMonster, PacketCategory.Combat);
         }
 
-        public async ValueTask HandlePacket(GameSession session, ArraySegment<byte> buffer)
-        {
-            ushort count = 0;
-            ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);
-            count += 2;
-            ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + count);
-            count += 2;
+		public async ValueTask HandlePacket(GameSession session, ArraySegment<byte> buffer)
+		{
+			ushort count = 0;
+			ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);
+			count += 2;
+			ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + count);
+			count += 2;
 
-			// CurrentRoom 확인
-			var room = session.CurrentRoom;
-			if(room == null)
+
+			PacketCategory packetCategory = GetPacketCategory((PacketID)id);
+			_logger.LogDebug("Packet received: ID={PacketId}, Category={Category}", id, packetCategory);
+
+			if( packetCategory == PacketCategory.NoneCategory )
 			{
-				_logger.LogWarning( "Player {PlayerId} not in any room for packet {PacketId}", session.PlayerId, id.ToString() );
+				_logger.LogWarning("PacketId:{PacketId} not found Category", id);
 				return;
 			}
 
-            PacketCategory packetCategory = GetPacketCategory((PacketID)id);
-            IPacketHandler packetHandler = packetCategory switch
-            {
-                PacketCategory.System => room.SystemPacketHandler,
-                PacketCategory.Inventory => room.InventoryPacketHandler,
-                PacketCategory.Room => room.RoomPacketHandler,
-                PacketCategory.Combat => room.CombatPacketHandler,
-                _ => null
-            };
+			IPacketHandler packetHandler = null;
+			if ( packetCategory == PacketCategory.System )
+			{
+				packetHandler = _systemPacketHandler;
+			}
+			else
+			{
+				// CurrentRoom 확인
+				if(session.CurrentRoom == null)
+				{
+					_logger.LogWarning( "Player {PlayerId} not in any room for packet {PacketId}", session.PlayerId, id.ToString() );
+					return;
+				}
+			
+				var room = session.CurrentRoom;
+
+				packetHandler = packetCategory switch
+				{
+					PacketCategory.Inventory => room?.InventoryPacketHandler,
+					PacketCategory.Room => room?.RoomPacketHandler,
+					PacketCategory.Combat => room?.CombatPacketHandler,
+					_ => null
+				};
+			}
 
 			if(packetHandler != null)
 			{
@@ -98,27 +117,25 @@ namespace Server.Packet
 			{
 				_logger.LogWarning( "No handler for category: {Category}", packetCategory );
 			}
-        }
+		}		public ArraySegment<byte> MakeSendPacket(IMessage packet)
+		{
+			if (!_packetTypeToId.TryGetValue(packet.GetType(), out var packetId))
+			{
+				_logger.LogWarning("Unknown packet type for MakeSendPacket: {PacketType}", packet.GetType().Name);
+				return new ArraySegment<byte>();
+			}
 
-        public ArraySegment<byte> MakeSendPacket(IMessage packet)
-        {
-            if (!_packetTypeToId.TryGetValue(packet.GetType(), out var packetId))
-            {
-                _logger.LogWarning("Unknown packet type for MakeSendPacket: {PacketType}", packet.GetType().Name);
-                return new ArraySegment<byte>();
-            }
-
-            ushort size = (ushort)packet.CalculateSize();
-            byte[] buffer = new byte[size + 4];
-            Array.Copy(BitConverter.GetBytes((ushort)(size + 4)), 0, buffer, 0, sizeof(ushort));
-            Array.Copy(BitConverter.GetBytes((ushort)packetId), 0, buffer, 2, sizeof(ushort));
-            packet.WriteTo(new System.IO.MemoryStream(buffer, 4, size));
-            return new ArraySegment<byte>(buffer);
-        }
+			ushort size = (ushort)packet.CalculateSize();
+			byte[] buffer = new byte[size + 4];
+			Array.Copy(BitConverter.GetBytes((ushort)(size + 4)), 0, buffer, 0, sizeof(ushort));
+			Array.Copy(BitConverter.GetBytes((ushort)packetId), 0, buffer, 2, sizeof(ushort));
+			packet.WriteTo(new System.IO.MemoryStream(buffer, 4, size));
+			return new ArraySegment<byte>(buffer);
+		}
 
 		private PacketCategory GetPacketCategory(PacketID id)
 		{
 			return _packetCategoryCache.TryGetValue(id, out var category) ? category : PacketCategory.NoneCategory;
 		}
-    }
+	}
 }

@@ -187,15 +187,17 @@ namespace PacketGenerator
 						private readonly ILogger<PacketManager> _logger;
 						private readonly Dictionary<Type, PacketID> _packetTypeToId;
 						private readonly Dictionary<PacketID, PacketCategory> _packetCategoryCache = new();
+						private readonly SystemPacketHandler _systemPacketHandler;
 
 				""" );
 
 			// 2. 생성자
 			sb.Append( """
-						public PacketManager(ILogger<PacketManager> logger)
+						public PacketManager(ILogger<PacketManager> logger, SystemPacketHandler systemHandler)
 						{
 							_logger = logger;
 							_packetTypeToId = new Dictionary<Type, PacketID>();
+							_systemPacketHandler = systemHandler;
 							Register();
 						}
 				""" );
@@ -248,26 +250,36 @@ namespace PacketGenerator
 							PacketCategory packetCategory = GetPacketCategory((PacketID)id);
 							_logger.LogDebug("Packet received: ID={PacketId}, Category={Category}", id, packetCategory);
 
-							// CurrentRoom 확인
-							if(packetCategory != PacketCategory.System)
+							if( packetCategory == PacketCategory.NoneCategory )
 							{
+								_logger.LogWarning("PacketId:{PacketId} not found Category", id);
+								return;
+							}
+
+							IPacketHandler packetHandler = null;
+							if ( packetCategory == PacketCategory.System )
+							{
+								packetHandler = _systemPacketHandler;
+							}
+							else
+							{
+								// CurrentRoom 확인
 								if(session.CurrentRoom == null)
 								{
 									_logger.LogWarning( "Player {PlayerId} not in any room for packet {PacketId}", session.PlayerId, id.ToString() );
 									return;
 								}
+							
+								var room = session.CurrentRoom;
+
+								packetHandler = packetCategory switch
+								{
+									PacketCategory.Inventory => room?.InventoryPacketHandler,
+									PacketCategory.Room => room?.RoomPacketHandler,
+									PacketCategory.Combat => room?.CombatPacketHandler,
+									_ => null
+								};
 							}
-							
-							var room = session.CurrentRoom;
-							
-							IPacketHandler packetHandler = packetCategory switch
-							{
-								PacketCategory.System => room?.SystemPacketHandler,
-								PacketCategory.Inventory => room?.InventoryPacketHandler,
-								PacketCategory.Room => room?.RoomPacketHandler,
-								PacketCategory.Combat => room?.CombatPacketHandler,
-								_ => null
-							};
 
 							if(packetHandler != null)
 							{
@@ -278,8 +290,6 @@ namespace PacketGenerator
 								_logger.LogWarning( "No handler for category: {Category}", packetCategory );
 							}
 						}
-
-
 				""" );
 
 			// 7. MakeSendPacket 메서드
