@@ -40,12 +40,11 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning( "CombatPacketHandler _onRecv Dictionary Not Found id {id.ToString()}"  );
 			}
 		}
-	private async ValueTask HandleC_AttackMonsterAsync(GameSession session, ArraySegment<byte> buffer)
-	{
-		var packet = new C_AttackMonster();
-		packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-		await HandleC_AttackMonsterAsync(session, packet);
-	}
-
+		private async ValueTask HandleC_AttackMonsterAsync(GameSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_AttackMonster();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_AttackMonsterAsync(session, packet);
+		}
 	}
 }

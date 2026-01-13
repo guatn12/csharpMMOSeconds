@@ -46,33 +46,29 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning( "RoomPacketHandler _onRecv Dictionary Not Found id {id.ToString()}"  );
 			}
 		}
-	private async ValueTask HandleC_MoveAsync(GameSession session, ArraySegment<byte> buffer)
-	{
-		var packet = new C_Move();
-		packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-		await HandleC_MoveAsync(session, packet);
-	}
-
-	private async ValueTask HandleC_ChatAsync(GameSession session, ArraySegment<byte> buffer)
-	{
-		var packet = new C_Chat();
-		packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-		await HandleC_ChatAsync(session, packet);
-	}
-
-	private async ValueTask HandleC_PlayerInfoAsync(GameSession session, ArraySegment<byte> buffer)
-	{
-		var packet = new C_PlayerInfo();
-		packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-		await HandleC_PlayerInfoAsync(session, packet);
-	}
-
-	private async ValueTask HandleC_UseSkillAsync(GameSession session, ArraySegment<byte> buffer)
-	{
-		var packet = new C_UseSkill();
-		packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-		await HandleC_UseSkillAsync(session, packet);
-	}
-
+		private async ValueTask HandleC_MoveAsync(GameSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_Move();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_MoveAsync(session, packet);
+		}
+		private async ValueTask HandleC_ChatAsync(GameSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_Chat();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_ChatAsync(session, packet);
+		}
+		private async ValueTask HandleC_PlayerInfoAsync(GameSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_PlayerInfo();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_PlayerInfoAsync(session, packet);
+		}
+		private async ValueTask HandleC_UseSkillAsync(GameSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_UseSkill();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_UseSkillAsync(session, packet);
+		}
 	}
 }

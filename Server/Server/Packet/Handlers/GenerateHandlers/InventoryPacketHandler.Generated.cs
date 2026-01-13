@@ -46,33 +46,29 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning( "InventoryPacketHandler _onRecv Dictionary Not Found id {id.ToString()}"  );
 			}
 		}
-	private async ValueTask HandleC_InventoryRequestAsync(GameSession session, ArraySegment<byte> buffer)
-	{
-		var packet = new C_InventoryRequest();
-		packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-		await HandleC_InventoryRequestAsync(session, packet);
-	}
-
-	private async ValueTask HandleC_UseItemAsync(GameSession session, ArraySegment<byte> buffer)
-	{
-		var packet = new C_UseItem();
-		packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-		await HandleC_UseItemAsync(session, packet);
-	}
-
-	private async ValueTask HandleC_EquipItemAsync(GameSession session, ArraySegment<byte> buffer)
-	{
-		var packet = new C_EquipItem();
-		packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-		await HandleC_EquipItemAsync(session, packet);
-	}
-
-	private async ValueTask HandleC_UnequipItemAsync(GameSession session, ArraySegment<byte> buffer)
-	{
-		var packet = new C_UnequipItem();
-		packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-		await HandleC_UnequipItemAsync(session, packet);
-	}
-
+		private async ValueTask HandleC_InventoryRequestAsync(GameSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_InventoryRequest();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_InventoryRequestAsync(session, packet);
+		}
+		private async ValueTask HandleC_UseItemAsync(GameSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_UseItem();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_UseItemAsync(session, packet);
+		}
+		private async ValueTask HandleC_EquipItemAsync(GameSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_EquipItem();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_EquipItemAsync(session, packet);
+		}
+		private async ValueTask HandleC_UnequipItemAsync(GameSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_UnequipItem();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_UnequipItemAsync(session, packet);
+		}
 	}
 }

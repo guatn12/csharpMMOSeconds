@@ -74,7 +74,6 @@ namespace Server.Room
 		protected CombatPacketHandler CombatPacketHandler { get; private set; }
 		protected InventoryPacketHandler InventoryPacketHandler { get; private set; }
 
-		SystemPacketHandler IRoom.SystemPacketHandler => SystemPacketHandler;
 		RoomPacketHandler IRoom.RoomPacketHandler => RoomPacketHandler;
 		CombatPacketHandler IRoom.CombatPacketHandler => CombatPacketHandler;
 		InventoryPacketHandler IRoom.InventoryPacketHandler => InventoryPacketHandler;
@@ -577,7 +576,6 @@ namespace Server.Room
 		private void InitializePacketHandlers( ILoggerFactory loggerFactory, ICombatService combatService, IRewardService rewardService,
 			PlayerPositionService playerPositionService )
 		{
-			SystemPacketHandler = new SystemPacketHandler( loggerFactory.CreateLogger<SystemPacketHandler>() );
 			RoomPacketHandler = new RoomPacketHandler( loggerFactory.CreateLogger<RoomPacketHandler>(), this, playerPositionService );
 			CombatPacketHandler = new CombatPacketHandler( loggerFactory.CreateLogger<CombatPacketHandler>(), this, combatService, rewardService );
 			InventoryPacketHandler = new InventoryPacketHandler( loggerFactory.CreateLogger<InventoryPacketHandler>(), this );

@@ -111,13 +111,15 @@ namespace Server.Packet
 
 			if(packetHandler != null)
 			{
-				await packetHandler.HandleAsync( session, id, buffer );
+				ArraySegment<byte> packetBuffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + count, size - count);
+				await packetHandler.HandleAsync( session, id, packetBuffer );
 			}
 			else
 			{
 				_logger.LogWarning( "No handler for category: {Category}", packetCategory );
 			}
-		}		public ArraySegment<byte> MakeSendPacket(IMessage packet)
+		}
+		public ArraySegment<byte> MakeSendPacket(IMessage packet)
 		{
 			if (!_packetTypeToId.TryGetValue(packet.GetType(), out var packetId))
 			{

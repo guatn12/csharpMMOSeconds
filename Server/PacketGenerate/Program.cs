@@ -283,13 +283,15 @@ namespace PacketGenerator
 
 							if(packetHandler != null)
 							{
-								await packetHandler.HandleAsync( session, id, buffer );
+								ArraySegment<byte> packetBuffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + count, size - count);
+								await packetHandler.HandleAsync( session, id, packetBuffer );
 							}
 							else
 							{
 								_logger.LogWarning( "No handler for category: {Category}", packetCategory );
 							}
 						}
+
 				""" );
 
 			// 7. MakeSendPacket 메서드
@@ -561,13 +563,12 @@ namespace PacketGenerator
 			foreach(var packetName in categoryPackets)
 			{
 				sb.Append( $$"""
-						private async ValueTask Handle{{packetName}}Async(GameSession session, ArraySegment<byte> buffer)
-						{
-							var packet = new {{packetName}}();
-							packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-							await Handle{{packetName}}Async(session, packet);
-						}
-
+							private async ValueTask Handle{{packetName}}Async(GameSession session, ArraySegment<byte> buffer)
+							{
+								var packet = new {{packetName}}();
+								packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+								await Handle{{packetName}}Async(session, packet);
+							}
 
 					""" );
 			}

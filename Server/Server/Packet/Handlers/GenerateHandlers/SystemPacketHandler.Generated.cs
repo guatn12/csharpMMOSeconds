@@ -40,12 +40,11 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning( "SystemPacketHandler _onRecv Dictionary Not Found id {id.ToString()}"  );
 			}
 		}
-	private async ValueTask HandleC_EnterGameAsync(GameSession session, ArraySegment<byte> buffer)
-	{
-		var packet = new C_EnterGame();
-		packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-		await HandleC_EnterGameAsync(session, packet);
-	}
-
+		private async ValueTask HandleC_EnterGameAsync(GameSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_EnterGame();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_EnterGameAsync(session, packet);
+		}
 	}
 }

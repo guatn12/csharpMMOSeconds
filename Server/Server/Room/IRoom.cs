@@ -19,7 +19,6 @@ namespace Server.Room
 		RoomState State { get; }
 
 		// Category 핸들러
-		SystemPacketHandler SystemPacketHandler { get;  }
 		RoomPacketHandler RoomPacketHandler { get; }
 		CombatPacketHandler CombatPacketHandler { get; }
 		InventoryPacketHandler InventoryPacketHandler { get; }

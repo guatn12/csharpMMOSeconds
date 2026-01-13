@@ -16,20 +16,33 @@ namespace Server.Packet.Handlers
 	public partial class SystemPacketHandler
 	{
 		private readonly ILogger<SystemPacketHandler> _logger;
-		//private readonly BaseRoom _room;
+		private readonly IRoomManager _roomManager;
 
-		public SystemPacketHandler(ILogger<SystemPacketHandler> logger)
+		public SystemPacketHandler(ILogger<SystemPacketHandler> logger, IRoomManager roomManager )
 		{
 			_logger = logger;
+			_roomManager = roomManager;
 			InitializeHandlers();
 		}
 
 		private async Task HandleC_EnterGameAsync(GameSession session, C_EnterGame packet)
 		{
-			// SessionManager가 자동으로 로비 배정을 처리
-			// 여기서는 로깅만 수행
-			_logger.LogDebug( "Player {PlayerId} (Session {SessionId}) entered game - handled by SessionManager",
-				session.Player.PlayerId, session.SessionId );
+			var currentRoom = session.CurrentRoom;
+			if(currentRoom == null)
+			{
+				// 자동 로비 입장
+				var result = await _roomManager.JoinDefaultLobbyAsync( session );
+				if(result == RoomEnterResult.Success)
+				{
+					_logger.LogInformation( "Player {PlayerId} (Session {SessionId}) automatically joined the default lobby.",
+						session.Player.PlayerId, session.SessionId );
+				}
+				else
+				{
+					_logger.LogWarning( "Player {PlayerId} (Session {SessionId}) failed to join the default lobby.",
+						session.Player.PlayerId, session.SessionId );
+				}
+			}
 
 			await Task.CompletedTask;
 		}
