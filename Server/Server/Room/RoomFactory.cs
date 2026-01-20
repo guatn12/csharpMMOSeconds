@@ -22,12 +22,14 @@ namespace Server.Room
 	{
 		private readonly ILoggerFactory _loggerFactory;
 		private readonly DataManager _dataManager;
+		private readonly IJobQueueManager _jobQueueManager;
 		private readonly IOptions<ServerSettings> _serverSettings;
 
-		public RoomFactory(ILoggerFactory loggerFactory, DataManager dataManager, IOptions<ServerSettings> serverSettings )
+		public RoomFactory(ILoggerFactory loggerFactory, DataManager dataManager, IJobQueueManager jobQueueManager, IOptions<ServerSettings> serverSettings )
 		{
 			_loggerFactory=loggerFactory;
 			_dataManager=dataManager;
+			_jobQueueManager=jobQueueManager;
 			_serverSettings=serverSettings;
 		}
 
@@ -40,7 +42,7 @@ namespace Server.Room
 			return roomType switch
 			{
 				RoomType.Lobby => new LobbyRoom( _loggerFactory.CreateLogger<LobbyRoom>(), _loggerFactory, _serverSettings, _dataManager, 
-				combatService, rewardService, playerPositionService, roomName, 
+				_jobQueueManager, combatService, rewardService, playerPositionService, roomName, 
 				isDefaultLobby: false ),
 
 				RoomType.Battle => throw new NotImplementedException( "BattleRoom not implemented yet"),

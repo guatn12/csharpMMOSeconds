@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
@@ -8,22 +7,25 @@ using Microsoft.Extensions.Logging;
 
 namespace ServerCore
 {
-	public class JobQueueManager
+	public class JobQueueManager : IJobQueueManager
 	{
-		public static JobQueueManager Instance { get; } = new JobQueueManager();
-		private static ILogger<JobQueueManager> _logger;
+		//public static JobQueueManager Instance { get; } = new JobQueueManager();
+		private readonly ILogger<JobQueueManager> _logger;
 
 		private List<Task> _workerTasks = new List<Task>();
 		private Channel<IJobOwner> _jobQueue;
 		private CancellationTokenSource _cancellationTokenSource;
 		public JobPool JobPool { get; private set; } = new JobPool();
 
-		private JobQueueManager() { }
-
-		public static void Initialize( ILogger<JobQueueManager> logger )
+		public JobQueueManager( ILogger<JobQueueManager> logger ) 
 		{
 			_logger = logger;
 		}
+
+		//public static void Initialize( ILogger<JobQueueManager> logger )
+		//{
+		//	_logger = logger;
+		//}
 
 		public void Start( int workerCount, int channelCapacity = 1000 )
 		{

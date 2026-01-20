@@ -1,13 +1,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Server.Data;
 using Server.Packet;
 using Server.Room;
 using ServerCore;
-using Serilog;
 using Server.Config;
 using Server.Core.Session;
 using Server.Infra;
@@ -20,6 +17,7 @@ using Server.Services;
 using Server.Services.Combat;
 using Server.Services.Reward;
 using Server.Packet.Handlers;
+using Server.Infra.HealthCheck;
 
 namespace Server.Extensions
 {
@@ -34,7 +32,7 @@ namespace Server.Extensions
 			services.AddConfigurationServices( configuration );
 
 			// 핵심 서비스 등록
-			services.AddCoreServices(configuration);
+			services.AddCoreServices( configuration );
 
 			// 게임 로직 서비스 등록
 			services.AddGameServices();
@@ -42,31 +40,13 @@ namespace Server.Extensions
 			// 데이터 서비스 등록
 			services.AddDataServices();
 
-			// 로깅 서비스 등록
-			services.AddLoggingServices( configuration );
-
 			// 레디스 서비스 등록
 			services.AddRedisService( configuration );
 
 			// Health Check 추가 (DB 연결 상태 모니터링)
 			services.AddHealthChecks()
 				.AddDbContextCheck<AppDbContext>( "database" )
-				.AddCheck( "redis", () =>
-				{
-					try
-					{
-						ServiceProvider serviceProvider = services.BuildServiceProvider();
-						IConnectionMultiplexer redis = serviceProvider.GetRequiredService<IConnectionMultiplexer>();
-						if(redis.IsConnected)
-							return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy( "Redis is connected" );
-						else
-							return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy( "Redis is not connected" );
-					}
-					catch(Exception ex)
-					{
-						return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy( $"Redis check failed: {ex.Message}" );
-					}
-				} );
+				.AddCheck<RedisHealthCheck>( "redis" );
 
 			services.AddSingleton<SystemHealthService>();
 			services.AddSingleton<PerformanceMonitoringService>();
@@ -106,7 +86,7 @@ namespace Server.Extensions
 			var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
 
 			string connectionString = databaseConfig.ConnectionString;
-			if(string.IsNullOrEmpty( connectionString ) )
+			if(string.IsNullOrEmpty( connectionString ))
 			{
 				connectionString = configuration.GetConnectionString( "DefaultConnection" )
 					?? throw new InvalidOperationException( "Database 연결 문자열을 찾을 수 없습니다." );
@@ -127,7 +107,7 @@ namespace Server.Extensions
 			};
 
 			// DbContextFactory만 사용 (MMORPG 서버에서는 Scoped DbContext 불필요)
-			services.AddDbContextFactory<AppDbContext>( options => 
+			services.AddDbContextFactory<AppDbContext>( options =>
 			{
 				options.UseNpgsql( connectionStringBuilder.ConnectionString, npgsqloptions =>
 				{
@@ -142,6 +122,9 @@ namespace Server.Extensions
 
 				options.EnableServiceProviderCaching();
 			} );
+
+			// QueueManager 등록
+			services.AddSingleton<IJobQueueManager, JobQueueManager>();
 
 			return services;
 		}
@@ -179,21 +162,6 @@ namespace Server.Extensions
 			return services;
 		}
 
-		/// <summary>
-		/// 로깅 서비스 등록
-		/// </summary>
-		private static IServiceCollection AddLoggingServices( this IServiceCollection services, IConfiguration configuration )
-		{
-			// Serilog는 Program.cs의 UseSerilog()에서 설정됨
-			services.AddLogging( loggingBuilder =>
-			{
-				loggingBuilder.ClearProviders();
-				loggingBuilder.AddSerilog( dispose: true );
-			} );
-
-			return services;
-		}
-
 		public static IServiceCollection AddRedisService(this IServiceCollection services, IConfiguration configuration )
 		{
 			// Redis 설정 가져오기
@@ -216,7 +184,7 @@ namespace Server.Extensions
 			// RedisService 등록
 			services.AddSingleton<RedisService>();
 			services.AddSingleton<PlayerPositionService>();
-			
+
 
 			return services;
 		}

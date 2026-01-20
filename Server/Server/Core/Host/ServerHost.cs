@@ -21,6 +21,7 @@ namespace Server.Core.Host
 	{
 		private readonly ILogger<ServerHost> _logger;
 		private readonly IOptions<ServerSettings> _serverSettings;
+		private readonly IJobQueueManager _jobQueueManager;
 		private readonly DataManager _dataManager;
 		private readonly RedisService _redisService;
 		private readonly IRoomManager _roomManager;
@@ -35,6 +36,7 @@ namespace Server.Core.Host
 		public ServerHost(
 			ILogger<ServerHost> logger,
 			IOptions<ServerSettings> serverSettings,
+			IJobQueueManager jobQueueManager,
 			DataManager dataManager,
 			RedisService redisService,
 			IRoomManager roomManager,
@@ -47,6 +49,7 @@ namespace Server.Core.Host
 		{
 			_logger = logger;
 			_serverSettings = serverSettings;
+			_jobQueueManager = jobQueueManager;
 			_dataManager = dataManager;
 			_redisService = redisService;
 			_roomManager = roomManager;
@@ -98,7 +101,7 @@ namespace Server.Core.Host
 			//_listener.Stop();
 
 			// JobQueue 정지
-			await JobQueueManager.Instance.StopAsync();
+			await _jobQueueManager.StopAsync();
 
 			// RoomManager 정지
 			if(_roomManager is IHostedService hostedRoomManager)
@@ -141,14 +144,15 @@ namespace Server.Core.Host
 			ServerSettings settings = _serverSettings.Value;
 
 			// JobQueueManager 초기화
-			var jobQueueLogger = _serviceProvider.GetRequiredService<ILogger<JobQueueManager>>();
-			JobQueueManager.Initialize( jobQueueLogger );
+			//var jobQueueLogger = _serviceProvider.GetRequiredService<ILogger<JobQueueManager>>();
+			//JobQueueManager.Initialize( jobQueueLogger );
 
 			// JobQueue 시작
 			int threadCount = 0 < settings.JobQueue.WorkerThreadCount
 				? settings.JobQueue.WorkerThreadCount
 				: Environment.ProcessorCount;
-			JobQueueManager.Instance.Start( threadCount );
+			_jobQueueManager.Start( threadCount );
+			//JobQueueManager.Instance.Start( threadCount );
 
 			// RoomManager 시작
 			if (_roomManager is IHostedService hostedRoomManager)

@@ -80,10 +80,11 @@ namespace Server.Room
 		public event EventHandler<PlayerRoomEventArgs> PlayerLeft;
 
 		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, string roomName, int maxPlayers, DataManager dataManager,
-			ICombatService combatService, IRewardService rewardService,
+			IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
 			PlayerPositionService playerPositionService,
 			float roomWidth = 100.0f, float roomHeight = 50.0f, float roomDepth = 100.0f,
 			float minX = 0.0f, float minY = 0.0f, float minZ = 0.0f )
+			: base( jobQueueManager )
 		{
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_loggerFactory = loggerFactory;
@@ -479,7 +480,7 @@ namespace Server.Room
 			_isMonsterUpdateScheduled = true;
 
 			// MonsterUpdateJob 생성 및 초기화
-			MonsterUpdateJob job = JobQueueManager.Instance.JobPool.Get<MonsterUpdateJob>();
+			MonsterUpdateJob job = _jobQueueManager.JobPool.Get<MonsterUpdateJob>();
 			job.Initialize( MonsterManager, RoomId, _logger );
 
 			// JobQueue에 비동기 추가

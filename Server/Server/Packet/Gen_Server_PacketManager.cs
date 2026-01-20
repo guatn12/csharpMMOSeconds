@@ -21,11 +21,13 @@ namespace Server.Packet
 		private readonly Dictionary<Type, PacketID> _packetTypeToId;
 		private readonly Dictionary<PacketID, PacketCategory> _packetCategoryCache = new();
 		private readonly SystemPacketHandler _systemPacketHandler;
-		public PacketManager(ILogger<PacketManager> logger, SystemPacketHandler systemHandler)
+		private readonly IJobQueueManager _jobQueueManager;
+		public PacketManager(ILogger<PacketManager> logger, IJobQueueManager jobQueueManager, SystemPacketHandler systemHandler)
 		{
 			_logger = logger;
 			_packetTypeToId = new Dictionary<Type, PacketID>();
 			_systemPacketHandler = systemHandler;
+			_jobQueueManager = jobQueueManager;
 			Register();
 		}
         private void Register()
@@ -113,7 +115,7 @@ namespace Server.Packet
 					_ => null
 				};
 
-				var packetJob = JobQueueManager.Instance.JobPool.Get<PacketJob>();
+				var packetJob = _jobQueueManager.JobPool.Get<PacketJob>();
 				packetJob.Initialize( packetHandler, session, id, packetBuffer );
 
 				BaseRoom baseRoom = room as BaseRoom;

@@ -6,8 +6,14 @@ namespace ServerCore
 {
 	public class JobSerializer : IJobOwner
 	{
+		protected readonly IJobQueueManager _jobQueueManager;
 		private ConcurrentQueue<IJob> _jobQueue = new ConcurrentQueue<IJob>();
 		private int _isProcessing = 0;
+
+		public JobSerializer( IJobQueueManager jobQueueManager )
+		{
+			_jobQueueManager = jobQueueManager;
+		}
 
 		public void Push(IJob job)
 		{
@@ -17,7 +23,7 @@ namespace ServerCore
 			if(Interlocked.CompareExchange( ref _isProcessing, 1, 0 ) == 0)
 			{
 				// 작업이 진행중이 아니므로 전역 큐에 자신을 등록.
-				_ = JobQueueManager.Instance.RegisterAsync( this );
+				_ = _jobQueueManager.RegisterAsync( this );
 			}
 
 			// 작업이 이미 진행중이라면 작업 리스트에 추가만 하고 넘어감.
@@ -67,7 +73,7 @@ namespace ServerCore
 
 				job.Execute();
 				job.Clear();
-				JobQueueManager.Instance.JobPool.Return( job );
+				_jobQueueManager.JobPool.Return( job );
 			}
 
 			// 작업 처리가 모두 끝남.

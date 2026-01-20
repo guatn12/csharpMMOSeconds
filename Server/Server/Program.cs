@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,7 +48,7 @@ namespace Server
 			}
 			finally
 			{
-				await JobQueueManager.Instance.StopAsync();
+				//await JobQueueManager.Instance.StopAsync();
 				Log.CloseAndFlush();
 			}
 		}
