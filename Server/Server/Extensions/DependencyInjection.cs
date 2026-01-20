@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -10,7 +10,6 @@ using ServerCore;
 using Serilog;
 using Server.Config;
 using Server.Core.Session;
-using Server.Core.Jobs;
 using Server.Infra;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
@@ -99,10 +98,6 @@ namespace Server.Extensions
 			services.AddSingleton<SystemPacketHandler>();
 			services.AddSingleton<PacketManager>();
 			services.AddSingleton<ISessionManager, SessionManager>();
-
-			// Job Queue 시스템
-			services.AddSingleton<JobPool>();
-			services.AddSingleton( JobQueueManager.Instance );
 
 			// DB 서비스
 			DatabaseConfig databaseConfig = configuration.GetSection("ServerSettings:Database").Get<DatabaseConfig>()

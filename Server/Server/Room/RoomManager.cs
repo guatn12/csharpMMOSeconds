@@ -1,8 +1,7 @@
-﻿using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Server.Config;
-using Server.Core.Jobs;
 using Server.Core.Session;
 using Server.Data;
 using ServerCore;
@@ -29,9 +28,6 @@ namespace Server.Room
 		private readonly object _lock = new object();
 		private readonly DataManager _dataManager;
 
-		private readonly JobQueueManager _jobQueueManager;
-		private readonly JobPool _jobPool;
-
 		private Timer _cleanupTimer;
 		private bool _disposed = false;
 		private int _nextRoomId = 1;
@@ -45,7 +41,7 @@ namespace Server.Room
 		public event EventHandler<PlayerRoomChangedEventArgs> PlayerRoomChanged;
 
 		public RoomManager( ILogger<RoomManager> logger, IOptionsMonitor<ServerSettings> serverSettings,
-			ILoggerFactory loggerFactory, DataManager dataManager, JobQueueManager jobQueueManager, JobPool jobPool,
+			ILoggerFactory loggerFactory, DataManager dataManager,
 			IRoomFactory roomFactory, IServiceProvider serviceProvider, ISessionManager sessionManager )
 		{
 			_roomFactory = roomFactory ?? throw new ArgumentNullException( nameof( roomFactory ) );
@@ -55,8 +51,6 @@ namespace Server.Room
 			_serverSettings = serverSettings ?? throw new ArgumentNullException( nameof( serverSettings ) );
 			_loggerFactory = loggerFactory ?? throw new ArgumentNullException( nameof( loggerFactory ) );
 			_dataManager = dataManager;
-			_jobQueueManager = jobQueueManager;
-			_jobPool = jobPool;
 
 			_rooms = new ConcurrentDictionary<int, IRoom>();
 

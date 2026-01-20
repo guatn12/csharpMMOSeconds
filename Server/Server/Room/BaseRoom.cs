@@ -1,4 +1,4 @@
-﻿using Google.Protobuf;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
@@ -20,7 +20,7 @@ using Server.Packet.Handlers;
 
 namespace Server.Room
 {
-	public abstract class BaseRoom : IRoom, IDisposable
+	public abstract class BaseRoom : JobSerializer, IRoom, IDisposable
 	{
 		protected readonly ILogger _logger;
 		protected readonly ILoggerFactory _loggerFactory;
@@ -59,8 +59,6 @@ namespace Server.Room
 		protected readonly DataManager _dataManager;
 		private System.Threading.Timer _monsterUpdateTimer;
 
-		private readonly JobQueueManager _jobQueueManager;
-		private readonly JobPool _jobPool;
 		private bool _isMonsterUpdateScheduled = false; // Timer 누적 방지
 
 		// Service
@@ -82,7 +80,7 @@ namespace Server.Room
 		public event EventHandler<PlayerRoomEventArgs> PlayerLeft;
 
 		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, string roomName, int maxPlayers, DataManager dataManager,
-			JobQueueManager jobQueueManager, JobPool jobPool, ICombatService combatService, IRewardService rewardService,
+			ICombatService combatService, IRewardService rewardService,
 			PlayerPositionService playerPositionService,
 			float roomWidth = 100.0f, float roomHeight = 50.0f, float roomDepth = 100.0f,
 			float minX = 0.0f, float minY = 0.0f, float minZ = 0.0f )
@@ -90,8 +88,6 @@ namespace Server.Room
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_loggerFactory = loggerFactory;
 			_dataManager = dataManager;
-			_jobQueueManager = jobQueueManager;
-			_jobPool = jobPool;
 
 			_combatService = combatService;
 			_rewardService = rewardService;
@@ -483,22 +479,23 @@ namespace Server.Room
 			_isMonsterUpdateScheduled = true;
 
 			// MonsterUpdateJob 생성 및 초기화
-			MonsterUpdateJob job = _jobPool.Get<MonsterUpdateJob>();
+			MonsterUpdateJob job = JobQueueManager.Instance.JobPool.Get<MonsterUpdateJob>();
 			job.Initialize( MonsterManager, RoomId, _logger );
 
 			// JobQueue에 비동기 추가
-			_ = _jobQueueManager.PushAsync( job )
-				.AsTask()
-				.ContinueWith( t =>
-				{
-					// Job 큐잉 완료 후 플래그 해제
-					_isMonsterUpdateScheduled = false;
-
-					if(t.IsFaulted)
-					{
-						_logger.LogError( t.Exception, "Failed to push MonsterUpdateJob to queue for room {RoomId}", RoomId );
-					}
-				}, TaskScheduler.Default );
+			try
+			{
+				Push( job );
+			}
+			catch(Exception ex)
+			{
+				_logger.LogError( ex, "Failed to push MonsterUpdateJob to queue for room {RoomId}", RoomId );
+			}
+			finally
+			{
+				// 큐잉 시도 완료 후 플래그 해제(즉시 완료됨)
+				_isMonsterUpdateScheduled = false;
+			}
 		}
 
 
@@ -581,6 +578,22 @@ namespace Server.Room
 			InventoryPacketHandler = new InventoryPacketHandler( loggerFactory.CreateLogger<InventoryPacketHandler>(), this );
 
 		}
+
+#if DEBUG
+
+		protected override void OnProcessJobsStart()
+		{
+			 _logger.LogDebug("ProcessJobs Start - Room:{RoomId}, Thread:{ThreadId}",
+			 RoomId, System.Threading.Thread.CurrentThread.ManagedThreadId);
+		}
+
+		protected override void OnProcessJobsEnd()
+		{
+			_logger.LogDebug("ProcessJobs End - Room:{RoomId}, Thread:{ThreadId}",
+			RoomId, System.Threading.Thread.CurrentThread.ManagedThreadId);
+		}
+
+#endif
 
 
 		public void Dispose()

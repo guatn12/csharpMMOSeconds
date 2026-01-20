@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -138,9 +138,17 @@ namespace Server.Core.Host
 
 		private async Task InitializeCoreServicesAsync()
 		{
+			ServerSettings settings = _serverSettings.Value;
+
 			// JobQueueManager 초기화
 			var jobQueueLogger = _serviceProvider.GetRequiredService<ILogger<JobQueueManager>>();
 			JobQueueManager.Initialize( jobQueueLogger );
+
+			// JobQueue 시작
+			int threadCount = 0 < settings.JobQueue.WorkerThreadCount
+				? settings.JobQueue.WorkerThreadCount
+				: Environment.ProcessorCount;
+			JobQueueManager.Instance.Start( threadCount );
 
 			// RoomManager 시작
 			if (_roomManager is IHostedService hostedRoomManager)
@@ -217,12 +225,6 @@ namespace Server.Core.Host
 				throw new InvalidOperationException( $"잘못된 IP 주소: {settings.Network.Host}" );
 
 			IPEndPoint endPoint = new IPEndPoint(ipAddr, settings.Network.Port);
-
-			// JobQueue 시작
-			int threadCount = 0 < settings.JobQueue.WorkerThreadCount
-				? settings.JobQueue.WorkerThreadCount
-				: Environment.ProcessorCount;
-			JobQueueManager.Instance.Start( threadCount );
 
 			// 종료 이벤트 핸들러
 			Console.CancelKeyPress += ( sender, e ) =>

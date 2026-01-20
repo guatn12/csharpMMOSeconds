@@ -1,8 +1,7 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Protocol;
 using Server.Config;
-using Server.Core.Jobs;
 using Server.Core.Session;
 using Server.Data;
 using Server.Game.Monsters;
@@ -34,12 +33,11 @@ namespace Server.Room
 		public bool IsDefaultLobby { get; private set; }
 
 		public LobbyRoom( ILogger<LobbyRoom> logger, ILoggerFactory loggerFactory, IOptions<ServerSettings> ServerSettings,
-			DataManager datamanager, JobQueueManager jobQueueManager, JobPool jobPool,
-			ICombatService combatService, IRewardService rewardService,
+			DataManager datamanager, ICombatService combatService, IRewardService rewardService,
 			PlayerPositionService playerPositionService,
 			string roomName = null, bool isDefaultLobby = false ) 
 			: base( logger, loggerFactory, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
-				  jobQueueManager, jobPool, combatService, rewardService, playerPositionService)
+				  combatService, rewardService, playerPositionService)
 		{
 			_lobbyLogger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_serverSettings = ServerSettings.Value ?? throw new ArgumentNullException(nameof( ServerSettings ) );

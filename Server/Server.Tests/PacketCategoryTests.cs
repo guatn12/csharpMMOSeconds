@@ -5,6 +5,7 @@ using Protocol;
 using Server.Core.Session;
 using Server.Packet;
 using Server.Packet.Handlers;
+using Server.Room;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,11 +21,12 @@ namespace Server.Tests
 		public PacketCategoryTests()
 		{
 			var mockLogger = new Mock<ILogger<PacketManager>>();
-			var mockSystemPacketHandler = new Mock<ILogger<SystemPacketHandler>>();
+			var mockSystemPacketHandlerLogger = new Mock<ILogger<SystemPacketHandler>>();
+			var mockRoomManager = new Mock<IRoomManager>();
 			var mockServiceProvider = new Mock<IServiceProvider>();
 
 			_packetManager = new PacketManager( mockLogger.Object,
-				new SystemPacketHandler( mockSystemPacketHandler.Object ) );
+				new SystemPacketHandler( mockSystemPacketHandlerLogger.Object, mockRoomManager.Object ) );
 		}
 
 		[Fact]

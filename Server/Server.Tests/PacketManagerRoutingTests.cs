@@ -29,9 +29,10 @@ namespace Server.Tests
 		public PacketManagerRoutingTests()
 		{
 			_mockLogger = new Mock<ILogger<PacketManager>>();
-			var mockSystemPacketHandler = new Mock<ILogger<SystemPacketHandler>>();
+			var mockSystemPacketHandlerLogger = new Mock<ILogger<SystemPacketHandler>>();
+			var mockRoomManager = new Mock<IRoomManager>();
 			_packetManager = new PacketManager( _mockLogger.Object,
-				new SystemPacketHandler( mockSystemPacketHandler.Object ) );
+				new SystemPacketHandler( mockSystemPacketHandlerLogger.Object, mockRoomManager.Object ) );
 
 			// SessionManager 생성 (모든 의존성을 null로 전달)
 			var mockLogger = new Mock<ILogger<SessionManager>>();

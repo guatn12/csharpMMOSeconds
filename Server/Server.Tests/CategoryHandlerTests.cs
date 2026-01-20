@@ -1,4 +1,4 @@
-﻿using Google.Protobuf;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Protocol;
@@ -43,8 +43,9 @@ namespace Server.Tests
 
 			var mockPacketManagerLogger = new Mock<ILogger<PacketManager>>();
 			var mockSystemPacketHandlerLogger = new Mock<ILogger<SystemPacketHandler>>();
+			var mockRoomManager = new Mock<IRoomManager>();
 			_packetManager = new PacketManager( mockPacketManagerLogger.Object,
-				new SystemPacketHandler( mockSystemPacketHandlerLogger.Object ) );
+				new SystemPacketHandler( mockSystemPacketHandlerLogger.Object, mockRoomManager.Object ) );
 		}
 
 		/// <summary>
@@ -62,8 +63,6 @@ namespace Server.Tests
 					roomName: "TestRoom",
 					maxPlayers: 100,
 					dataManager: null,
-					jobQueueManager: null,
-					jobPool: null,
 					combatService: new Mock<ICombatService>().Object,
 					rewardService: new Mock<IRewardService>().Object,
 					playerPositionService: null
@@ -94,25 +93,29 @@ namespace Server.Tests
 		}
 
 		[Fact]
-		public async Task SystemPacketHandler_HandleC_EnterGame_ShouldLogDebugMessage()
+		public async Task SystemPacketHandler_HandleC_EnterGame_ShouldJoinDefaultLobby()
 		{
 			// Arrange
 			var mockLogger = new Mock<ILogger<SystemPacketHandler>>();
-			var handler = new SystemPacketHandler(mockLogger.Object);
+			var mockRoomManager = new Mock<IRoomManager>();
+			mockRoomManager.Setup(x => x.JoinDefaultLobbyAsync(It.IsAny<GameSession>()))
+				.ReturnsAsync(RoomEnterResult.Success);
+			var handler = new SystemPacketHandler(mockLogger.Object, mockRoomManager.Object);
 
 			var session = CreateTestGameSession(sessionId: 1, playerId: 1001);
 			var packet = new C_EnterGame();
 			var buffer = CreatePacketBuffer(PacketID.C_EnterGame, packet);
 
-			// Act 
+			// Act
 			await handler.HandleAsync( session, (ushort)PacketID.C_EnterGame, buffer );
 
-			// Assert - 로그 호출 검증
+			// Assert - 로비 입장 호출 및 로그 검증
+			mockRoomManager.Verify(x => x.JoinDefaultLobbyAsync(session), Times.Once);
 			mockLogger.Verify(
 				x => x.Log(
-					LogLevel.Debug,
+					LogLevel.Information,
 					It.IsAny<EventId>(),
-					It.Is<It.IsAnyType>( ( v, t ) => v.ToString().Contains( "entered game" ) ),
+					It.Is<It.IsAnyType>( ( v, t ) => v.ToString().Contains( "automatically joined the default lobby" ) ),
 					It.IsAny<Exception>(),
 					It.IsAny<Func<It.IsAnyType, Exception, string>>() ),
 				Times.Once );

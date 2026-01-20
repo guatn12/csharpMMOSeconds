@@ -1,4 +1,4 @@
-﻿using Google.Protobuf;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Database.Entities;
@@ -73,13 +73,13 @@ namespace Server.Core.Session
 
             if(_packetManager != null)
             {
-                Task.Run( async () =>
-                {
-                    await _packetManager.HandlePacket( this, buffer );
-                } );
-            }
-
-            //Program.PacketManagerInstance.HandlePacket( this, buffer );
+				_ = _packetManager.HandlePacket( this, buffer );
+			}
+			else
+			{
+				_logger.LogError( "PacketManager is null. Cannot handle received packet. SessionId: {SessionId}, PacketID: {PacketID}",
+					SessionId, packetId );
+			}
         }
 
         public override void OnSend( int bytes )

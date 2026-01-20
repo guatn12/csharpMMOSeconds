@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -18,6 +18,11 @@ namespace ServerCore
 		public void Execute()
 		{
 			_action.Invoke();
+		}
+
+		public void Clear()
+		{
+			_action = null;
 		}
 	}
 }

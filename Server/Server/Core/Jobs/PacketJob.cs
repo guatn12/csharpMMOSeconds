@@ -1,7 +1,9 @@
-﻿using Google.Protobuf;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Server.Core.Session;
+using Server.Packet.Handlers;
 using Server.Room;
+using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,45 +12,35 @@ using System.Threading.Tasks;
 
 namespace Server.Core.Jobs
 {
-	public class PacketJob<T> : IPacketJob<T> where T : IMessage
+	public class PacketJob : IJob
 	{
+		private IPacketHandler _handler;
 		private GameSession _session;
-		private IRoom _room;
-		private T _packet;
-		private ILogger _logger;
-		private Func<GameSession, IRoom, IMessage, ILogger, ValueTask> _handler;
+		private ushort _packetId;
+		private byte[] _packetData;
 
-		public void Initialize( GameSession session, IRoom room, T packet, ILogger logger )
+		public void Initialize( IPacketHandler packetHandler, GameSession gameSession, ushort packetId, ArraySegment<byte> buffer )
 		{
-			_session = session;
-			_room = room;
-			_packet = packet;
-			_logger = logger;
+			_session = gameSession;
+			_handler = packetHandler;
+			_packetId = packetId;
+
+			_packetData = new byte[ buffer.Count];
+			Array.Copy( buffer.Array, buffer.Offset, _packetData, 0, buffer.Count );
 		}
 
-		public void SetHandler( Func<GameSession, IRoom, IMessage, ILogger, ValueTask> handler )
+		public void Execute()
 		{
-			_handler = handler ?? throw new ArgumentNullException( nameof( handler ) );
-		}
-
-		public async void Execute()
-		{
-			if(_handler == null)
-			{
-				_logger.LogWarning( "PacketJob<{PacketType}> executed without handler", typeof( T ).Name );
-				return;
-			}
-
-			await _handler( _session, _room, _packet, _logger );
+			var packetData = new ArraySegment<byte>( _packetData );
+			_ = _handler.HandleAsync( _session, _packetId, packetData );
 		}
 
 		public void Clear()
 		{
-			_session = null;
-			_room = null;
-			_packet = default;
-			_logger = null;
 			_handler = null;
+			_session = null;
+			_packetId = 0;
+			_packetData = null;
 		}
 	}
 }

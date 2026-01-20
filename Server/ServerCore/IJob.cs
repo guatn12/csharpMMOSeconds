@@ -1,7 +1,8 @@
-﻿namespace ServerCore
+namespace ServerCore
 {
 	public interface IJob
 	{
 		void Execute();
+		void Clear();
 	}
 }

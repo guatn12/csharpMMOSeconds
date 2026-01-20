@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Net;
 using System.Net.Sockets;
@@ -55,8 +55,8 @@ namespace ServerCore
             if (args.SocketError == SocketError.Success)
             {
                 Session session = _sessionFactory.Invoke();
-                session.Start(args.AcceptSocket);
-                session.OnConnected(args.AcceptSocket.RemoteEndPoint);
+				session.OnConnected( args.AcceptSocket.RemoteEndPoint );
+				session.Start(args.AcceptSocket);
             }
             else
             {

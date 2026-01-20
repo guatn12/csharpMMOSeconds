@@ -9,6 +9,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Server.Packet.Handlers;
+using ServerCore;
+using Server.Core.Jobs;
+using Server.Room;
 
 namespace Server.Packet
 {
@@ -85,9 +88,11 @@ namespace Server.Packet
 			}
 
 			IPacketHandler packetHandler = null;
+			ArraySegment<byte> packetBuffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + count, size - count);
 			if ( packetCategory == PacketCategory.System )
 			{
 				packetHandler = _systemPacketHandler;
+				await packetHandler.HandleAsync( session, id, packetBuffer );
 			}
 			else
 			{
@@ -97,7 +102,7 @@ namespace Server.Packet
 					_logger.LogWarning( "Player {PlayerId} not in any room for packet {PacketId}", session.PlayerId, id.ToString() );
 					return;
 				}
-			
+
 				var room = session.CurrentRoom;
 
 				packetHandler = packetCategory switch
@@ -107,16 +112,19 @@ namespace Server.Packet
 					PacketCategory.Combat => room?.CombatPacketHandler,
 					_ => null
 				};
-			}
 
-			if(packetHandler != null)
-			{
-				ArraySegment<byte> packetBuffer = new ArraySegment<byte>(buffer.Array, buffer.Offset + count, size - count);
-				await packetHandler.HandleAsync( session, id, packetBuffer );
-			}
-			else
-			{
-				_logger.LogWarning( "No handler for category: {Category}", packetCategory );
+				var packetJob = JobQueueManager.Instance.JobPool.Get<PacketJob>();
+				packetJob.Initialize( packetHandler, session, id, packetBuffer );
+
+				BaseRoom baseRoom = room as BaseRoom;
+				if(baseRoom == null)
+				{
+					_logger.LogWarning( "Player {PlayerId} current room is not BaseRoom for packet {PacketId}",
+					session.PlayerId, id.ToString() );
+					return;
+				}
+
+				baseRoom.Push( packetJob );
 			}
 		}
 		public ArraySegment<byte> MakeSendPacket(IMessage packet)
