@@ -85,7 +85,7 @@ namespace Server.Room
 
 
 
-		public async Task<IRoom> CreateRoomAsync( RoomType roomType, string roomName, int maxPlayers, GameSession creatorSession = null )
+		public async Task<IRoom> CreateRoomAsync( RoomType roomType, string roomName, int maxPlayers, IClientSession creatorSession = null )
 		{
 			try
 			{
@@ -287,7 +287,7 @@ namespace Server.Room
 				.ToList ();
 		}
 
-		public async Task<RoomEnterResult> JoinDefaultLobbyAsync( GameSession session )
+		public async Task<RoomEnterResult> JoinDefaultLobbyAsync( IClientSession session )
 		{
 			if(_defaultLobby == null)
 			{
@@ -298,7 +298,7 @@ namespace Server.Room
 			return await _defaultLobby.TryEnterAsync( session );
 		}
 
-		public async Task<RoomEnterResult> MovePlayerToRoomAsync( GameSession session, int targetRoomId )
+		public async Task<RoomEnterResult> MovePlayerToRoomAsync( IClientSession session, int targetRoomId )
 		{
 			try
 			{
@@ -336,12 +336,12 @@ namespace Server.Room
 			}
 		}
 
-		public Task<IRoom> FindPlayerCurrentRoomAsync( GameSession session )
+		public Task<IRoom> FindPlayerCurrentRoomAsync( IClientSession session )
 		{
 			return Task.FromResult(session.CurrentRoom);
 		}
 
-		public async Task<bool> RemovePlayerFromAllRoomsAsync( GameSession session )
+		public async Task<bool> RemovePlayerFromAllRoomsAsync( IClientSession session )
 		{
 			try
 			{

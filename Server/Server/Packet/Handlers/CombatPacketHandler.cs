@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
 using Server.Game.Monsters;
@@ -32,7 +32,7 @@ namespace Server.Packet.Handlers
 			InitializeHandlers();
 		}
 
-		private async Task HandleC_AttackMonsterAsync(GameSession session, C_AttackMonster packet)
+		private async Task HandleC_AttackMonsterAsync( IClientSession session, C_AttackMonster packet)
 		{
 			// 1. 기본 검증
 			var validation = PacketValidators.ValidateBasic(session, _room);
@@ -85,7 +85,7 @@ namespace Server.Packet.Handlers
 
 		private async Task HandleMonsterDeathAsync( Monster monster, long killerPlayerId )
 		{
-			GameSession killerSession = _room.FindPlayerToPlayerId(killerPlayerId);
+			IClientSession killerSession = _room.FindPlayerToPlayerId(killerPlayerId);
 			if(killerSession == null)
 			{
 				_logger.LogWarning( "Killer player {PlayerId} not found", killerPlayerId );

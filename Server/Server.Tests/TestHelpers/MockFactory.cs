@@ -1,4 +1,4 @@
-﻿using Castle.Core.Logging;
+using Castle.Core.Logging;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -33,7 +33,7 @@ namespace Server.Tests.TestHelpers
 			mockRoom.Setup( r => r.RoomId ).Returns( roomId );
 
 			// ContainsPlayer는 기본적으로 true 반환
-			mockRoom.Setup( r => r.ContainsPlayer( It.IsAny<GameSession>() ) )
+			mockRoom.Setup( r => r.ContainsPlayer( It.IsAny<ClientSession>() ) )
 				.Returns( true );
 
 			// ContainsPlayerToPlayerId도 기본적으로 true
@@ -43,12 +43,12 @@ namespace Server.Tests.TestHelpers
 			// BroadcastAsync는 완료된 Task 반환
 			mockRoom.Setup( r => r.BroadcastAsync(
 				It.IsAny<IMessage>(),
-				It.IsAny<GameSession>() ) )
+				It.IsAny<ClientSession>() ) )
 				.Returns( Task.CompletedTask );
 
 			// SendToPlayersAsync도 완료된 Task 반환
 			mockRoom.Setup(r => r.SendToPlayerAsync(
-				It.IsAny<GameSession>(),
+				It.IsAny<ClientSession>(),
 				It.IsAny<IMessage>()))
 				.Returns(Task.CompletedTask );
 
@@ -59,9 +59,9 @@ namespace Server.Tests.TestHelpers
 		///<summary>
 		/// 플레이어 정보가 포함된 GameSession Mock 생성
 		/// </summary>
-		public static Mock<GameSession> CreateMockSession(long playerId = 1, string playerName = "TestPlayer")
+		public static Mock<ClientSession> CreateMockSession(long playerId = 1, string playerName = "TestPlayer")
 		{
-			var mockSession = new Mock<GameSession>();
+			var mockSession = new Mock<ClientSession>();
 
 			var player = new Player(playerId, playerName);
 
@@ -98,7 +98,7 @@ namespace Server.Tests.TestHelpers
 		/// <summary>
 		/// 특정 아이템을 보유한 GameSession Mock 생성
 		/// </summary>
-		public static Mock<GameSession> CreateMockSessionWithItem(int itemId, int quantity, long playerId = 1, string playerName = "TestPlayer")
+		public static Mock<ClientSession> CreateMockSessionWithItem(int itemId, int quantity, long playerId = 1, string playerName = "TestPlayer")
 		{
 			var mockSession = CreateMockSession(playerId, playerName);
 
@@ -124,7 +124,7 @@ namespace Server.Tests.TestHelpers
 		/// - Player.Info는 public get이므로 읽을 수만 있고 쓸 수는 없음
 		/// - 대신 Player의 메서드(TakeDamage, Heal 등)를 사용해야 함
 		/// </summary>
-		public static Mock<GameSession> CreateMockSessionWithStats(
+		public static Mock<ClientSession> CreateMockSessionWithStats(
 			long playerId = 1,
 			string playerName = "TestPlayer",
 			int? currentHP = null,
@@ -156,7 +156,7 @@ namespace Server.Tests.TestHelpers
 		/// <summary>
 		/// 여러 아이템을 보유한 GameSession Mock 생성
 		/// </summary>
-		public static Mock<GameSession> CreateMockSessionWithItems(
+		public static Mock<ClientSession> CreateMockSessionWithItems(
 			params (int itemId, int quantity)[] items )
 		{
 			var mockSession = CreateMockSession();

@@ -8,7 +8,7 @@ namespace ServerCore
     public class Listener
     {
         private Socket _listenSocket;
-        private Func<Session> _sessionFactory;
+        private Func<NetworkSession> _sessionFactory;
         private ILogger<Listener> _logger;
 
         public Listener(ILogger<Listener> logger)
@@ -16,7 +16,7 @@ namespace ServerCore
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public void Init(IPEndPoint endPoint, Func<Session> sessionFactory, int listenBacklog = 10)
+        public void Init(IPEndPoint endPoint, Func<NetworkSession> sessionFactory, int listenBacklog = 10)
         {
             _sessionFactory = sessionFactory;
             _listenSocket = new Socket(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
@@ -54,7 +54,7 @@ namespace ServerCore
         {
             if (args.SocketError == SocketError.Success)
             {
-                Session session = _sessionFactory.Invoke();
+                NetworkSession session = _sessionFactory.Invoke();
 				session.OnConnected( args.AcceptSocket.RemoteEndPoint );
 				session.Start(args.AcceptSocket);
             }

@@ -15,11 +15,11 @@ namespace Server.Core.Jobs
 	public class PacketJob : IJob
 	{
 		private IPacketHandler _handler;
-		private GameSession _session;
+		private IClientSession _session;
 		private ushort _packetId;
 		private byte[] _packetData;
 
-		public void Initialize( IPacketHandler packetHandler, GameSession gameSession, ushort packetId, ArraySegment<byte> buffer )
+		public void Initialize( IPacketHandler packetHandler, IClientSession gameSession, ushort packetId, ArraySegment<byte> buffer )
 		{
 			_session = gameSession;
 			_handler = packetHandler;

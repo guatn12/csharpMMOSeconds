@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
 using Server.Extensions;
@@ -28,7 +28,7 @@ namespace Server.Packet.Handlers
 		/// C_InventoryRequest 패킷 처리
 		/// 플레이어 인벤토리 정보 조회
 		/// </summary>
-		private async Task HandleC_InventoryRequestAsync(GameSession session, C_InventoryRequest packet)
+		private async Task HandleC_InventoryRequestAsync( IClientSession session, C_InventoryRequest packet)
 		{
 			// 1. 기본 검증
 			var validation = PacketValidators.ValidateBasic(session, _room);
@@ -61,7 +61,7 @@ namespace Server.Packet.Handlers
 		/// C_UseItem 패킷 처리
 		/// 소비 아이템 사용 (HP/MP 회복 등)
 		/// </summary>
-		private async Task HandleC_UseItemAsync( GameSession session, C_UseItem packet )
+		private async Task HandleC_UseItemAsync( IClientSession session, C_UseItem packet )
 		{
 			// 1. 기본 검증
 			var validation = PacketValidators.ValidateBasic(session, _room);
@@ -105,7 +105,7 @@ namespace Server.Packet.Handlers
 		/// C_EquipItem 패킷 처리
 		/// 인벤토리 아이템을 장비 슬롯에 장착
 		/// </summary>
-		private async Task HandleC_EquipItemAsync( GameSession session, C_EquipItem packet )
+		private async Task HandleC_EquipItemAsync( IClientSession session, C_EquipItem packet )
 		{
 			// 1. 기본 검증
 			var validation = PacketValidators.ValidateBasic(session, _room);
@@ -141,7 +141,7 @@ namespace Server.Packet.Handlers
 		/// C_UnequipItem 패킷 처리
 		/// 장착된 장비를 인벤토리로 해제
 		/// </summary>
-		private async Task HandleC_UnequipItemAsync( GameSession session, C_UnequipItem packet )
+		private async Task HandleC_UnequipItemAsync( IClientSession session, C_UnequipItem packet )
 		{
 			// 1. 기본 검증
 			var validation = PacketValidators.ValidateBasic(session, _room);

@@ -71,7 +71,7 @@ namespace Server.Packet
             _packetCategoryCache.Add(PacketID.C_AttackMonster, PacketCategory.Combat);
         }
 
-		public async ValueTask HandlePacket(GameSession session, ArraySegment<byte> buffer)
+		public async ValueTask HandlePacket(IClientSession session, ArraySegment<byte> buffer)
 		{
 			ushort count = 0;
 			ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);

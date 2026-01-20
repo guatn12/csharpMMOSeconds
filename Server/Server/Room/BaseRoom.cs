@@ -24,7 +24,7 @@ namespace Server.Room
 	{
 		protected readonly ILogger _logger;
 		protected readonly ILoggerFactory _loggerFactory;
-		protected readonly ConcurrentDictionary<long, GameSession> _players;
+		protected readonly ConcurrentDictionary<long, IClientSession> _players;
 		protected readonly object _lock = new object();
 		private static int _nextRoomId = 1;
 		private bool _dispose = false;
@@ -50,7 +50,7 @@ namespace Server.Room
 		public abstract RoomType RoomType { get; }
 		public RoomState State { get; protected set; } = RoomState.Created;
 
-		public IReadOnlyList<GameSession> Players => _players.Values.ToList();
+		public IReadOnlyList<IClientSession> Players => _players.Values.ToList();
 		public bool IsEmpty => _players.IsEmpty;
 		public bool IsFull => MaxPlayers <= _players.Count;
 
@@ -107,7 +107,7 @@ namespace Server.Room
 			MinY = minY;
 			MinZ = minZ;
 
-			_players = new ConcurrentDictionary<long, GameSession>();
+			_players = new ConcurrentDictionary<long, IClientSession>();
 
 			InitializePacketHandlers( _loggerFactory, combatService, rewardService, playerPositionService );
 			
@@ -164,7 +164,7 @@ namespace Server.Room
 			MonsterManager = null;
 
 			// 모든 플레이어 강제 퇴장
-			List<GameSession> playersToRemove = _players.Values.ToList();
+			List<IClientSession> playersToRemove = _players.Values.ToList();
 			foreach(var player in playersToRemove)
 			{
 				await ForceLeaveAsync( player );
@@ -173,28 +173,28 @@ namespace Server.Room
 			await OnCleanupAsync();
 		}
 
-		public bool ContainsPlayer( GameSession session )
+		public bool ContainsPlayer( IClientSession session )
 		{
 			return session != null && _players.ContainsKey( session.SessionId );
 		}
 
 		public bool ContainsPlayerToPlayerId( long playerId )
 		{
-			return 0 < playerId && _players.Values.Where( p => p.Player.PlayerId == playerId ).Any();
+			return 0 < playerId && _players.Values.Where( p => p.PlayerId == playerId ).Any();
 		}
 
-		public GameSession FindPlayer( int sessionId )
+		public IClientSession FindPlayer( int sessionId )
 		{
 			_players.TryGetValue( sessionId, out var session );
 			return session;
 		}
 
-		public GameSession FindPlayerToPlayerId( long playerId )
+		public IClientSession FindPlayerToPlayerId( long playerId )
 		{
-			return _players.Values.Where( p => p.Player.PlayerId == playerId ).FirstOrDefault();
+			return _players.Values.Where( p => p.PlayerId == playerId ).FirstOrDefault();
 		}
 
-		public virtual async Task<RoomEnterResult> TryEnterAsync( GameSession session )
+		public virtual async Task<RoomEnterResult> TryEnterAsync( IClientSession session )
 		{
 			if(session == null)
 				return RoomEnterResult.InvalidState;
@@ -225,7 +225,10 @@ namespace Server.Room
 			try
 			{
 				// 입장 시 session의 currentRoom 변경
-				session.CurrentRoom = this;
+				if (session is ClientSession clientSession)
+				{
+					clientSession.CurrentRoom = this;
+				}
 
 				// 룸 별 입장 로직 실행
 				await OnPlayerEnterAsync( session );
@@ -242,13 +245,20 @@ namespace Server.Room
 			{
 				// 실패 시 플레이어 제거
 				_players.TryRemove( session.SessionId, out _ );
-				session.CurrentRoom = null; // 실패 시 session의 현재 룸도 초기화.
+				if(session.CurrentRoom != null )
+				{
+					if(session is ClientSession clientSession)
+					{
+						clientSession.CurrentRoom = null; // 실패 시 session의 현재 룸도 초기화.
+					}
+				}
+				
 				_logger.LogError( e, "Failed to enter player {SessionId} to room {RoomId}", session.SessionId, RoomId );
 				return RoomEnterResult.UnknownError;
 			}
 		}
 
-		public virtual async Task<bool> TryLeaveAsync( GameSession session )
+		public virtual async Task<bool> TryLeaveAsync( IClientSession session )
 		{
 			if(session == null || !_players.ContainsKey( session.SessionId ))
 				return false;
@@ -256,12 +266,12 @@ namespace Server.Room
 			return await InternalLeaveAsync( session, false );
 		}
 
-		public virtual async Task BroadcastAsync( IMessage packet, GameSession excludeSession = null )
+		public virtual async Task BroadcastAsync( IMessage packet, IClientSession excludeSession = null )
 		{
 			if(packet == null)
 				return;
 
-			List<GameSession> currentPlayers = _players.Values.ToList();
+			List<IClientSession> currentPlayers = _players.Values.ToList();
 			List<Task> tasks = new List<Task>();
 
 			foreach(var player in currentPlayers)
@@ -279,7 +289,7 @@ namespace Server.Room
 			}
 		}
 
-		public virtual async Task SendToPlayerAsync( GameSession session, IMessage packet )
+		public virtual async Task SendToPlayerAsync( IClientSession session, IMessage packet )
 		{
 			if(session == null || packet == null)
 				return;
@@ -297,7 +307,7 @@ namespace Server.Room
 
 		protected virtual Task OnInitializeAsync() => Task.CompletedTask;
 		protected virtual Task OnCleanupAsync() => Task.CompletedTask;
-		protected virtual async Task OnPlayerEnterAsync( GameSession session )
+		protected virtual async Task OnPlayerEnterAsync( IClientSession session )
 		{
 			// 현재 스폰된 몬스터 정보 전송
 			if(MonsterManager != null)
@@ -317,12 +327,12 @@ namespace Server.Room
 				}
 			}
 		}
-		protected virtual Task OnPlayerLeaveAsync( GameSession session ) => Task.CompletedTask;
-		public virtual Task OnPlayerMoveAsync( GameSession session, Protocol.C_Move packet ) => Task.CompletedTask;
-		public virtual Task OnPlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.CompletedTask;
-		public virtual Task OnPlayerUseSkillAsync( GameSession session, Protocol.C_UseSkill packet ) => Task.CompletedTask;
+		protected virtual Task OnPlayerLeaveAsync( IClientSession session ) => Task.CompletedTask;
+		public virtual Task OnPlayerMoveAsync( IClientSession session, Protocol.C_Move packet ) => Task.CompletedTask;
+		public virtual Task OnPlayerChatAsync( IClientSession session, Protocol.C_Chat packet ) => Task.CompletedTask;
+		public virtual Task OnPlayerUseSkillAsync( IClientSession session, Protocol.C_UseSkill packet ) => Task.CompletedTask;
 
-		public virtual Task<bool> ValidatePlayerMoveAsync( GameSession session, Protocol.C_Move packet )
+		public virtual Task<bool> ValidatePlayerMoveAsync( IClientSession session, Protocol.C_Move packet )
 		{
 			// 기본 3D 위치 검증
 			bool isValid = Utils.Position3DValidator.IsValidPosition(packet.PosInfo, this);
@@ -336,9 +346,9 @@ namespace Server.Room
 
 			return Task.FromResult( isValid );
 		}
-		public virtual Task<bool> ValidatePlayerChatAsync( GameSession session, Protocol.C_Chat packet ) => Task.FromResult( true );
-		public virtual Task<bool> ValidatePlayerInfoAsync( GameSession session, Protocol.C_PlayerInfo packet ) => Task.FromResult( true );
-		public virtual Task<bool> ValidatePlayerUseSkillAsync( GameSession session, Protocol.C_UseSkill packet ) => Task.FromResult( true );
+		public virtual Task<bool> ValidatePlayerChatAsync( IClientSession session, Protocol.C_Chat packet ) => Task.FromResult( true );
+		public virtual Task<bool> ValidatePlayerInfoAsync( IClientSession session, Protocol.C_PlayerInfo packet ) => Task.FromResult( true );
+		public virtual Task<bool> ValidatePlayerUseSkillAsync( IClientSession session, Protocol.C_UseSkill packet ) => Task.FromResult( true );
 
 		// 몬스터 초기화 메서드 추가
 		protected virtual async Task InitializeMonsterManagerAsync()
@@ -506,12 +516,12 @@ namespace Server.Room
 			return System.Threading.Interlocked.Increment( ref _nextRoomId );
 		}
 
-		private async Task<bool> ForceLeaveAsync( GameSession session )
+		private async Task<bool> ForceLeaveAsync( IClientSession session )
 		{
 			return await InternalLeaveAsync( session, true );
 		}
 
-		private async Task<bool> InternalLeaveAsync( GameSession session, bool isForced )
+		private async Task<bool> InternalLeaveAsync( IClientSession session, bool isForced )
 		{
 			if(!_players.TryRemove( session.SessionId, out var removedSession ))
 				return false;
@@ -550,7 +560,7 @@ namespace Server.Room
 			return inventoryData.Items.LastOrDefault()?.Slot ?? -1;
 		}
 
-		private bool ValidateSession( GameSession session, ILogger logger )
+		private bool ValidateSession( IClientSession session, ILogger logger )
 		{
 			if(session?.Player == null)
 			{

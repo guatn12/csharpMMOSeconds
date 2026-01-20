@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Protocol;
 using Server.Core.Session;
@@ -90,14 +90,14 @@ namespace Server.Tests
 		/// <summary>
 		/// 테스트용 GameSession 객체 생성 (리플렉션 사용)
 		/// </summary>
-		private GameSession CreateTestGameSession( long sessionId, long playerId )
+		private ClientSession CreateTestGameSession( long sessionId, long playerId )
 		{
 			// GameSession 생성자는 ILogger, PacketManager, ISessionManager, sessionId 필요
-			var mockLogger = new Mock<ILogger<GameSession>>();
+			var mockLogger = new Mock<ILogger<ClientSession>>();
 
 			// GameSession 생성
-			var session = (GameSession)Activator.CreateInstance(
-				typeof(GameSession),
+			var session = (ClientSession)Activator.CreateInstance(
+				typeof(ClientSession),
 				BindingFlags.Instance | BindingFlags.Public,
 				null,
 				new object[] { mockLogger.Object, null, _sessionManager, sessionId },
@@ -105,14 +105,14 @@ namespace Server.Tests
 			);
 
 			// Player 초기화 (InitializePlayer private 메서드 호출)
-			var initializePlayerMethod = typeof(GameSession).GetMethod(
+			var initializePlayerMethod = typeof(ClientSession).GetMethod(
 				"InitializePlayer",
 				BindingFlags.Instance | BindingFlags.NonPublic
 			);
 			initializePlayerMethod.Invoke( session, null );
 
 			// Player의 PlayerId 변경 (리플렉션)
-			var playerProperty = typeof(GameSession).GetProperty("Player");
+			var playerProperty = typeof(ClientSession).GetProperty("Player");
 			var player = (Player)playerProperty.GetValue(session);
 
 			// Player.Info.PlayerId 변경
@@ -132,7 +132,7 @@ namespace Server.Tests
 			var mockRoom = new Mock<IRoom>();
 			mockRoom.Setup( r => r.RoomId ).Returns( roomId );
 			mockRoom.Setup( r => r.RoomName ).Returns( "TestRoom" );
-			mockRoom.Setup( r => r.ContainsPlayer( It.IsAny<GameSession>() ) ).Returns( true );
+			mockRoom.Setup( r => r.ContainsPlayer( It.IsAny<ClientSession>() ) ).Returns( true );
 			mockRoom.Setup( r => r.ContainsPlayerToPlayerId( It.IsAny<long>() ) ).Returns( true );
 
 			return mockRoom;
@@ -141,9 +141,9 @@ namespace Server.Tests
 		/// <summary>
 		/// GameSession의 CurrentRoom을 Reflection으로 설정
 		/// </summary>
-		private void SetCurrentRoom( GameSession session, IRoom room )
+		private void SetCurrentRoom( ClientSession session, IRoom room )
 		{
-			var field = typeof(GameSession).GetField("_currentRoom", BindingFlags.Instance | BindingFlags.NonPublic);
+			var field = typeof(ClientSession).GetField("_currentRoom", BindingFlags.Instance | BindingFlags.NonPublic);
 			field?.SetValue( session, room );
 		}
 	}

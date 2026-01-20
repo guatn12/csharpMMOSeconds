@@ -73,14 +73,14 @@ namespace Server.Tests
 			public override RoomType RoomType => RoomType.Lobby;
 
 			// 전송된 패킷 캡처
-			public override async Task SendToPlayerAsync( GameSession session, IMessage packet )
+			public override async Task SendToPlayerAsync( IClientSession session, IMessage packet )
 			{
 				SentMessages.Add( packet );
 				await Task.CompletedTask;
 			}
 
 			// 브로드캐스트 패킷 캡처
-			public override async Task BroadcastAsync( IMessage packet, GameSession excludeSession = null )
+			public override async Task BroadcastAsync( IMessage packet, IClientSession excludeSession = null )
 			{
 				BroadcastMessages.Add( packet );
 				await Task.CompletedTask;
@@ -98,7 +98,7 @@ namespace Server.Tests
 			// Arrange
 			var mockLogger = new Mock<ILogger<SystemPacketHandler>>();
 			var mockRoomManager = new Mock<IRoomManager>();
-			mockRoomManager.Setup(x => x.JoinDefaultLobbyAsync(It.IsAny<GameSession>()))
+			mockRoomManager.Setup(x => x.JoinDefaultLobbyAsync(It.IsAny<ClientSession>()))
 				.ReturnsAsync(RoomEnterResult.Success);
 			var handler = new SystemPacketHandler(mockLogger.Object, mockRoomManager.Object);
 
@@ -152,13 +152,13 @@ namespace Server.Tests
 		/// <summary>
 		/// 테스트용 GameSession 생성 (SessionManagerTests 패턴 재사용)
 		/// </summary>
-		private GameSession CreateTestGameSession( long sessionId, long playerId )
+		private ClientSession CreateTestGameSession( long sessionId, long playerId )
 		{
-			var mockLogger = new Mock<ILogger<GameSession>>();
+			var mockLogger = new Mock<ILogger<ClientSession>>();
 
 			// GameSession 생성
-			var session = (GameSession)Activator.CreateInstance(
-				  typeof(GameSession),
+			var session = (ClientSession)Activator.CreateInstance(
+				  typeof(ClientSession),
 				  BindingFlags.Instance | BindingFlags.Public,
 				  null,
 				  new object[] { mockLogger.Object, null, _sessionManager, sessionId },
@@ -166,14 +166,14 @@ namespace Server.Tests
 			  );
 
 			// Player 초기화
-			var initializePlayerMethod = typeof(GameSession).GetMethod(
+			var initializePlayerMethod = typeof(ClientSession).GetMethod(
 				  "InitializePlayer",
 				  BindingFlags.Instance | BindingFlags.NonPublic
 			  );
 			initializePlayerMethod.Invoke( session, null );
 
 			// Player의 PlayerId 변경 (리플렉션)
-			var playerProperty = typeof(GameSession).GetProperty("Player");
+			var playerProperty = typeof(ClientSession).GetProperty("Player");
 			var player = (Player)playerProperty.GetValue(session);
 
 			var infoProperty = typeof(Player).GetProperty("Info");
@@ -202,10 +202,10 @@ namespace Server.Tests
 		/// <summary>
 		/// Room에 플레이어 추가 (Reflection 사용)
 		/// </summary>
-		private void AddPlayerToRoom( BaseRoom room, GameSession session )
+		private void AddPlayerToRoom( BaseRoom room, ClientSession session )
 		{
 			var playersField = typeof(BaseRoom).GetField( "_players", BindingFlags.NonPublic | BindingFlags.Instance );
-			var players = (System.Collections.Concurrent.ConcurrentDictionary<long, GameSession>)playersField.GetValue( room );
+			var players = (System.Collections.Concurrent.ConcurrentDictionary<long, ClientSession>)playersField.GetValue( room );
 			players.TryAdd( session.SessionId, session );
 		}
 	}

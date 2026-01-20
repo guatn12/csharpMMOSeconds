@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -11,13 +11,13 @@ namespace ServerCore
 {
 	public class Connector
 	{
-		private Func<Session> _sessionFactory;
+		private Func<NetworkSession> _sessionFactory;
 		public ManualResetEvent ConnectDone { get; private set; }
 		public bool IsConnected { get; private set; }
 		public SocketError LastError { get; private set; }
-		public Session ConnectionSession { get; private set; }
+		public NetworkSession ConnectionSession { get; private set; }
 
-		public void Connect(IPEndPoint endPoint, Func<Session> sessionFactory)
+		public void Connect(IPEndPoint endPoint, Func<NetworkSession> sessionFactory)
 		{
 			_sessionFactory = sessionFactory;
 			ConnectDone = new ManualResetEvent(false);
@@ -54,7 +54,7 @@ namespace ServerCore
 		{
 			if(args.SocketError == SocketError.Success)
 			{
-				Session session = _sessionFactory.Invoke();
+				NetworkSession session = _sessionFactory.Invoke();
 				session.Start( args.ConnectSocket );
 				session.OnConnected(args.RemoteEndPoint );
 

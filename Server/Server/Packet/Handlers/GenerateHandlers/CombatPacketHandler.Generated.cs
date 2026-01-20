@@ -17,19 +17,19 @@ namespace Server.Packet.Handlers
 		/// 역직렬화된 IMessage 객체를 직접 처리할 때 사용.
 		/// 런타임 패킷 처리는 _onRecv Dictionary 사용.
 		/// </summary>
-		public Dictionary<Type, Func<GameSession, IMessage, Task>> Handlers {  get; private set; }
-		private Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>> _onRecv;
+		public Dictionary<Type, Func<IClientSession, IMessage, Task>> Handlers {  get; private set; }
+		private Dictionary<ushort, Func<IClientSession, ArraySegment<byte>, ValueTask>> _onRecv;
 
 		private void InitializeHandlers()
 		{
-			Handlers = new Dictionary<Type, Func<GameSession, IMessage, Task>>();
-			_onRecv = new Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>>();
+			Handlers = new Dictionary<Type, Func<IClientSession, IMessage, Task>>();
+			_onRecv = new Dictionary<ushort, Func<IClientSession, ArraySegment<byte>, ValueTask>>();
 
 			Handlers.Add(typeof(C_AttackMonster), async (s, p) => await HandleC_AttackMonsterAsync( s, (C_AttackMonster)p));
 			_onRecv.Add((ushort)PacketID.C_AttackMonster, HandleC_AttackMonsterAsync);
 		}
 
-		public async ValueTask HandleAsync(GameSession session, ushort id, ArraySegment<byte> buffer)
+		public async ValueTask HandleAsync(IClientSession session, ushort id, ArraySegment<byte> buffer)
 		{
 			if(_onRecv.TryGetValue(id, out var handler))
 			{
@@ -40,7 +40,7 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning( "CombatPacketHandler _onRecv Dictionary Not Found id {id.ToString()}"  );
 			}
 		}
-		private async ValueTask HandleC_AttackMonsterAsync(GameSession session, ArraySegment<byte> buffer)
+		private async ValueTask HandleC_AttackMonsterAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
 			var packet = new C_AttackMonster();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);

@@ -7,6 +7,6 @@ namespace Server.Packet.Handlers
 {
 	public interface IPacketHandler
 	{
-		ValueTask HandleAsync(GameSession session, ushort id, ArraySegment<byte> buffer);
+		ValueTask HandleAsync(IClientSession session, ushort id, ArraySegment<byte> buffer);
 	}
 }

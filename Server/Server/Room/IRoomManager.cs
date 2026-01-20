@@ -1,4 +1,4 @@
-﻿using Server.Core.Session;
+using Server.Core.Session;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,7 +9,7 @@ namespace Server.Room
 {
 	public interface IRoomManager
 	{
-		Task<IRoom> CreateRoomAsync( RoomType roomType, string roomName, int maxPlayers, GameSession creatorSession = null );
+		Task<IRoom> CreateRoomAsync( RoomType roomType, string roomName, int maxPlayers, IClientSession creatorSession = null );
 		Task<IRoom> CreateDefaultLobbyAsync();
 		Task<bool> DestoryRoomAsync( int roomId );
 		Task<int> CleanupEmptyRoomsAsync();
@@ -20,10 +20,10 @@ namespace Server.Room
 		Task<IReadOnlyList<IRoom>> GetRoomsByTypeAsync( RoomType roomType );
 		IReadOnlyList<IRoom> GetActiveRooms();
 
-		Task<RoomEnterResult> JoinDefaultLobbyAsync( GameSession session );
-		Task<RoomEnterResult> MovePlayerToRoomAsync( GameSession session, int targetRoomId );
-		Task<IRoom> FindPlayerCurrentRoomAsync( GameSession session );
-		Task<bool> RemovePlayerFromAllRoomsAsync( GameSession session );
+		Task<RoomEnterResult> JoinDefaultLobbyAsync( IClientSession session );
+		Task<RoomEnterResult> MovePlayerToRoomAsync( IClientSession session, int targetRoomId );
+		Task<IRoom> FindPlayerCurrentRoomAsync( IClientSession session );
+		Task<bool> RemovePlayerFromAllRoomsAsync( IClientSession session );
 
 		int TotalRoomCount { get; }
 		int TotalPlayerCount { get; }
@@ -61,10 +61,10 @@ namespace Server.Room
 	public class RoomCreatedEventArgs : EventArgs
 	{
 		public IRoom Room { get; }
-		public GameSession Creator { get; }
+		public IClientSession Creator { get; }
 		public DateTime CreatedAt { get; }
 
-		public RoomCreatedEventArgs( IRoom room, GameSession creator)
+		public RoomCreatedEventArgs( IRoom room, IClientSession creator )
 		{
 			Room = room ?? throw new ArgumentNullException(nameof(room));
 			Creator = creator;  // null 허용(시스템에서 생성한 경우)
@@ -92,12 +92,12 @@ namespace Server.Room
 
 	public class PlayerRoomChangedEventArgs : EventArgs
 	{
-		public GameSession Player { get; }
+		public IClientSession Player { get; }
 		public IRoom PreviousRoom { get; }
 		public IRoom CurrentRoom { get; }
 		public DateTime ChangedAt { get; }
 
-		public PlayerRoomChangedEventArgs(GameSession player, IRoom preivousRoom, IRoom currentRoom)
+		public PlayerRoomChangedEventArgs( IClientSession player, IRoom preivousRoom, IRoom currentRoom)
 		{
 			Player = player ?? throw new ArgumentNullException(nameof(player));
 			PreviousRoom = preivousRoom;	// null 허용 (첫 입장인 경우)

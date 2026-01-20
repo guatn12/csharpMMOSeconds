@@ -3,13 +3,10 @@ using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Database.Entities;
 using Server.Game;
-using Server.Infra;
 using Server.Packet;
 using Server.Room;
-using Server.Services;
 using ServerCore;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -17,9 +14,9 @@ using System.Threading.Tasks;
 
 namespace Server.Core.Session
 {
-    public class GameSession : ServerCore.Session
+    public class ClientSession : ServerCore.NetworkSession, IClientSession
     {
-        private readonly ILogger<GameSession> _logger;
+        private readonly ILogger<ClientSession> _logger;
         private readonly PacketManager _packetManager;
         private readonly ISessionManager _sessionManager;
         private IRoom _currentRoom;
@@ -49,7 +46,7 @@ namespace Server.Core.Session
         public string PlayerName => Player.PlayerName ?? $"Player_{Player.PlayerId}";
         public long PlayerId => Player.PlayerId;
 
-        public GameSession( ILogger<GameSession> logger, PacketManager packetManager, ISessionManager sessionManager, long sessionId)
+        public ClientSession( ILogger<ClientSession> logger, PacketManager packetManager, ISessionManager sessionManager, long sessionId)
         {
             _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
             _packetManager = packetManager;

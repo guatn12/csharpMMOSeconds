@@ -1,4 +1,4 @@
-﻿
+
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,8 +26,8 @@ namespace Server.Core.Session
 		private long _nextSessionId = 1;
 		private readonly object _lock = new object();
 
-		private readonly ConcurrentDictionary<long, GameSession> _sessionById;
-		private readonly ConcurrentDictionary<long, GameSession> _sessionByPlayerId;
+		private readonly ConcurrentDictionary<long, IClientSession> _sessionById;
+		private readonly ConcurrentDictionary<long, IClientSession> _sessionByPlayerId;
 
 		#region 이벤트
 		public event EventHandler<SessionRegisteredEventArgs> SessionRegistered;
@@ -41,23 +41,23 @@ namespace Server.Core.Session
 			_serviceProvider = serviceProvider ?? throw new ArgumentNullException( nameof( serviceProvider ) );
 			_redisService=redisService;
 			_playerPositionService=playerPositionService;
-			_sessionById = new ConcurrentDictionary<long, GameSession>();
-			_sessionByPlayerId = new ConcurrentDictionary<long, GameSession>();
+			_sessionById = new ConcurrentDictionary<long, IClientSession>();
+			_sessionByPlayerId = new ConcurrentDictionary<long, IClientSession>();
 		}
 
 		#region 세션 생성
 
-		public GameSession CreateSession()
+		public ClientSession CreateSession()
 		{
 			// SessionId 생성 (Thread-Safe)
 			long sessionId = Interlocked.Increment(ref _nextSessionId);
 
 			// DI 컨테이너에서 의존성 해결
-			var logger = _serviceProvider.GetRequiredService<ILogger<GameSession>>();
+			var logger = _serviceProvider.GetRequiredService<ILogger<ClientSession>>();
 			var packetManager = _serviceProvider.GetRequiredService<PacketManager>();
 
 			// GameSession  생성
-			var session = new GameSession(logger,  packetManager, this, sessionId );
+			var session = new ClientSession(logger,  packetManager, this, sessionId );
 
 			_logger.LogInformation( "Session created: SessionId={SessionId}", sessionId );
 
@@ -67,7 +67,7 @@ namespace Server.Core.Session
 		#endregion
 
 		#region 세션 등록/해제
-		public bool RegisterSession( GameSession session )
+		public bool RegisterSession( IClientSession session )
 		{
 			if(session == null)
 			{
@@ -141,7 +141,7 @@ namespace Server.Core.Session
 
 		public bool UnregisterSession(long sessionId)
 		{
-			GameSession session = null;
+			IClientSession session = null;
 			lock(_lock)
 			{
 				if(!_sessionById.TryRemove( sessionId, out session ))
@@ -202,15 +202,15 @@ namespace Server.Core.Session
 		}
 		#endregion
 
-		public GameSession GetSession( long sessionId )
+		public IClientSession GetSession( long sessionId )
 		{
-			_sessionById.TryGetValue( sessionId, out GameSession session );
+			_sessionById.TryGetValue( sessionId, out IClientSession session );
 			return session;
 		}
 
-		public GameSession GetSessionByPlayerId( long playerId )
+		public IClientSession GetSessionByPlayerId( long playerId )
 		{
-			_sessionByPlayerId.TryGetValue( playerId, out GameSession session );
+			_sessionByPlayerId.TryGetValue( playerId, out IClientSession session );
 			return session;
 		}
 
@@ -219,7 +219,7 @@ namespace Server.Core.Session
 			return _sessionById.Count;
 		}
 
-		public IEnumerable<GameSession> GetAllActiveSessions()
+		public IEnumerable<IClientSession> GetAllActiveSessions()
 		{
 			return _sessionById.Values;
 		}

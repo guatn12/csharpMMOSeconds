@@ -300,7 +300,7 @@ namespace Server.Tests
         {
             // Arrange
             const int sessionCount = 100;
-            var sessions = new System.Collections.Concurrent.ConcurrentBag<GameSession>();
+            var sessions = new System.Collections.Concurrent.ConcurrentBag<ClientSession>();
 
             // 세션 생성
             for (int i = 0; i < sessionCount; i++)
@@ -337,14 +337,14 @@ namespace Server.Tests
         /// <summary>
         /// 테스트용 GameSession 객체 생성 (리플렉션 사용)
         /// </summary>
-        private GameSession CreateTestGameSession(long sessionId, long playerId)
+        private ClientSession CreateTestGameSession(long sessionId, long playerId)
         {
             // GameSession 생성자는 ILogger, PacketManager, ISessionManager, sessionId 필요
-            var mockLogger = new Mock<ILogger<GameSession>>();
+            var mockLogger = new Mock<ILogger<ClientSession>>();
 
             // GameSession 생성
-            var session = (GameSession)Activator.CreateInstance(
-                typeof(GameSession),
+            var session = (ClientSession)Activator.CreateInstance(
+                typeof(ClientSession),
                 BindingFlags.Instance | BindingFlags.Public,
                 null,
                 new object[] { mockLogger.Object, null, _sessionManager, sessionId },
@@ -352,14 +352,14 @@ namespace Server.Tests
             );
 
             // Player 초기화 (InitializePlayer private 메서드 호출)
-            var initializePlayerMethod = typeof(GameSession).GetMethod(
+            var initializePlayerMethod = typeof(ClientSession).GetMethod(
                 "InitializePlayer",
                 BindingFlags.Instance | BindingFlags.NonPublic
             );
             initializePlayerMethod.Invoke(session, null);
 
             // Player의 PlayerId 변경 (리플렉션)
-            var playerProperty = typeof(GameSession).GetProperty("Player");
+            var playerProperty = typeof(ClientSession).GetProperty("Player");
             var player = (Player)playerProperty.GetValue(session);
 
             // Player.Info.PlayerId 변경

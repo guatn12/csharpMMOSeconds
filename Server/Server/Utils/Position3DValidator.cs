@@ -1,4 +1,4 @@
-﻿using Protocol;
+using Protocol;
 using Server.Room;
 using System;
 using System.Collections.Generic;

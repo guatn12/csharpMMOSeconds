@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
 using Server.Game.Monsters;
@@ -20,7 +20,7 @@ namespace Server.Utils
 		/// <summary>
 		/// 기본 검증: 세션, 룸 Null 체크
 		/// </summary>
-		public static ValidationResult ValidateBasic(GameSession session, BaseRoom room)
+		public static ValidationResult ValidateBasic( IClientSession session, IRoom room)
 		{
 			if(session == null)
 				return ValidationResult.Failure( "세션이 null입니다." );

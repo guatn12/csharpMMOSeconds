@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
 using Server.Room;
@@ -25,7 +25,7 @@ namespace Server.Packet.Handlers
 			InitializeHandlers();
 		}
 
-		private async Task HandleC_EnterGameAsync(GameSession session, C_EnterGame packet)
+		private async Task HandleC_EnterGameAsync( IClientSession session, C_EnterGame packet)
 		{
 			var currentRoom = session.CurrentRoom;
 			if(currentRoom == null)

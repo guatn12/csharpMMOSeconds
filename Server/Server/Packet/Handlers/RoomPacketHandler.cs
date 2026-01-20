@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
 using Server.Room;
@@ -29,7 +29,7 @@ namespace Server.Packet.Handlers
 			InitializeHandlers();
 		}
 
-		private async Task HandleC_MoveAsync(GameSession session, C_Move packet)
+		private async Task HandleC_MoveAsync( IClientSession session, C_Move packet)
 		{
 			// 1. 기본 검증
 			var basicValidation = PacketValidators.ValidateBasic(session, _room);
@@ -89,7 +89,7 @@ namespace Server.Packet.Handlers
 		/// C_Chat 패킷 처리
 		/// 채팅 메시지 브로드캐스트
 		/// </summary>
-		private async Task HandleC_ChatAsync( GameSession session, C_Chat packet )
+		private async Task HandleC_ChatAsync( IClientSession session, C_Chat packet )
 		{
 			// 1. 기본 검증
 			var validation = PacketValidators.ValidateBasic(session, _room);
@@ -128,7 +128,7 @@ namespace Server.Packet.Handlers
 		/// C_PlayerInfo 패킷 처리
 		/// 플레이어 스탯 정보 조회
 		/// </summary>
-		private async Task HandleC_PlayerInfoAsync(GameSession session, C_PlayerInfo packet)
+		private async Task HandleC_PlayerInfoAsync( IClientSession session, C_PlayerInfo packet)
 		{
 			// 1. 기본 검증
 			var validation = PacketValidators.ValidateBasic(session, _room);
@@ -154,7 +154,7 @@ namespace Server.Packet.Handlers
 		/// C_UseSkill 패킷 처리
 		/// 스킬 사용 및 효과 처리
 		/// </summary>
-		private async Task HandleC_UseSkillAsync(GameSession session, C_UseSkill packet)
+		private async Task HandleC_UseSkillAsync( IClientSession session, C_UseSkill packet)
 		{
 			// 1. 기본 검증
 			var validation = PacketValidators.ValidateBasic(session, _room);

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
 using Server.Room;
@@ -272,7 +272,7 @@ namespace Server.Game.Monsters
 		}
 
 		// 공격 수행
-		private void PerformAttack(GameSession targetPlayer)
+		private void PerformAttack( IClientSession targetPlayer )
 		{
 			// 데미지
 			int damage = CalculateDamage(targetPlayer);
@@ -289,7 +289,7 @@ namespace Server.Game.Monsters
 		}
 
 		// 데미지 계산
-		private int CalculateDamage(GameSession targetPlayer)
+		private int CalculateDamage( IClientSession targetPlayer )
 		{
 			int baseDamage = _monster.StaticData.Attack;
 			int defense = targetPlayer.Player.GetTotalDefense();

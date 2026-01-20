@@ -16,7 +16,7 @@ namespace DummyClient.Packet
 			_logger = logger;
 		}
 
-		public override ValueTask On_S_EnterGame( Session session, S_EnterGame packet )
+		public override ValueTask On_S_EnterGame( NetworkSession session, S_EnterGame packet )
 		{
 			_logger.LogInformation( "[Client] S_EnterGame - PlayerId: {PlayerId}, " +
 				"PlayerName: {PlayerName}, Level: {Level}, HP: {HP}/{MaxHP}",
@@ -48,13 +48,13 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_LeaveGame( Session session, S_LeaveGame packet )
+		public override ValueTask On_S_LeaveGame( NetworkSession session, S_LeaveGame packet )
 		{
 			_logger.LogInformation( "[Client] Received S_LeaveGame. PlayerId: {PlayerId}", packet.PlayerId );
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_Spawn( Session session, S_Spawn packet )
+		public override ValueTask On_S_Spawn( NetworkSession session, S_Spawn packet )
 		{
 			_logger.LogInformation( "[Client] S_Spawn - {PlayersCount} players spawned", packet.Players.Count );
 			foreach(var player in packet.Players)
@@ -65,13 +65,13 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_Despawn( Session session, S_Despawn packet )
+		public override ValueTask On_S_Despawn( NetworkSession session, S_Despawn packet )
 		{
 			_logger.LogInformation( "[Client] Received S_Despawn. ObjectIds: {ObjectIds}", string.Join( ", ", packet.ObjectIds ) );
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_Move( Session session, S_Move packet )
+		public override ValueTask On_S_Move( NetworkSession session, S_Move packet )
 		{
 			_logger.LogInformation( "[Client] S_Move - PlayerId: {PlayerId}, " +
 				"3D Position: ({PosX:F2}, {PosY:F2}, {PosZ:F2}), " +
@@ -84,13 +84,13 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_Chat( Session session, S_Chat packet )
+		public override ValueTask On_S_Chat( NetworkSession session, S_Chat packet )
 		{
 			_logger.LogInformation( "[Client] Received S_Chat. PlayerId: {PlayerId}, Message: {Message}", packet.PlayerId, packet.Message );
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_PlayerUpdate( Session session, S_PlayerUpdate packet )
+		public override ValueTask On_S_PlayerUpdate( NetworkSession session, S_PlayerUpdate packet )
 		{
 			// 내 플레이어 정보만 업데이트
 			if(packet.Player.PlayerId == Program.MyPlayer.PlayerId)
@@ -130,7 +130,7 @@ namespace DummyClient.Packet
 
 			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_PlayerStat( Session session, S_PlayerStat packet )
+		public override ValueTask On_S_PlayerStat( NetworkSession session, S_PlayerStat packet )
 		{
 			if(packet.Player.PlayerId == Program.MyPlayer.PlayerId)
 			{
@@ -147,7 +147,7 @@ namespace DummyClient.Packet
 
 			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_Damage( Session session, S_Damage packet )
+		public override ValueTask On_S_Damage( NetworkSession session, S_Damage packet )
 		{
 			// 공격자와 피해자 정보 파악
 			string attackerName = packet.AttackerId < 1000
@@ -191,7 +191,7 @@ namespace DummyClient.Packet
 
 			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_Heal( Session session, S_Heal packet ) 
+		public override ValueTask On_S_Heal( NetworkSession session, S_Heal packet ) 
 		{ 
 			int oldHP = Program.MyPlayer.Stats.CurrentHP;
 			if(packet.HealAmount <= 0)
@@ -213,7 +213,7 @@ namespace DummyClient.Packet
 
 			return ValueTask.CompletedTask; 
 		}
-		public override ValueTask On_S_LevelUp( Session session, S_LevelUp packet )
+		public override ValueTask On_S_LevelUp( NetworkSession session, S_LevelUp packet )
 		{
 			_logger.LogInformation( "[Client] LEVEL UP! Player {PlayerId} -> Level {NewLevel}",
 				packet.PlayerId, packet.NewLevel );
@@ -233,7 +233,7 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_InventoryData( Session session, S_InventoryData packet )
+		public override ValueTask On_S_InventoryData( NetworkSession session, S_InventoryData packet )
 		{
 			_logger.LogInformation( "========================================" );
 			_logger.LogInformation( "[Client] S_InventoryData - 인벤토리 조회" );
@@ -278,7 +278,7 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_UseItem( Session session, S_UseItem packet ) 
+		public override ValueTask On_S_UseItem( NetworkSession session, S_UseItem packet ) 
 		{
 			_logger.LogInformation( "========================================" );
 			_logger.LogInformation( "[Client] S_UseItem - 아이템 사용" );
@@ -306,7 +306,7 @@ namespace DummyClient.Packet
 			_logger.LogInformation( "========================================" );
 			return ValueTask.CompletedTask; 
 		}
-		public override ValueTask On_S_ItemEquipped( Session session, S_ItemEquipped packet )
+		public override ValueTask On_S_ItemEquipped( NetworkSession session, S_ItemEquipped packet )
 		{
 			_logger.LogInformation( "========================================" );
 			_logger.LogInformation( "[Client] S_ItemEquipped - 아이템 장착" );
@@ -363,8 +363,8 @@ namespace DummyClient.Packet
 				_ => "알 수 없음"
 			};
 		}
-		public override ValueTask On_S_ItemUnequipped( Session session, S_ItemUnequipped packet ) { Console.WriteLine( "Received but not handled: S_ItemUnequipped" ); return ValueTask.CompletedTask; }
-		public override ValueTask On_S_ItemAdded( Session session, S_ItemAdded packet )
+		public override ValueTask On_S_ItemUnequipped( NetworkSession session, S_ItemUnequipped packet ) { Console.WriteLine( "Received but not handled: S_ItemUnequipped" ); return ValueTask.CompletedTask; }
+		public override ValueTask On_S_ItemAdded( NetworkSession session, S_ItemAdded packet )
 		{
 			_logger.LogInformation( "========================================" );
 			_logger.LogInformation( "[Client] S_ItemAdded - 아이템 획득!" );
@@ -377,8 +377,8 @@ namespace DummyClient.Packet
 
 			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_InventoryUpdate( Session session, S_InventoryUpdate packet ) { Console.WriteLine( "Received but not handled: S_InventoryUpdate" ); return ValueTask.CompletedTask; }
-		public override ValueTask On_S_MonsterSpawn( Session session, S_MonsterSpawn packet )
+		public override ValueTask On_S_InventoryUpdate( NetworkSession session, S_InventoryUpdate packet ) { Console.WriteLine( "Received but not handled: S_InventoryUpdate" ); return ValueTask.CompletedTask; }
+		public override ValueTask On_S_MonsterSpawn( NetworkSession session, S_MonsterSpawn packet )
 		{
 			_logger.LogInformation( "[Client] S_MonsterSpawn - {Count} monsters spawned", packet.Monsters.Count );
 
@@ -403,7 +403,7 @@ namespace DummyClient.Packet
 
 			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_MonsterDespawn( Session session, S_MonsterDespawn packet )
+		public override ValueTask On_S_MonsterDespawn( NetworkSession session, S_MonsterDespawn packet )
 		{
 			_logger.LogInformation( "[Client] S_MonsterDespawn - {Count} monsters removed",
 				packet.MonsterIds.Count );
@@ -426,8 +426,8 @@ namespace DummyClient.Packet
 
 			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_MonsterMove( Session session, S_MonsterMove packet ) { Console.WriteLine( "Received but not handled: S_MonsterMove" ); return ValueTask.CompletedTask; }
-		public override ValueTask On_S_MonsterAttack( Session session, S_MonsterAttack packet )
+		public override ValueTask On_S_MonsterMove( NetworkSession session, S_MonsterMove packet ) { Console.WriteLine( "Received but not handled: S_MonsterMove" ); return ValueTask.CompletedTask; }
+		public override ValueTask On_S_MonsterAttack( NetworkSession session, S_MonsterAttack packet )
 		{
 			string monsterName = Program.NearbyMonsters.TryGetValue(packet.MonsterId, out var monster)
 				? monster.Name
@@ -439,7 +439,7 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_MonsterDie( Session session, S_MonsterDie packet )
+		public override ValueTask On_S_MonsterDie( NetworkSession session, S_MonsterDie packet )
 		{
 			string monsterName = Program.NearbyMonsters.TryGetValue(packet.MonsterId, out var monster)
 				? monster.Name : $"Monster {packet.MonsterId}";
@@ -480,7 +480,7 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
-		public override ValueTask On_S_MonsterUpdate( Session session, S_MonsterUpdate packet )
+		public override ValueTask On_S_MonsterUpdate( NetworkSession session, S_MonsterUpdate packet )
 		{
 			foreach(var monster in packet.Monsters)
 			{

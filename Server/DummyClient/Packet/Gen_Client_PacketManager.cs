@@ -13,43 +13,43 @@ namespace DummyClient.Packet
 {
     public abstract class BaseClientPacketHandler
     {
-        public virtual ValueTask On_S_EnterGame(Session session, S_EnterGame packet) { Console.WriteLine("Received but not handled: S_EnterGame"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_LeaveGame(Session session, S_LeaveGame packet) { Console.WriteLine("Received but not handled: S_LeaveGame"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_Spawn(Session session, S_Spawn packet) { Console.WriteLine("Received but not handled: S_Spawn"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_Despawn(Session session, S_Despawn packet) { Console.WriteLine("Received but not handled: S_Despawn"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_Move(Session session, S_Move packet) { Console.WriteLine("Received but not handled: S_Move"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_Chat(Session session, S_Chat packet) { Console.WriteLine("Received but not handled: S_Chat"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_PlayerUpdate(Session session, S_PlayerUpdate packet) { Console.WriteLine("Received but not handled: S_PlayerUpdate"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_PlayerStat(Session session, S_PlayerStat packet) { Console.WriteLine("Received but not handled: S_PlayerStat"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_Damage(Session session, S_Damage packet) { Console.WriteLine("Received but not handled: S_Damage"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_Heal(Session session, S_Heal packet) { Console.WriteLine("Received but not handled: S_Heal"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_LevelUp(Session session, S_LevelUp packet) { Console.WriteLine("Received but not handled: S_LevelUp"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_InventoryData(Session session, S_InventoryData packet) { Console.WriteLine("Received but not handled: S_InventoryData"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_UseItem(Session session, S_UseItem packet) { Console.WriteLine("Received but not handled: S_UseItem"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_ItemEquipped(Session session, S_ItemEquipped packet) { Console.WriteLine("Received but not handled: S_ItemEquipped"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_ItemUnequipped(Session session, S_ItemUnequipped packet) { Console.WriteLine("Received but not handled: S_ItemUnequipped"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_ItemAdded(Session session, S_ItemAdded packet) { Console.WriteLine("Received but not handled: S_ItemAdded"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_InventoryUpdate(Session session, S_InventoryUpdate packet) { Console.WriteLine("Received but not handled: S_InventoryUpdate"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_MonsterSpawn(Session session, S_MonsterSpawn packet) { Console.WriteLine("Received but not handled: S_MonsterSpawn"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_MonsterDespawn(Session session, S_MonsterDespawn packet) { Console.WriteLine("Received but not handled: S_MonsterDespawn"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_MonsterMove(Session session, S_MonsterMove packet) { Console.WriteLine("Received but not handled: S_MonsterMove"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_MonsterAttack(Session session, S_MonsterAttack packet) { Console.WriteLine("Received but not handled: S_MonsterAttack"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_MonsterDie(Session session, S_MonsterDie packet) { Console.WriteLine("Received but not handled: S_MonsterDie"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_MonsterUpdate(Session session, S_MonsterUpdate packet) { Console.WriteLine("Received but not handled: S_MonsterUpdate"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_EnterGame(NetworkSession session, S_EnterGame packet) { Console.WriteLine("Received but not handled: S_EnterGame"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_LeaveGame(NetworkSession session, S_LeaveGame packet) { Console.WriteLine("Received but not handled: S_LeaveGame"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_Spawn(NetworkSession session, S_Spawn packet) { Console.WriteLine("Received but not handled: S_Spawn"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_Despawn(NetworkSession session, S_Despawn packet) { Console.WriteLine("Received but not handled: S_Despawn"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_Move(NetworkSession session, S_Move packet) { Console.WriteLine("Received but not handled: S_Move"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_Chat(NetworkSession session, S_Chat packet) { Console.WriteLine("Received but not handled: S_Chat"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_PlayerUpdate(NetworkSession session, S_PlayerUpdate packet) { Console.WriteLine("Received but not handled: S_PlayerUpdate"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_PlayerStat(NetworkSession session, S_PlayerStat packet) { Console.WriteLine("Received but not handled: S_PlayerStat"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_Damage(NetworkSession session, S_Damage packet) { Console.WriteLine("Received but not handled: S_Damage"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_Heal(NetworkSession session, S_Heal packet) { Console.WriteLine("Received but not handled: S_Heal"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_LevelUp(NetworkSession session, S_LevelUp packet) { Console.WriteLine("Received but not handled: S_LevelUp"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_InventoryData(NetworkSession session, S_InventoryData packet) { Console.WriteLine("Received but not handled: S_InventoryData"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_UseItem(NetworkSession session, S_UseItem packet) { Console.WriteLine("Received but not handled: S_UseItem"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_ItemEquipped(NetworkSession session, S_ItemEquipped packet) { Console.WriteLine("Received but not handled: S_ItemEquipped"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_ItemUnequipped(NetworkSession session, S_ItemUnequipped packet) { Console.WriteLine("Received but not handled: S_ItemUnequipped"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_ItemAdded(NetworkSession session, S_ItemAdded packet) { Console.WriteLine("Received but not handled: S_ItemAdded"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_InventoryUpdate(NetworkSession session, S_InventoryUpdate packet) { Console.WriteLine("Received but not handled: S_InventoryUpdate"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterSpawn(NetworkSession session, S_MonsterSpawn packet) { Console.WriteLine("Received but not handled: S_MonsterSpawn"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterDespawn(NetworkSession session, S_MonsterDespawn packet) { Console.WriteLine("Received but not handled: S_MonsterDespawn"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterMove(NetworkSession session, S_MonsterMove packet) { Console.WriteLine("Received but not handled: S_MonsterMove"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterAttack(NetworkSession session, S_MonsterAttack packet) { Console.WriteLine("Received but not handled: S_MonsterAttack"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterDie(NetworkSession session, S_MonsterDie packet) { Console.WriteLine("Received but not handled: S_MonsterDie"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_MonsterUpdate(NetworkSession session, S_MonsterUpdate packet) { Console.WriteLine("Received but not handled: S_MonsterUpdate"); return ValueTask.CompletedTask; }
     }
 
     public class PacketManager
     {
         private readonly ILogger<PacketManager> _logger;
         private readonly BaseClientPacketHandler _handler;
-        private readonly Dictionary<ushort, Func<Session, ArraySegment<byte>, ValueTask>> _onRecv;
+        private readonly Dictionary<ushort, Func<NetworkSession, ArraySegment<byte>, ValueTask>> _onRecv;
         private readonly Dictionary<Type, PacketID> _packetTypeToId;
 
         public PacketManager(ILogger<PacketManager> logger, BaseClientPacketHandler handler)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _handler = handler ?? throw new ArgumentNullException(nameof(handler));
-            _onRecv = new Dictionary<ushort, Func<Session, ArraySegment<byte>, ValueTask>>();
+            _onRecv = new Dictionary<ushort, Func<NetworkSession, ArraySegment<byte>, ValueTask>>();
             _packetTypeToId = new Dictionary<Type, PacketID>();
             Register();
         }
@@ -91,7 +91,7 @@ namespace DummyClient.Packet
             _onRecv.Add((ushort)PacketID.S_MonsterUpdate, HandlePacket<S_MonsterUpdate>(_handler.On_S_MonsterUpdate));
         }
 
-        public async ValueTask HandlePacket(Session session, ArraySegment<byte> buffer)
+        public async ValueTask HandlePacket(NetworkSession session, ArraySegment<byte> buffer)
         {
             ushort count = 0;
             ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);
@@ -109,7 +109,7 @@ namespace DummyClient.Packet
             }
         }
 
-        private Func<Session, ArraySegment<byte>, ValueTask> HandlePacket<T>(Func<Session, T, ValueTask> handler) where T : IMessage, new()
+        private Func<NetworkSession, ArraySegment<byte>, ValueTask> HandlePacket<T>(Func<NetworkSession, T, ValueTask> handler) where T : IMessage, new()
         {
             return async (session, buffer) =>
             {

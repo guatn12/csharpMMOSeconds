@@ -59,7 +59,7 @@ namespace Server.Room
 			await SetUpLobbyEnvironmentAsync();
 		}
 
-		protected override async Task OnPlayerEnterAsync(GameSession session)
+		protected override async Task OnPlayerEnterAsync(IClientSession session)
 		{
 			// 방문자 수 증가
 			Interlocked.Increment( ref _totalVisitors );
@@ -82,7 +82,7 @@ namespace Server.Room
 			await base.OnPlayerEnterAsync( session );
 		}
 
-		protected override async Task OnPlayerLeaveAsync(GameSession session)
+		protected override async Task OnPlayerLeaveAsync(IClientSession session)
 		{
 			_lobbyLogger.LogInformation( "Player {SessionId} left lobby '{RoomName}' ({CurrentCount}/{MaxPlayers})",
 				  session.SessionId, RoomName, CurrentPlayerCount, MaxPlayers );
@@ -93,7 +93,7 @@ namespace Server.Room
 			await base.OnPlayerLeaveAsync( session );
 		}
 
-		public override async Task OnPlayerMoveAsync(GameSession session, Protocol.C_Move packet)
+		public override async Task OnPlayerMoveAsync(IClientSession session, Protocol.C_Move packet)
 		{
 			// 로비에서는 기본 이동만 허용 (특별한 제약 없음)
 			_lobbyLogger.LogDebug( "Player {SessionId} moved in lobby '{RoomName}' to ({X}, {Y}, {Z})",
@@ -102,7 +102,7 @@ namespace Server.Room
 			await base.OnPlayerMoveAsync( session, packet );
 		}
 
-		public override async Task OnPlayerChatAsync(GameSession session, Protocol.C_Chat packet)
+		public override async Task OnPlayerChatAsync(IClientSession session, Protocol.C_Chat packet)
 		{
 			// 로비 채팅 로그
 			_lobbyLogger.LogInformation( "Lobby chat from Player {SessionId} in '{RoomName}': '{Message}'",
@@ -111,7 +111,7 @@ namespace Server.Room
 			await base.OnPlayerChatAsync( session, packet );
 		}
 
-		public override async Task<bool> ValidatePlayerMoveAsync(GameSession session, Protocol.C_Move packet)
+		public override async Task<bool> ValidatePlayerMoveAsync(IClientSession session, Protocol.C_Move packet)
 		{
 			// 로비에서는 모든 이동 허용 (기본 검증만)
 			if (packet?.PosInfo == null)
@@ -133,7 +133,7 @@ namespace Server.Room
 			return await base.ValidatePlayerMoveAsync( session, packet);
 		}
 
-		public override async Task<bool> ValidatePlayerChatAsync(GameSession session, Protocol.C_Chat packet)
+		public override async Task<bool> ValidatePlayerChatAsync(IClientSession session, Protocol.C_Chat packet)
 		{
 			// 로비 채팅 검증
 			if(string.IsNullOrWhiteSpace( packet?.Message ))
@@ -204,7 +204,7 @@ namespace Server.Room
 			await Task.CompletedTask;
 		}
 
-		private async Task SendWelcomeMessageAsync(GameSession session)
+		private async Task SendWelcomeMessageAsync(IClientSession session)
 		{
 			try
 			{
@@ -227,7 +227,7 @@ namespace Server.Room
 			}
 		}
 
-		private async Task NotifyPlayerJoinedAsync(GameSession session)
+		private async Task NotifyPlayerJoinedAsync(IClientSession session)
 		{
 			try
 			{
@@ -247,7 +247,7 @@ namespace Server.Room
 			}
 		}
 
-		private async Task NotifyPlayerLeftAsync(GameSession session)
+		private async Task NotifyPlayerLeftAsync(IClientSession session)
 		{
 			try
 			{
@@ -267,7 +267,7 @@ namespace Server.Room
 			}
 		}
 
-		private async Task SendLobbyStatusAsync(GameSession session)
+		private async Task SendLobbyStatusAsync(IClientSession session)
 		{
 			try
 			{
@@ -287,7 +287,7 @@ namespace Server.Room
 			}
 		}
 
-		private async Task SetPlayerSpawnPositionAsync(GameSession session)
+		private async Task SetPlayerSpawnPositionAsync(IClientSession session)
 		{
 			try
 			{

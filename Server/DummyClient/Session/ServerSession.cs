@@ -1,4 +1,4 @@
-﻿using Google.Protobuf;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using ServerCore;
 using System;
@@ -11,7 +11,7 @@ using DummyClient.Packet;
 
 namespace DummyClient
 {
-	public class ServerSession : Session
+	public class ServerSession : NetworkSession
 	{
 		public int DummyId { get; private set; }
 		private readonly ILogger<ServerSession> _logger;

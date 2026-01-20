@@ -1,4 +1,4 @@
-﻿using Google.Protobuf;
+using Google.Protobuf;
 using Server.Core.Session;
 using Server.Packet.Handlers;
 using System;
@@ -25,23 +25,23 @@ namespace Server.Room
 		#endregion
 
 		// 현재 룸에 있는 플레이어 리스트 (읽기 전용)
-		IReadOnlyList<GameSession> Players { get; }
+		IReadOnlyList<IClientSession> Players { get; }
 		// 플레이어 확인
-		bool ContainsPlayer(GameSession session);
+		bool ContainsPlayer(IClientSession session);
 		// playerId를 통한 플레이어 확인
 		bool ContainsPlayerToPlayerId(long playerId);
 		// 플레이어 룸 입장 시도
-		Task<RoomEnterResult> TryEnterAsync(GameSession session);
+		Task<RoomEnterResult> TryEnterAsync(IClientSession session);
 		// 플레이어 룸 퇴장 시도
-		Task<bool> TryLeaveAsync(GameSession session);
+		Task<bool> TryLeaveAsync(IClientSession session);
 		// sessionId를 통해 플레이어 확인
-		GameSession FindPlayer( int sessionId );
+		IClientSession FindPlayer( int sessionId );
 		// playerId를 통한 플레이어 확인
-		GameSession FindPlayerToPlayerId(long playerId);
+		IClientSession FindPlayerToPlayerId(long playerId);
 		// 룸 내 모든 플레이어에게 브로드캐스트
-		Task BroadcastAsync( IMessage packet, GameSession excludeSession = null );
+		Task BroadcastAsync( IMessage packet, IClientSession excludeSession = null );
 		// 룸 내 특정 플레이어에게 전달
-		Task SendToPlayerAsync( GameSession session, IMessage packet );
+		Task SendToPlayerAsync( IClientSession session, IMessage packet );
 		//룸 초기화
 		Task InitializeAsync();
 		// 룸 정리 및 종료
@@ -90,11 +90,11 @@ namespace Server.Room
 	/// </summary>
 	public class PlayerRoomEventArgs : EventArgs
 	{
-		public GameSession Player { get; }
+		public IClientSession Player { get; }
 		public IRoom Room { get; }
 		public DateTime Timestamp { get; }
 
-		public PlayerRoomEventArgs(GameSession player, IRoom room)
+		public PlayerRoomEventArgs(IClientSession player, IRoom room)
 		{
 			Player = player ?? throw new ArgumentNullException(nameof(player));
 			Room = room ?? throw new ArgumentNullException( nameof( room ) );

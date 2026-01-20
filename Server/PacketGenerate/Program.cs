@@ -191,16 +191,18 @@ namespace PacketGenerator
 						private readonly Dictionary<Type, PacketID> _packetTypeToId;
 						private readonly Dictionary<PacketID, PacketCategory> _packetCategoryCache = new();
 						private readonly SystemPacketHandler _systemPacketHandler;
+						private readonly IJobQueueManager _jobQueueManager;
 
 				""" );
 
 			// 2. 생성자
 			sb.Append( """
-						public PacketManager(ILogger<PacketManager> logger, SystemPacketHandler systemHandler)
+						public PacketManager(ILogger<PacketManager> logger, IJobQueueManager jobQueueManager, SystemPacketHandler systemHandler)
 						{
 							_logger = logger;
 							_packetTypeToId = new Dictionary<Type, PacketID>();
 							_systemPacketHandler = systemHandler;
+							_jobQueueManager = jobQueueManager;
 							Register();
 						}
 				""" );
@@ -241,7 +243,7 @@ namespace PacketGenerator
 
 			// 6. HandlePacket 메서드
 			sb.Append( """
-						public async ValueTask HandlePacket(GameSession session, ArraySegment<byte> buffer)
+						public async ValueTask HandlePacket(IClientSession session, ArraySegment<byte> buffer)
 						{
 							ushort count = 0;
 							ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);
@@ -285,7 +287,7 @@ namespace PacketGenerator
 									_ => null
 								};
 
-								var packetJob = JobQueueManager.Instance.JobPool.Get<PacketJob>();
+								var packetJob = _jobQueueManager.JobPool.Get<PacketJob>();
 								packetJob.Initialize( packetHandler, session, id, packetBuffer );
 
 								BaseRoom baseRoom = room as BaseRoom;
@@ -358,7 +360,7 @@ namespace PacketGenerator
 				string pName = MakeEnumNameToCamelName(match.Groups[1].Value.Trim());
 				if(pName.StartsWith( "S_" ))
 				{
-					sb.AppendLine( $"        public virtual ValueTask On_{pName}(Session session, {pName} packet) {{ Console.WriteLine(\"Received but not handled: {pName}\"); return ValueTask.CompletedTask; }}" );
+					sb.AppendLine( $"        public virtual ValueTask On_{pName}(NetworkSession session, {pName} packet) {{ Console.WriteLine(\"Received but not handled: {pName}\"); return ValueTask.CompletedTask; }}" );
 				}
 			}
 
@@ -369,14 +371,14 @@ namespace PacketGenerator
 			sb.AppendLine( "    {" );
 			sb.AppendLine( "        private readonly ILogger<PacketManager> _logger;" );
 			sb.AppendLine( "        private readonly BaseClientPacketHandler _handler;" );
-			sb.AppendLine( "        private readonly Dictionary<ushort, Func<Session, ArraySegment<byte>, ValueTask>> _onRecv;" );
+			sb.AppendLine( "        private readonly Dictionary<ushort, Func<NetworkSession, ArraySegment<byte>, ValueTask>> _onRecv;" );
 			sb.AppendLine( "        private readonly Dictionary<Type, PacketID> _packetTypeToId;" );
 			sb.AppendLine();
 			sb.AppendLine( "        public PacketManager(ILogger<PacketManager> logger, BaseClientPacketHandler handler)" );
 			sb.AppendLine( "        {" );
 			sb.AppendLine( "            _logger = logger ?? throw new ArgumentNullException(nameof(logger));" );
 			sb.AppendLine( "            _handler = handler ?? throw new ArgumentNullException(nameof(handler));" );
-			sb.AppendLine( "            _onRecv = new Dictionary<ushort, Func<Session, ArraySegment<byte>, ValueTask>>();" );
+			sb.AppendLine( "            _onRecv = new Dictionary<ushort, Func<NetworkSession, ArraySegment<byte>, ValueTask>>();" );
 			sb.AppendLine( "            _packetTypeToId = new Dictionary<Type, PacketID>();" );
 			sb.AppendLine( "            Register();" );
 			sb.AppendLine( "        }" );
@@ -399,7 +401,7 @@ namespace PacketGenerator
 
 			sb.AppendLine( "        }" );
 			sb.AppendLine();
-			sb.AppendLine( "        public async ValueTask HandlePacket(Session session, ArraySegment<byte> buffer)" );
+			sb.AppendLine( "        public async ValueTask HandlePacket(NetworkSession session, ArraySegment<byte> buffer)" );
 			sb.AppendLine( "        {" );
 			sb.AppendLine( "            ushort count = 0;" );
 			sb.AppendLine( "            ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);" );
@@ -417,7 +419,7 @@ namespace PacketGenerator
 			sb.AppendLine( "            }" );
 			sb.AppendLine( "        }" );
 			sb.AppendLine();
-			sb.AppendLine( "        private Func<Session, ArraySegment<byte>, ValueTask> HandlePacket<T>(Func<Session, T, ValueTask> handler) where T : IMessage, new()" );
+			sb.AppendLine( "        private Func<NetworkSession, ArraySegment<byte>, ValueTask> HandlePacket<T>(Func<NetworkSession, T, ValueTask> handler) where T : IMessage, new()" );
 			sb.AppendLine( "        {" );
 			sb.AppendLine( "            return async (session, buffer) =>" );
 			sb.AppendLine( "            {" );
@@ -490,7 +492,7 @@ namespace PacketGenerator
 				{
 					public interface IPacketHandler
 					{
-						ValueTask HandleAsync(GameSession session, ushort id, ArraySegment<byte> buffer);
+						ValueTask HandleAsync(IClientSession session, ushort id, ArraySegment<byte> buffer);
 					}
 				}
 				""" );
@@ -535,13 +537,13 @@ namespace PacketGenerator
 			sb.AppendLine( "\t\t/// 역직렬화된 IMessage 객체를 직접 처리할 때 사용." );
 			sb.AppendLine( "\t\t/// 런타임 패킷 처리는 _onRecv Dictionary 사용." );
 			sb.AppendLine( "\t\t/// </summary>" );
-			sb.AppendLine( "\t\tpublic Dictionary<Type, Func<GameSession, IMessage, Task>> Handlers {  get; private set; }" );
-			sb.AppendLine( "\t\tprivate Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>> _onRecv;" );
+			sb.AppendLine( "\t\tpublic Dictionary<Type, Func<IClientSession, IMessage, Task>> Handlers {  get; private set; }" );
+			sb.AppendLine( "\t\tprivate Dictionary<ushort, Func<IClientSession, ArraySegment<byte>, ValueTask>> _onRecv;" );
 			sb.AppendLine();
 			sb.AppendLine( "\t\tprivate void InitializeHandlers()" );
 			sb.AppendLine( "\t\t{" );
-			sb.AppendLine( "\t\t\tHandlers = new Dictionary<Type, Func<GameSession, IMessage, Task>>();" );
-			sb.AppendLine( "\t\t\t_onRecv = new Dictionary<ushort, Func<GameSession, ArraySegment<byte>, ValueTask>>();" );
+			sb.AppendLine( "\t\t\tHandlers = new Dictionary<Type, Func<IClientSession, IMessage, Task>>();" );
+			sb.AppendLine( "\t\t\t_onRecv = new Dictionary<ushort, Func<IClientSession, ArraySegment<byte>, ValueTask>>();" );
 			sb.AppendLine();
 
 			foreach(var packetName in categoryPackets)
@@ -553,7 +555,7 @@ namespace PacketGenerator
 			sb.AppendLine( "\t\t}" );
 			sb.AppendLine();
 			sb.Append( $$"""
-						public async ValueTask HandleAsync(GameSession session, ushort id, ArraySegment<byte> buffer)
+						public async ValueTask HandleAsync(IClientSession session, ushort id, ArraySegment<byte> buffer)
 						{
 							if(_onRecv.TryGetValue(id, out var handler))
 							{
@@ -571,7 +573,7 @@ namespace PacketGenerator
 			foreach(var packetName in categoryPackets)
 			{
 				sb.Append( $$"""
-							private async ValueTask Handle{{packetName}}Async(GameSession session, ArraySegment<byte> buffer)
+							private async ValueTask Handle{{packetName}}Async(IClientSession session, ArraySegment<byte> buffer)
 							{
 								var packet = new {{packetName}}();
 								packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
