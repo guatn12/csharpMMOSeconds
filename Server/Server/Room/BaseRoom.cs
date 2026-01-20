@@ -225,10 +225,7 @@ namespace Server.Room
 			try
 			{
 				// 입장 시 session의 currentRoom 변경
-				if (session is ClientSession clientSession)
-				{
-					clientSession.CurrentRoom = this;
-				}
+				session.CurrentRoom = this;
 
 				// 룸 별 입장 로직 실행
 				await OnPlayerEnterAsync( session );
@@ -247,10 +244,7 @@ namespace Server.Room
 				_players.TryRemove( session.SessionId, out _ );
 				if(session.CurrentRoom != null )
 				{
-					if(session is ClientSession clientSession)
-					{
-						clientSession.CurrentRoom = null; // 실패 시 session의 현재 룸도 초기화.
-					}
+					session.CurrentRoom = null;		// 실패 시 session의 현재 룸도 초기화.
 				}
 				
 				_logger.LogError( e, "Failed to enter player {SessionId} to room {RoomId}", session.SessionId, RoomId );

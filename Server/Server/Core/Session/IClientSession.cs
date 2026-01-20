@@ -10,7 +10,7 @@ namespace Server.Core.Session
 		long SessionId { get; }
 		long PlayerId { get; }
 		Player Player { get; }
-		IRoom CurrentRoom { get; }
+		IRoom CurrentRoom { get; internal set; }
 		void Send( IMessage packet );
 		Task SendAsync( IMessage packet );
 	}
