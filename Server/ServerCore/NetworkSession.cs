@@ -18,12 +18,16 @@ namespace ServerCore
 		private RingBuffer _recvBuffer;
 
 		private readonly Queue<ArraySegment<byte>> _sendQueue = new Queue<ArraySegment<byte>>();
+		private readonly List<ArraySegment<byte>> _pendingList = new List<ArraySegment<byte>>();
 		private readonly object _lock = new object();
 		private bool _isSending = false;
 		private bool _isClosed = false;
-		private readonly List<ArraySegment<byte>> _pendingList = new List<ArraySegment<byte>>();
-		
+		private bool _isPending = false;
+
 		private const int HeaderSize = 2;
+		private const int BufferWarningFreePercent = 20;
+		private const int BufferPendingFreePercent = 10;
+		private const int BufferReleaseFreePercent = 50;
 
 		public bool IsConnected()
 		{
@@ -48,12 +52,32 @@ namespace ServerCore
 
 		private void Receive()
 		{
-			// TODO : 임시로 버퍼 사이즈를 줄여서 테스트하는 중 버퍼가 가득차게 되면 stream을 처리하지 못하는 현상 발생으로 예외처리. 수정이 필요하다.
-			if(_recvBuffer.FreeSize == 0)
+			if(!_isPending)
 			{
-				Console.WriteLine( "Receive buffer is full. Closing Session." );
-				Close();
-				return;
+				int freePercent = _recvBuffer.FreeCapaPercent;
+				if(freePercent <= BufferWarningFreePercent && BufferPendingFreePercent < freePercent)
+				{
+					
+					Console.WriteLine( $"Warning: Receive buffer usage is high. Free Capacity: {freePercent}% / EndPoint: {_socket.RemoteEndPoint}" );
+				}
+				else if(freePercent <= BufferPendingFreePercent)
+				{
+					_isPending = true;
+					Console.WriteLine( $"Receive buffer usage is critical. Free Capacity: {freePercent}% / EndPoint: {_socket.RemoteEndPoint}. Pausing receive." );
+					return;
+				}
+			}
+			else
+			{
+				if(BufferReleaseFreePercent <= _recvBuffer.FreeCapaPercent)
+				{
+					_isPending = false;
+					Console.WriteLine( $"Receive buffer usage normalized . Resuming receive. EndPoint: {_socket.RemoteEndPoint}" );
+				}
+				else
+				{
+					return;
+				}
 			}
 
 			ArraySegment<byte> argsBuffer = _recvBuffer.WriteSegment();

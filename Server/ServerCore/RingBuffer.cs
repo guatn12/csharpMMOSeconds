@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -32,6 +32,14 @@ namespace ServerCore
 			}
 		}
 		public int FreeSize { get { return _capacity - DataSize - 1; } }
+
+		public int FreeCapaPercent
+		{
+			get
+			{
+				return (int)( (float)FreeSize / (float)( _capacity - 1 ) * 100f );
+			}
+		}
 
 		public ArraySegment<byte> WriteSegment()
 		{
