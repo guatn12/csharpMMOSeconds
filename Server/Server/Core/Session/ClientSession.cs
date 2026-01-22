@@ -5,12 +5,10 @@ using Server.Database.Entities;
 using Server.Game;
 using Server.Packet;
 using Server.Room;
-using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Threading.Tasks;
 
 namespace Server.Core.Session
 {
@@ -24,21 +22,16 @@ namespace Server.Core.Session
 
         public IRoom CurrentRoom
         {
-            get
-            {
-                lock(_roomLock)
-                {
-                    return _currentRoom;
-                }
-            }
-            internal set
-            {
-                lock(_roomLock)
-                {
-                    _currentRoom = value;
-                }
-            }
+            get { lock(_roomLock) { return _currentRoom; } }
         }
+
+		public void SetCurrentRoom( IRoom room )
+		{
+			lock( _roomLock )
+			{
+				_currentRoom = room;
+			}
+		}
 		public bool IsInRoom => _currentRoom != null;
 
 		public long SessionId { get; private set; }
@@ -84,12 +77,6 @@ namespace Server.Core.Session
             //LogManager.Debug("Packet Sent. SessionId: {SessionId}, Size: {Size}", this.SessionId, bytes);
             _logger.LogDebug( "Packet Sent. SessionId: {SessionId}, Size: {Size}", SessionId, bytes );
         }
-
-		// 비동기 패킷 전송
-		public async Task SendAsync( IMessage packet )
-		{
-			await Task.Run( () => Send( packet ) );
-		}
 
 		public override void OnConnected( EndPoint endPoint )
 		{
@@ -190,7 +177,7 @@ namespace Server.Core.Session
             if(CurrentRoom != null)
             {
                 // async 메서드를 동기적으로 호출(이벤트 핸들러는 void 반환)
-                _ = CurrentRoom.BroadcastAsync( packet );
+                CurrentRoom.Broadcast( packet );
             }
 
 			_logger.LogInformation( "[Event] Player Level Up: PlayerId={PlayerId},NewLevel={NewLevel}, HP={MaxHP}, MP={MaxMP}",
@@ -376,7 +363,7 @@ namespace Server.Core.Session
 
             if(CurrentRoom != null)
             {
-                _ = CurrentRoom.BroadcastAsync( packet );
+                CurrentRoom.Broadcast( packet );
             }
 
 			_logger.LogWarning( "[Event] Player Death: PlayerId={PlayerId}", player.PlayerId );

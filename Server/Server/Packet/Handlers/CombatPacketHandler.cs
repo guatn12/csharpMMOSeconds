@@ -7,10 +7,6 @@ using Server.Services.Combat;
 using Server.Services.DTOs;
 using Server.Services.Reward;
 using Server.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Server.Packet.Handlers
@@ -63,7 +59,7 @@ namespace Server.Packet.Handlers
 				session.PlayerId, packet.MonsterId, result.Damage);
 
 			// 4. 응답
-			await _room.BroadcastAsync( new S_Damage
+			_room.Broadcast( new S_Damage
 			{
 				AttackerId = result.AttackerId,
 				TargetId = result.TargetId,
@@ -71,7 +67,7 @@ namespace Server.Packet.Handlers
 				CurrentHP = result.TargetCurrentHP
 			} );
 
-			await _room.BroadcastAsync( new S_MonsterUpdate
+			_room.Broadcast( new S_MonsterUpdate
 			{
 				Monsters = { monster.Info }
 			} );
@@ -107,7 +103,7 @@ namespace Server.Packet.Handlers
 				GoldGained = reward.Gold
 			};
 			diePacket.DroppedItems.AddRange( reward.DroppedItem );
-			await _room.BroadcastAsync( diePacket );
+			_room.Broadcast( diePacket );
 
 			// 4. 몬스터 제거
 			_room.MonsterManager.DespawnMonster( monster.MonsterId );

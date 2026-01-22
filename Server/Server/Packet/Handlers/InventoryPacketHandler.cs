@@ -4,10 +4,7 @@ using Server.Core.Session;
 using Server.Extensions;
 using Server.Room;
 using Server.Utils;
-using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Server.Packet.Handlers
@@ -52,7 +49,7 @@ namespace Server.Packet.Handlers
 				response.Items.AddRange( protoItems );
 			}
 
-			await _room.SendToPlayerAsync( session, response );
+			_room.SendToPlayer( session, response );
 
 			_logger.LogDebug( "Player {PlayerId} requested inventory data", session.PlayerId );
 		}
@@ -78,7 +75,7 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning( "UseItem slot validation failed: {Error}", slotValidation.ErrorMessage );
 
 				var errorResponse = new S_UseItem { Success = false };
-				await _room.SendToPlayerAsync( session, errorResponse );
+				_room.SendToPlayer( session, errorResponse );
 				return;
 			}
 
@@ -95,7 +92,7 @@ namespace Server.Packet.Handlers
 				Message = success ? "아이템 사용 성공" : "아이템 사용 실패"
 			};
 
-			await _room.SendToPlayerAsync( session, response );
+			_room.SendToPlayer( session, response );
 
 			_logger.LogDebug( "Player {PlayerId} used item at slot {Slot}, Success={Success}",
 				session.PlayerId, packet.Slot, success );
@@ -121,7 +118,7 @@ namespace Server.Packet.Handlers
 			{
 				_logger.LogWarning( "EquipItem slot validation failed: {Error}", slotValidation.ErrorMessage );
 
-				await _room.SendToPlayerAsync( session, new S_ItemEquipped { Success = false } );
+				_room.SendToPlayer( session, new S_ItemEquipped { Success = false } );
 				return;
 			}
 
@@ -131,7 +128,7 @@ namespace Server.Packet.Handlers
 			// 4. 실패 시에만 에러 응답 (성공은 이벤트에서 처리)
 			if(!success)
 			{
-				await _room.SendToPlayerAsync( session, new S_ItemEquipped { Success = false } );
+				_room.SendToPlayer( session, new S_ItemEquipped { Success = false } );
 				_logger.LogWarning( "Player {PlayerId} failed to equip item at slot {Slot}",
 					session.PlayerId, packet.InventorySlot );
 			}
@@ -157,7 +154,7 @@ namespace Server.Packet.Handlers
 			{
 				_logger.LogWarning( "UnequipItem slot validation failed: {Error}", slotValidation.ErrorMessage );
 
-				await _room.SendToPlayerAsync( session, new S_ItemUnequipped { Success = false } );
+				_room.SendToPlayer( session, new S_ItemUnequipped { Success = false } );
 				return;
 			}
 
@@ -168,7 +165,7 @@ namespace Server.Packet.Handlers
 			// 4. 실패 시에만 에러 응답 (성공은 이벤트에서 처리)
 			if(!success)
 			{
-				await _room.SendToPlayerAsync( session, new S_ItemUnequipped { Success = false } );
+				_room.SendToPlayer( session, new S_ItemUnequipped { Success = false } );
 				_logger.LogWarning( "Player {PlayerId} failed to unequip item at slot {Slot}",
 					session.PlayerId, packet.EquipSlot );
 			}

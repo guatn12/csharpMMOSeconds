@@ -10,9 +10,6 @@ using Server.Services.Combat;
 using Server.Services.Reward;
 using ServerCore;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -164,9 +161,6 @@ namespace Server.Room
 				 RoomName, RoomId, _totalVisitors );
 
 			return base.OnCleanupAsync();
-
-			_lobbyLogger.LogInformation( "LobbyRoom '{RoomName}' (ID: {RoomId}) cleanup completed",
-				  RoomName, RoomId );
 		}
 
 		protected override MonsterSpawnPolicy GetMonsterSpawnPolicy()
@@ -218,7 +212,7 @@ namespace Server.Room
 					Message = welcomeMessage,
 				};
 
-				await SendToPlayerAsync( session, welcomPacket );
+				SendToPlayer( session, welcomPacket );
 			}
 			catch ( Exception ex )
 			{
@@ -238,7 +232,7 @@ namespace Server.Room
 					Message = joinMessage,
 				};
 
-				await BroadcastAsync( joinPacket, session ); // 본인 제외 브로드캐스트
+				Broadcast( joinPacket, session ); // 본인 제외 브로드캐스트
 			}
 			catch (Exception ex)
 			{
@@ -258,7 +252,7 @@ namespace Server.Room
 					Message = leaveMessage,
 				};
 
-				await BroadcastAsync( leavePacket, session ); // 본인 제외 브로드 캐스트
+				Broadcast( leavePacket, session ); // 본인 제외 브로드 캐스트
 			}
 			catch(Exception ex)
 			{
@@ -278,7 +272,7 @@ namespace Server.Room
 					Message = statusMessage,
 				};
 
-				await SendToPlayerAsync( session, statusPacket );
+				SendToPlayer( session, statusPacket );
 			}
 			catch(Exception ex)
 			{
@@ -304,7 +298,7 @@ namespace Server.Room
 					PosInfo = spawnPosition
 				};
 
-				await SendToPlayerAsync( session, spawnPacket );
+				SendToPlayer( session, spawnPacket );
 
 				_lobbyLogger.LogDebug( "Player {SessionId} 로비 스폰 위치 설정: ({X}, {Y}, {Z})",
 					session.SessionId, spawnPosition.PosX, spawnPosition.PosY, spawnPosition.PosZ );

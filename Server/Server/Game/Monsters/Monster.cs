@@ -1,12 +1,7 @@
-﻿using Protocol;
-using Server.Data;
+using Protocol;
 using Server.Data.Models;
 using Server.Utils;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Server.Game.Monsters
 {

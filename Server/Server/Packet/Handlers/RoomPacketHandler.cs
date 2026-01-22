@@ -4,10 +4,6 @@ using Server.Core.Session;
 using Server.Room;
 using Server.Services;
 using Server.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Server.Packet.Handlers
@@ -56,7 +52,7 @@ namespace Server.Packet.Handlers
 						PlayerId = session.PlayerId,
 						PosInfo = currentPos,
 					};
-					await _room.SendToPlayerAsync(session, correctionPacket);
+					_room.SendToPlayer(session, correctionPacket);
 
 					_logger.LogInformation( "Position corrected: Session={SessionId}, Pos=({X}, {Y}, {Z})",
 						session.SessionId, currentPos.PosX, currentPos.PosY, currentPos.PosZ );
@@ -76,7 +72,7 @@ namespace Server.Packet.Handlers
 				PlayerId = session.PlayerId,
 				PosInfo = packet.PosInfo,
 			};
-			await _room.BroadcastAsync( response, excludeSession: session );
+			_room.Broadcast( response, excludeSession: session );
 
 			// 6. 룸별 이동 후처리
 			await _room.OnPlayerMoveAsync( session, packet );
@@ -119,7 +115,7 @@ namespace Server.Packet.Handlers
 				PlayerId = session.PlayerId,
 				Message = packet.Message,
 			};
-			await _room.BroadcastAsync( response );
+			_room.Broadcast( response );
 
 			_logger.LogInformation( "Player {PlayerId} chatted: {Message}", session.PlayerId, packet.Message );
 		}
@@ -145,7 +141,7 @@ namespace Server.Packet.Handlers
 			};
 
 			// 3. 요청자에게만 전송
-			await _room.SendToPlayerAsync( session, response );
+			_room.SendToPlayer( session, response );
 
 			_logger.LogDebug( "Player {PlayerId} requested player info", session.PlayerId );
 		}

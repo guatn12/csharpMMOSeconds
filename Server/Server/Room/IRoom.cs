@@ -39,9 +39,9 @@ namespace Server.Room
 		// playerId를 통한 플레이어 확인
 		IClientSession FindPlayerToPlayerId(long playerId);
 		// 룸 내 모든 플레이어에게 브로드캐스트
-		Task BroadcastAsync( IMessage packet, IClientSession excludeSession = null );
+		void Broadcast( IMessage packet, IClientSession excludeSession = null );
 		// 룸 내 특정 플레이어에게 전달
-		Task SendToPlayerAsync( IClientSession session, IMessage packet );
+		void SendToPlayer( IClientSession session, IMessage packet );
 		//룸 초기화
 		Task InitializeAsync();
 		// 룸 정리 및 종료

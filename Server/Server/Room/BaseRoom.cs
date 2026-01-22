@@ -55,6 +55,7 @@ namespace Server.Room
 		public bool IsFull => MaxPlayers <= _players.Count;
 
 		// 몬스터
+		private readonly Func<IRoom, DataManager, ILogger, MonsterSpawnPolicy, IMonsterManager> _monsterManagerFactory;
 		public IMonsterManager MonsterManager { get; private set; }
 		protected readonly DataManager _dataManager;
 		private System.Threading.Timer _monsterUpdateTimer;
@@ -82,6 +83,7 @@ namespace Server.Room
 		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, string roomName, int maxPlayers, DataManager dataManager,
 			IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
 			PlayerPositionService playerPositionService,
+			Func<IRoom, DataManager, ILogger, MonsterSpawnPolicy, IMonsterManager> monsterManagerFactory = null,
 			float roomWidth = 100.0f, float roomHeight = 50.0f, float roomDepth = 100.0f,
 			float minX = 0.0f, float minY = 0.0f, float minZ = 0.0f )
 			: base( jobQueueManager )
@@ -110,7 +112,10 @@ namespace Server.Room
 			_players = new ConcurrentDictionary<long, IClientSession>();
 
 			InitializePacketHandlers( _loggerFactory, combatService, rewardService, playerPositionService );
-			
+
+			_monsterManagerFactory = monsterManagerFactory ?? ( ( room, dataMgr, logger, policy ) =>
+				new MonsterManager( room, dataMgr, logger, policy ) );
+
 			_logger.LogInformation( "Room created: {RoomId} '{RoomName}' (Type: {RoomType}, Max: {MaxPlayers})",
 				RoomId, RoomName, RoomType, MaxPlayers );
 		}
@@ -225,7 +230,7 @@ namespace Server.Room
 			try
 			{
 				// 입장 시 session의 currentRoom 변경
-				session.CurrentRoom = this;
+				session.SetCurrentRoom( this );
 
 				// 룸 별 입장 로직 실행
 				await OnPlayerEnterAsync( session );
@@ -244,7 +249,7 @@ namespace Server.Room
 				_players.TryRemove( session.SessionId, out _ );
 				if(session.CurrentRoom != null )
 				{
-					session.CurrentRoom = null;		// 실패 시 session의 현재 룸도 초기화.
+					session.SetCurrentRoom( this );		// 실패 시 session의 현재 룸도 초기화.
 				}
 				
 				_logger.LogError( e, "Failed to enter player {SessionId} to room {RoomId}", session.SessionId, RoomId );
@@ -260,37 +265,30 @@ namespace Server.Room
 			return await InternalLeaveAsync( session, false );
 		}
 
-		public virtual async Task BroadcastAsync( IMessage packet, IClientSession excludeSession = null )
+		public virtual void Broadcast( IMessage packet, IClientSession excludeSession = null )
 		{
 			if(packet == null)
 				return;
 
 			List<IClientSession> currentPlayers = _players.Values.ToList();
-			List<Task> tasks = new List<Task>();
 
 			foreach(var player in currentPlayers)
 			{
-				// TODO : Send 호출 플레이어 제외 임시 주석 처리. 주석 다시 해제
 				if(player != excludeSession)
 				{
-					tasks.Add( SendToPlayerAsync( player, packet ) );
+					SendToPlayer( player, packet );
 				}
-			}
-
-			if(0 < tasks.Count)
-			{
-				await Task.WhenAll( tasks );
 			}
 		}
 
-		public virtual async Task SendToPlayerAsync( IClientSession session, IMessage packet )
+		public virtual void SendToPlayer( IClientSession session, IMessage packet )
 		{
 			if(session == null || packet == null)
 				return;
 
 			try
 			{
-				await Task.Run( () => session.Send( packet ) );
+				session.Send( packet );
 			}
 			catch(Exception e)
 			{
@@ -314,7 +312,7 @@ namespace Server.Room
 					{
 						monsterSpawnPacket.Monsters.Add( monster.Info );
 					}
-					await SendToPlayerAsync( session, monsterSpawnPacket );
+					SendToPlayer( session, monsterSpawnPacket );
 
 					_logger.LogDebug( "Sent {Count} monsters info to Player {SessionId}",
 						aliveMonsters.Count, session.SessionId );
@@ -351,7 +349,7 @@ namespace Server.Room
 			var policy = GetMonsterSpawnPolicy();
 
 			// MonsterManager 생성
-			MonsterManager = new MonsterManager(room: this, _dataManager, _logger, policy);
+			MonsterManager = _monsterManagerFactory( this, _dataManager, _loggerFactory.CreateLogger<MonsterManager>(), policy );
 
 			// MonsterManager 초기화
 			await MonsterManager.InitializeAsync();
@@ -398,7 +396,7 @@ namespace Server.Room
 				despawnPacket.MonsterIds.Add( monsterId );
 
 				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
-				BroadcastAsync( despawnPacket ).GetAwaiter().GetResult();
+				Broadcast( despawnPacket );
 
 				_logger.LogInformation( "Broadcasted S_MonsterDespawn for Monster {MonsterId} in Room {RoomId}",
 					monsterId, RoomId );
@@ -423,7 +421,7 @@ namespace Server.Room
 				spawnPacket.Monsters.Add( monster.Info );
 
 				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
-				BroadcastAsync( spawnPacket ).GetAwaiter().GetResult();
+				Broadcast( spawnPacket );
 
 				_logger.LogInformation( "Broadcasted S_MonsterSpawn for Monster {MonsterId} ({Name}) in Room {RoomId}",
 					monster.MonsterId, monster.Name, RoomId );
