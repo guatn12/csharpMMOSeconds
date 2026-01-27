@@ -48,8 +48,8 @@ namespace Server.Extensions
 				.AddDbContextCheck<AppDbContext>( "database" )
 				.AddCheck<RedisHealthCheck>( "redis" );
 
-			services.AddSingleton<SystemHealthService>();
 			services.AddSingleton<PerformanceMonitoringService>();
+			services.AddHostedService(sp => sp.GetRequiredService<PerformanceMonitoringService>() );
 
 			return services;
 		}

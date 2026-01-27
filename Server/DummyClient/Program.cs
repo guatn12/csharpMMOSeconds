@@ -279,8 +279,8 @@ namespace DummyClient
 
 			_logger.LogInformation( "모든 클라이언트 시작 완료. 15초 후 자동 종료됩니다..." );
 
-			// 15초 대기 (테스트를 위해)
-			Thread.Sleep( 15000 );
+			// 45초 대기 (테스트를 위해)
+			Thread.Sleep( 45000 );
 
 			cancellationTokenSource.Cancel();
 

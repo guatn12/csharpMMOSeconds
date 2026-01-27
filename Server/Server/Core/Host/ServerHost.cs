@@ -25,8 +25,6 @@ namespace Server.Core.Host
 		private readonly DataManager _dataManager;
 		private readonly RedisService _redisService;
 		private readonly IRoomManager _roomManager;
-		private readonly SystemHealthService _healthService;
-		private readonly PerformanceMonitoringService _performanceMonitoringService;
 		private readonly PacketManager _packetManager;
 		private readonly Listener _listener;
 		private readonly IServiceProvider _serviceProvider;
@@ -40,8 +38,6 @@ namespace Server.Core.Host
 			DataManager dataManager,
 			RedisService redisService,
 			IRoomManager roomManager,
-			SystemHealthService systemHealthService,
-			PerformanceMonitoringService performanceMonitoringService,
 			PacketManager packetManager,
 			Listener listener,
 			IServiceProvider serviceProvider,
@@ -53,8 +49,6 @@ namespace Server.Core.Host
 			_dataManager = dataManager;
 			_redisService = redisService;
 			_roomManager = roomManager;
-			_healthService = systemHealthService;
-			_performanceMonitoringService = performanceMonitoringService;
 			_packetManager = packetManager;
 			_listener = listener;
 			_serviceProvider = serviceProvider;
@@ -158,52 +152,7 @@ namespace Server.Core.Host
 			if (_roomManager is IHostedService hostedRoomManager)
 				await hostedRoomManager.StartAsync(CancellationToken.None);
 
-			// 시스템 상태 체크 및 모니터링 시작
-			await InitializeMonitoringServicesAsync();
-
 			_logger.LogInformation( "핵심 서비스 초기화 완료" );
-		}
-
-		private async Task InitializeMonitoringServicesAsync()
-		{
-			try
-			{
-				// 초기 시스템 상태 체크
-				bool initialHealth = await _healthService.CheckSystemHealthAsync();
-
-				if(!initialHealth)
-				{
-					_logger.LogWarning( "Initiali system health check failed, but continuing startup..." );
-				}
-
-				// 성능 모니터링 서비스 시작
-				_logger.LogInformation( "Performance monitoring started" );
-
-				// 주기적 Health Check 시작 (60초)
-				_ = Task.Run( async () => await StartPeriodicHealthCheckAsync() );
-
-				_logger.LogInformation( "Monitoring services initialized successfully" );
-			}
-			catch(Exception ex)
-			{
-				_logger.LogError( ex, "Failed to initalize monitoring services" );
-			}
-		}
-
-		private async Task StartPeriodicHealthCheckAsync()
-		{
-			while(!_cancellationTokenSource.Token.IsCancellationRequested) 
-			{
-				try
-				{
-					await Task.Delay( 60000 );
-					await _healthService.CheckSystemHealthAsync();
-				}
-				catch(Exception ex)
-				{
-					_logger.LogError( ex, "Periodic health check failed" );
-				}
-			}
 		}
 
 		private async Task LoadGameDataAsync()
