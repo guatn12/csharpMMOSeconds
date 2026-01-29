@@ -1,4 +1,4 @@
-﻿using Protocol;
+using Protocol;
 using Server.Database.Entities;
 using System;
 using System.Collections.Generic;
@@ -83,7 +83,14 @@ namespace Server.Game
 		public long RequiredExp => Info.Level * 100; // 임시 레벨업 필요 경험치.
 		public long CombatTargetId => _combatTargetId;
 
+		public void InitPosition(PosInfo newPosInfo)
+		{
+			if(newPosInfo == null) return;
 
+			Info.PosInfo = newPosInfo;
+			SetState( PlayerState.Idle );
+			UpdateLastUpdateTime();
+		}
 
 		// 상태 관리 메서드
 		public void UpdatePosition( PosInfo newPosition )

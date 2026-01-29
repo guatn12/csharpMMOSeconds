@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Data;
 using Server.Data.Models;
@@ -76,7 +76,7 @@ namespace Server.Game.Monsters
 		private readonly object _despawnLock = new object();
 
 		// 이벤트 : Room에서 Despawn 알림
-		public event Action<long> OnMonsterDespawned;
+		public event Action<long, Monster> OnMonsterDespawned;
 		public event Action<Monster> OnMonsterSpawned;
 
 		public IReadOnlyDictionary<long, Monster> Monsters => _monsters;
@@ -197,7 +197,7 @@ namespace Server.Game.Monsters
 		/// <summary>
 		/// 몬스터 제거
 		/// </summary>
-		public bool DespawnMonster(long monsterId)
+		public bool DespawnMonster(long monsterId, bool raiseEvent = false)
 		{
 			if(!_monsters.TryRemove( monsterId, out Monster monster ))
 				return false;
@@ -219,6 +219,12 @@ namespace Server.Game.Monsters
 			}
 
 			_logger.LogInformation( "Monster despawned: {MonsterId}", monsterId );
+
+			// 이벤트 발생(raiseEvent가 true인 경우)
+			if(raiseEvent)
+			{
+				OnMonsterDespawned?.Invoke( monsterId, monster );
+			}
 
 			return true;
 		}
@@ -271,14 +277,11 @@ namespace Server.Game.Monsters
 			// lock 밖에서 실제 Despawn 처리
 			foreach(var delayed in toRemove)
 			{
-				bool success = DespawnMonster(delayed.MonsterId);
+				bool success = DespawnMonster(delayed.MonsterId, true);
 
 				if(success)
 				{
 					_logger.LogInformation( "Monster {MonsterId} despawned (delayed)", delayed.MonsterId );
-
-					// Room에 Despawn 이벤트 발생 (S_MonsterDespawn 패킷 전송용)
-					OnMonsterDespawned?.Invoke( delayed.MonsterId );
 				}
 			}
 		}

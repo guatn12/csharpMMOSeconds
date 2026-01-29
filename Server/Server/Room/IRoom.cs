@@ -1,5 +1,6 @@
 using Google.Protobuf;
 using Server.Core.Session;
+using Server.Game.Map;
 using Server.Packet.Handlers;
 using System;
 using System.Collections.Generic;
@@ -17,6 +18,8 @@ namespace Server.Room
 
 		RoomType RoomType { get; }
 		RoomState State { get; }
+
+		GameMap RoomMap { get; }
 
 		// Category 핸들러
 		RoomPacketHandler RoomPacketHandler { get; }

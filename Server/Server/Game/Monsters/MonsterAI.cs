@@ -367,6 +367,7 @@ namespace Server.Game.Monsters
 			if( distance <= moveDistance)
 			{
 				_monster.UpdatePosition( target );
+				_room.RoomMap.UpdateMonsters( _monster, target.PosX, target.PosZ );
 			}
 			else
 			{
@@ -381,6 +382,7 @@ namespace Server.Game.Monsters
 				};
 
 				_monster.UpdatePosition( newPosition );
+				_room.RoomMap.UpdateMonsters( _monster, newPosition.PosX, newPosition.PosZ );
 			}
 		}
 	}

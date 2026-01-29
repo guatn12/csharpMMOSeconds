@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Data;
 using Server.Room;
@@ -25,7 +25,7 @@ namespace Server.Game.Monsters
 		private bool _isAIPaused = false;
 		private bool _disposed = false;
 
-		public event Action<long> OnMonsterDespawned;
+		public event Action<long, Monster> OnMonsterDespawned;
 		public event Action<Monster> OnMonsterSpawned;
 
 		public MonsterManager(IRoom room, DataManager dataManager, ILogger logger, 
@@ -64,9 +64,9 @@ namespace Server.Game.Monsters
 			await Task.CompletedTask;
 		}
 
-		private void HandleMonsterDespawned(long monsterId)
+		private void HandleMonsterDespawned(long monsterId, Monster monster)
 		{
-			OnMonsterDespawned?.Invoke( monsterId );
+			OnMonsterDespawned?.Invoke( monsterId, monster );
 		}
 
 		private void HandleMonsterSpawned(Monster monster)
@@ -371,7 +371,7 @@ namespace Server.Game.Monsters
 			{
 				if(_monsterSpawner != null)
 				{
-					_monsterSpawner.OnMonsterDespawned -= (monsterId) => OnMonsterDespawned?.Invoke(monsterId);
+					_monsterSpawner.OnMonsterDespawned -= (monsterId, monster) => OnMonsterDespawned?.Invoke(monsterId, monster);
 					_monsterSpawner.OnMonsterSpawned -= (monster) => OnMonsterSpawned?.Invoke(monster);
 				}
 				_monsterSpawner?.ClearAllMonsters();

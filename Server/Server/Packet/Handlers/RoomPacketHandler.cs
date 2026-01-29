@@ -63,6 +63,9 @@ namespace Server.Packet.Handlers
 			// 3. Player 객체 위치 업데이트 (메모리 동기화)
 			session.Player.UpdatePosition(packet.PosInfo);
 
+			// GameMap 내 플레이어 위치 업데이트
+			_room.RoomMap.UpdatePlayer( session, packet.PosInfo.PosX, packet.PosInfo.PosZ );
+
 			// 4. Redis 캐시 업데이트 (근처 플레이어 검색 최적화용)
 			await _playerPositionService.UpdatePositionAsync(session.PlayerId, packet.PosInfo);
 

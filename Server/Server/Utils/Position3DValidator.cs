@@ -1,4 +1,5 @@
 using Protocol;
+using Server.Game.Map;
 using Server.Room;
 using System;
 using System.Collections.Generic;
@@ -19,9 +20,13 @@ namespace Server.Utils
 			if(position == null || room == null)
 				return false;
 
+			var cellPos = room.RoomMap.WorldToCell( position.PosX, position.PosZ );
+
 			return	position.PosX >= room.MinX && position.PosX <= room.MaxX &&
 					position.PosY >= room.MinY && position.PosY <= room.MaxY &&
-					position.PosZ >= room.MinZ && position.PosZ <= room.MaxZ;
+					position.PosZ >= room.MinZ && position.PosZ <= room.MaxZ &&
+					room.RoomMap.IsValidCell( cellPos.x, cellPos.z ) &&
+					room.RoomMap.IsWalkable( cellPos.x, cellPos.z );
 		}
 
 		/// <summary>

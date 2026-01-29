@@ -1,4 +1,4 @@
-﻿using Protocol;
+using Protocol;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,7 +18,7 @@ namespace Server.Game.Monsters
 		/// <summary>
 		/// 몬스터가 Despawn되었을 때 발생 (S_MonsterDespawn 브로드캐스트용)
 		/// </summary>
-		event Action<long> OnMonsterDespawned;
+		event Action<long, Monster> OnMonsterDespawned;
 
 		/// <summary>
 		/// 몬스터가 Spawn되었을 때 발생 (S_MonsterSpawn 브로드캐스트용)

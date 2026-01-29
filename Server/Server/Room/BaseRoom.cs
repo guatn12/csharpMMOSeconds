@@ -17,6 +17,7 @@ using Server.Services.Reward;
 using Server.Game.Monsters;
 using Server.Services;
 using Server.Packet.Handlers;
+using Server.Game.Map;
 
 namespace Server.Room
 {
@@ -25,6 +26,7 @@ namespace Server.Room
 		protected readonly ILogger _logger;
 		protected readonly ILoggerFactory _loggerFactory;
 		protected readonly ConcurrentDictionary<long, IClientSession> _players;
+		public GameMap RoomMap { get; protected set; }
 		protected readonly object _lock = new object();
 		private static int _nextRoomId = 1;
 		private bool _dispose = false;
@@ -101,6 +103,15 @@ namespace Server.Room
 			MaxPlayers = 0 < maxPlayers ? maxPlayers : throw new ArgumentOutOfRangeException( nameof( maxPlayers ) );
 
 			// 3D 룸 크기 설정
+			float cellSize = 5.0f; // 셀 크기 설정 (예: 5 유닛)
+			int gridWith = (int)Math.Ceiling( roomWidth / cellSize );
+			int gridDepth = (int)Math.Ceiling( roomDepth / cellSize );
+			var mapData = new MapData(gridWith, gridDepth)
+			{
+				CellSize = cellSize
+			};
+			RoomMap = new GameMap( mapData );
+
 			RoomWidth = roomWidth;
 			RoomHeight = roomHeight;
 			RoomDepth = roomDepth;
@@ -232,6 +243,12 @@ namespace Server.Room
 				// 입장 시 session의 currentRoom 변경
 				session.SetCurrentRoom( this );
 
+				// 플레이어 위치 정보 추가
+				var posInfo = Utils.Position3DValidator.GetSpawnPosition( this );
+
+				session.Player.InitPosition( posInfo );
+				RoomMap.AddPlayer( session, posInfo.PosX, posInfo.PosZ);
+
 				// 룸 별 입장 로직 실행
 				await OnPlayerEnterAsync( session );
 
@@ -251,7 +268,10 @@ namespace Server.Room
 				{
 					session.SetCurrentRoom( this );		// 실패 시 session의 현재 룸도 초기화.
 				}
-				
+
+				// 플레이어 위치 정보도 제거
+				RoomMap.RemovePlayer( session );
+
 				_logger.LogError( e, "Failed to enter player {SessionId} to room {RoomId}", session.SessionId, RoomId );
 				return RoomEnterResult.UnknownError;
 			}
@@ -387,10 +407,16 @@ namespace Server.Room
 		/// MonsterSpawner에서 딜레이 Despawn이 완료되었을 때 호출됨
 		/// JobQueue Worker 스레드에서 실행되므로 스레드 안전
 		/// </summary>
-		private void OnMonsterDespawned( long monsterId )
+		private void OnMonsterDespawned( long monsterId, Monster monster )
 		{
 			try
 			{
+				// gameMap에서 몬스터 위치 정보 제거
+				if(monster != null)
+				{
+					RoomMap.RemoveMonster( monster );
+				}
+
 				// S_MonsterDespawn 브로드캐스트
 				S_MonsterDespawn despawnPacket = new S_MonsterDespawn();
 				despawnPacket.MonsterIds.Add( monsterId );
@@ -416,6 +442,12 @@ namespace Server.Room
 		{
 			try
 			{
+				// gameMap에 몬스터 위치 정보 추가
+				if(monster != null)
+				{
+					RoomMap.AddMonster( monster, monster.Info.PosInfo.PosX, monster.Info.PosInfo.PosZ );
+				}
+
 				// S_MonsterSpawn 브로드 캐스트
 				S_MonsterSpawn spawnPacket = new S_MonsterSpawn();
 				spawnPacket.Monsters.Add( monster.Info );
@@ -517,6 +549,9 @@ namespace Server.Room
 		{
 			if(!_players.TryRemove( session.SessionId, out var removedSession ))
 				return false;
+
+			// 퇴장 시 room의 맵에서 플레이어 위치 정보 제거
+			RoomMap.RemovePlayer( session );
 
 			try
 			{
