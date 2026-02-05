@@ -11,6 +11,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Server.Game;
 using Server.Data;
+using Server.Data.Models;
 using Server.Core.Jobs;
 using Server.Services.Combat;
 using Server.Services.Reward;
@@ -34,19 +35,6 @@ namespace Server.Room
 		public int RoomId { get; private set; }
 		public string RoomName { get; protected set; }
 		public int MaxPlayers { get; protected set; }
-
-		// 룸 크기 속성 
-		public float RoomWidth { get; protected set; } = 100.0f;    // x 축 크기
-		public float RoomHeight { get; protected set; } = 50.0f;    // y 축 크기
-		public float RoomDepth { get; protected set; } = 100.0f;    // z 축 크기
-
-		// 룸 경계 정보를 위한 속성
-		public float MinX { get; protected set; } = 0.0f;
-		public float MaxX => MinX + RoomWidth;
-		public float MinY { get; protected set; } = 0.0f;
-		public float MaxY => MinY + RoomHeight;
-		public float MinZ { get; protected set; } = 0.0f;
-		public float MaxZ => MinZ + RoomDepth;
 
 		public int CurrentPlayerCount => _players.Count;
 		public abstract RoomType RoomType { get; }
@@ -86,8 +74,7 @@ namespace Server.Room
 			IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
 			PlayerPositionService playerPositionService,
 			Func<IRoom, DataManager, ILogger, MonsterSpawnPolicy, IMonsterManager> monsterManagerFactory = null,
-			float roomWidth = 100.0f, float roomHeight = 50.0f, float roomDepth = 100.0f,
-			float minX = 0.0f, float minY = 0.0f, float minZ = 0.0f )
+			int mapId = 1 )
 			: base( jobQueueManager )
 		{
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
@@ -103,22 +90,14 @@ namespace Server.Room
 			MaxPlayers = 0 < maxPlayers ? maxPlayers : throw new ArgumentOutOfRangeException( nameof( maxPlayers ) );
 
 			// 3D 룸 크기 설정
-			float cellSize = 5.0f; // 셀 크기 설정 (예: 5 유닛)
-			int gridWith = (int)Math.Ceiling( roomWidth / cellSize );
-			int gridDepth = (int)Math.Ceiling( roomDepth / cellSize );
-			var mapData = new MapData(gridWith, gridDepth)
+			MapData mapData = _dataManager.GetMap(mapId);
+			if(mapData == null)
 			{
-				CellSize = cellSize
-			};
+				_logger.LogWarning( "MapData not found for MapId {MapId}, using default room size", mapId );
+				mapData = MapData.CreateEmpty( 20, 20, 5.0f );
+			}
+
 			RoomMap = new GameMap( mapData );
-
-			RoomWidth = roomWidth;
-			RoomHeight = roomHeight;
-			RoomDepth = roomDepth;
-
-			MinX = minX;
-			MinY = minY;
-			MinZ = minZ;
 
 			_players = new ConcurrentDictionary<long, IClientSession>();
 
@@ -243,11 +222,14 @@ namespace Server.Room
 				// 입장 시 session의 currentRoom 변경
 				session.SetCurrentRoom( this );
 
-				// 플레이어 위치 정보 추가
+				// 플레이어 위치 정보 추가 - 기본 스폰 위치 할당(룸별 입장 시 덮어쓰기 가능)
 				var posInfo = Utils.Position3DValidator.GetSpawnPosition( this );
 
 				session.Player.InitPosition( posInfo );
 				RoomMap.AddPlayer( session, posInfo.PosX, posInfo.PosZ);
+
+				_logger.LogInformation( "BaseRoom Player {SessionId} spawned at position ({X}, {Y}, {Z}) in room {RoomId}",
+					session.SessionId, posInfo.PosX, posInfo.PosY, posInfo.PosZ, RoomId );
 
 				// 룸 별 입장 로직 실행
 				await OnPlayerEnterAsync( session );
@@ -301,6 +283,23 @@ namespace Server.Room
 			}
 		}
 
+		public virtual void BroadcastInRange(IMessage packet, IClientSession session, IClientSession excludeSession = null )
+		{
+			if(packet == null)
+				return;
+
+			var currentPlayers = RoomMap.GetNearByPlayers(session.Player.Position.PosX, session.Player.Position.PosZ,
+				_dataManager.GameConfig.ViewDistance);
+
+			foreach(var player in currentPlayers)
+			{
+				if(excludeSession != null && player == excludeSession)
+					continue;
+
+				SendToPlayer( player, packet );
+			}
+		}
+
 		public virtual void SendToPlayer( IClientSession session, IMessage packet )
 		{
 			if(session == null || packet == null)
@@ -351,9 +350,8 @@ namespace Server.Room
 
 			if(!isValid)
 			{
-				_logger.LogWarning( "Invalid move attempt by player {SessionId} in room{ RoomId}: Position ({X}, {Y}, {Z}) is outside room bounds ({MinX}-{MaxX},{ MinY}-{ MaxY}, { MinZ}-{ MaxZ})",
-					session.SessionId, RoomId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ,
-					MinX, MaxX, MinY, MaxY, MinZ, MaxZ );
+				_logger.LogWarning( "Invalid move attempt by player {SessionId} in room{ RoomId}: Position ({X}, {Y}, {Z})",
+					session.SessionId, RoomId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ);
 			}
 
 			return Task.FromResult( isValid );
@@ -469,9 +467,9 @@ namespace Server.Room
 		protected virtual void SetupDefaultSpawnPoints()
 		{
 			//ex) 룸 중앙에 슬라임 3마리 스폰
-			float centerX = MinX + RoomWidth / 2;
-			float centerY = MinY;
-			float centerZ = MinZ + RoomDepth / 2;
+			float centerX = 0 + RoomMap.Width / 2;
+			float centerY = RoomMap.MapData.GroundY;
+			float centerZ = 0 + RoomMap.Depth / 2;
 
 			MonsterManager.AddSpawnPoint( 2201, new PosInfo
 			{

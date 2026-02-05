@@ -1,10 +1,9 @@
 using Server.Core.Session;
+using Server.Data.Models;
 using Server.Game.Monsters;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Server.Game.Map
 {
@@ -35,8 +34,11 @@ namespace Server.Game.Map
 		private readonly Dictionary<Monster, (int x, int z)> _monsterPositions;
 
 		public int Width => _mapData.Width;
-		public int Height => _mapData.Height;
+		public int Depth => _mapData.Depth;
 		public float CellSize => _mapData.CellSize;
+		public MapData MapData => _mapData;
+
+		public int MapId => _mapData.Id;
 
 		/// <summary>
 		/// GridMap 생성자
@@ -44,14 +46,14 @@ namespace Server.Game.Map
 		public GameMap(MapData mapData)
 		{
 			_mapData = mapData;
-			_cells = new MapCell[mapData.Width, mapData.Height];
+			_cells = new MapCell[mapData.Width, mapData.Depth];
 			_playerPositions = new Dictionary<IClientSession, (int x, int z)>();
 			_monsterPositions = new Dictionary<Monster, (int x, int z)>();
 
 			// 각 셀 초기화
 			for (int x = 0; x < mapData.Width; x++)
 			{
-				for (int z = 0; z < mapData.Height; z++)
+				for (int z = 0; z < mapData.Depth; z++)
 				{
 					_cells[x, z] = new MapCell();
 				}
@@ -75,7 +77,7 @@ namespace Server.Game.Map
 		/// <summary> 셀 좌표가 유효한 범위인지 확인 </summary>
 		public bool IsValidCell(int x, int z)
 		{
-			return 0 <= x && x < _mapData.Width && 0 <= z && z < _mapData.Height;
+			return 0 <= x && x < _mapData.Width && 0 <= z && z < _mapData.Depth;
 		}
 
 		/// <summary> 해당 셀이 이동 가능한지 확인 </summary>
@@ -118,6 +120,12 @@ namespace Server.Game.Map
 			if(!IsValidCell( cellX, cellZ ))
 				return;
 
+			if(_playerPositions.ContainsKey( player ))
+			{
+				// 이미 등록된 플레이어인 경우 기존 데이터 무시 후 재등록
+				RemovePlayer( player );
+			}
+
 			_cells[ cellX, cellZ ].Players.Add( player );
 			_playerPositions[ player ] = ( cellX, cellZ );
 		}
@@ -147,6 +155,7 @@ namespace Server.Game.Map
 
 			if(_playerPositions.TryGetValue( player, out var oldCellPos ))
 			{
+				//Console.WriteLine( $"before [UpdatePlayer] oldCell({oldCellPos.x},{oldCellPos.z}) players:{string.Join( ", ", _cells[ oldCellPos.x, oldCellPos.z ].Players.Select( p => $"ID:{p.PlayerId}" ) )}");
 				// 셀 변경 시에만 이동 처리
 				if(oldCellPos.x != newCellX || oldCellPos.z != newCellZ)
 				{
@@ -154,6 +163,9 @@ namespace Server.Game.Map
 					_cells[ newCellX, newCellZ ].Players.Add( player );
 					_playerPositions[ player ] = ( newCellX, newCellZ );
 				}
+
+				//Console.WriteLine( $"after [UpdatePlayer] oldCell({oldCellPos.x},{oldCellPos.z}) players:{string.Join( ", ", _cells[ oldCellPos.x, oldCellPos.z ].Players.Select( p => $"ID:{p.PlayerId}" ) )}" );
+				//Console.WriteLine( $"after [UpdatePlayer] NewCell({newCellX},{newCellZ}) players:{string.Join( ", ", _cells[ newCellX, newCellZ ].Players.Select( p => $"ID:{p.PlayerId}" ) )}" );
 			}
 		}
 

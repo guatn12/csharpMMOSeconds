@@ -10,7 +10,13 @@
     "MoveSpeed": 1.2,
     "MonsterType": "Normal",
     "Level": 1,
-    "Skills": [3001]
+    "Skills": [3001],
+    "DetectRange": 10.0,
+    "AttackRange": 2.0,
+    "ChaseRange": 15.0,
+    "ReturnRange": 25.0,
+    "PatrolRadius": 5.0,
+    "RespawnTime": 5.0
   },
   {
     "Id": 2002,
@@ -23,11 +29,17 @@
     "MoveSpeed": 1.0,
     "MonsterType": "Elite",
     "Level": 3,
-    "Skills": [3001, 3002]
+    "Skills": [3001, 3002],
+    "DetectRange": 15.0,
+    "AttackRange": 3.0,
+    "ChaseRange": 20.0,
+    "ReturnRange": 30.0,
+    "PatrolRadius": 7.0,
+    "RespawnTime": 10.0
   },
   {
     "Id": 2003,
-    "Name": "들쩐",
+    "Name": "들쥐",
     "Health": 30,
     "Attack": 5,
     "Defense": 1,
@@ -36,7 +48,13 @@
     "MoveSpeed": 1.5,
     "MonsterType": "Normal",
     "Level": 1,
-    "Skills": []
+    "Skills": [],
+    "DetectRange": 8.0,
+    "AttackRange": 1.5,
+    "ChaseRange": 12.0,
+    "ReturnRange": 20.0,
+    "PatrolRadius": 3.0,
+    "RespawnTime": 3.0
   },
   {
     "Id": 2101,
@@ -49,7 +67,13 @@
     "MoveSpeed": 0.8,
     "MonsterType": "Boss",
     "Level": 5,
-    "Skills": [3003, 3004, 3005]
+    "Skills": [3003, 3004, 3005],
+    "DetectRange": 20.0,
+    "AttackRange": 4.0,
+    "ChaseRange": 25.0,
+    "ReturnRange": 40.0,
+    "PatrolRadius": 8.0,
+    "RespawnTime": 300.0
   },
   {
     "Id": 2201,
@@ -62,6 +86,12 @@
     "MoveSpeed": 0.7,
     "MonsterType": "Normal",
     "Level": 1,
-    "Skills": [3006]
+    "Skills": [3006],
+    "DetectRange": 8.0,
+    "AttackRange": 1.5,
+    "ChaseRange": 12.0,
+    "ReturnRange": 20.0,
+    "PatrolRadius": 4.0,
+    "RespawnTime": 5.0
   }
 ]

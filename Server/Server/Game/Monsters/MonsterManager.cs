@@ -162,34 +162,6 @@ namespace Server.Game.Monsters
 
 		#region High-Level Search APIs
 
-		public List<Monster> GetMonstersInRange( PosInfo center, float radius )
-		{
-			if(_monsterSpawner == null || center == null)
-				return new List<Monster>();
-
-			return _monsterSpawner.GetAllMonsters()
-				.Where(m => m.IsAlive && Position3DValidator.CalculateDistance3D(m.Position, center) <= radius)
-				.ToList();
-		}
-
-		public Monster FindNearestMonster( PosInfo position, Func<Monster, bool> predicate = null )
-		{
-			if(_monsterSpawner == null || position == null)
-				return null;
-
-			var monsters = _monsterSpawner.GetAllMonsters().Where(m => m.IsAlive);
-
-			// 필터 조건 적용
-			if(predicate != null)
-			{
-				monsters = monsters.Where( predicate );
-			}
-
-			// 거리순 정렬 후 가장 가까운 몬스터 반환
-			return monsters.OrderBy(m => Position3DValidator.CalculateDistance3D(m.Position, position))
-				.FirstOrDefault();
-		}
-
 		public List<Monster> GetMonstersByTemplateId( int templateId )
 		{
 			if(_monsterSpawner == null)

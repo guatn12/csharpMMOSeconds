@@ -31,6 +31,7 @@ namespace DummyClient.Packet
 			Program.MyPlayer.Stats.MaxHP = packet.Player.MaxHP;
 			Program.MyPlayer.Stats.MaxMP = packet.Player.MaxMP;
 			Program.MyPlayer.CurrentExp = packet.Player.Experience;
+			Program.MyPlayer.CurrentMapId = packet.MapId;
 
 			// 위치 정보 초기화
 			if(packet.Player.PosInfo != null)
@@ -41,6 +42,17 @@ namespace DummyClient.Packet
 				Program.MyPlayer.Position.RotationX = packet.Player.PosInfo.RotationX;
 				Program.MyPlayer.Position.RotationY = packet.Player.PosInfo.RotationY;
 				Program.MyPlayer.Position.RotationZ = packet.Player.PosInfo.RotationZ;
+			}
+
+			Program.CurrentMapData = Program.DataManagerInstance.GetMap( packet.MapId );
+			if(Program.CurrentMapData != null)
+			{
+				_logger.LogInformation( "현재 맵: {MapName} (ID: {MapId})",
+					Program.CurrentMapData.Name, Program.CurrentMapData.Id );
+			}
+			else
+			{
+				_logger.LogWarning( "맵 데이터 없음. MapId: {MapId}", packet.MapId );
 			}
 
 			Program.MyPlayer.LogStatus( _logger );
@@ -178,7 +190,7 @@ namespace DummyClient.Packet
 				{
 					Program.MyPlayer.Stats.CurrentHP = packet.CurrentHP;
 
-					_logger.LogWarning( "[Client] 피격! {Attacker} -> 나 | Damage: {Damage} | Remaining HP:{ CurrentHP}/{ MaxHP} ({ Percent: F1}%)",
+					_logger.LogWarning( "[Client] 피격! {Attacker} -> 나 | Damage: {Damage} | Remaining HP:{CurrentHP}/{MaxHP} ({Percent:F1}%)",
 						attackerName, packet.Damage, packet.CurrentHP, Program.MyPlayer.Stats.MaxHP, Program.MyPlayer.HPPercent);
 
 					// HP 위험 경고

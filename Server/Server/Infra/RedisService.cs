@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Server.Config;
 using StackExchange.Redis;
@@ -173,47 +173,5 @@ namespace Server.Infra
 				_logger.LogError( ex, "RedisService Dispose 오류" );
 			}
 		}
-
-		//public async Task ConnectAsync()
-		//{
-		//	if(_connection != null && _connection.IsConnected)
-		//	{
-		//		return;
-		//	}
-
-		//	lock(_lock)
-		//	{
-		//		if(_connection != null && _connection.IsConnected)
-		//		{
-		//			return;
-		//		}
-
-		//		try
-		//		{
-		//			_logger.LogInformation( "Connecting to Redis..." );
-		//			_connection = ConnectionMultiplexer.Connect( _connectionString );
-		//			_logger.LogInformation( "Successfully connected to Redis." );
-		//		}
-		//		catch (Exception ex)
-		//		{
-		//			_logger.LogError( ex, "Failed to connect to Redis" );
-		//			throw;
-		//		}
-		//	}
-		//}
-
-		//public IDatabase GetDatabase(int db = -1)
-		//{
-		//	if(_connection == null || !_connection.IsConnected)
-		//	{
-		//		throw new InvalidOperationException( "Redis is not connected." );
-		//	}
-		//	return _connection.GetDatabase( db );
-		//}
-
-		//public void Dispose()
-		//{
-		//	_connection?.Dispose();
-		//}
 	}
 }

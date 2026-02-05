@@ -1,7 +1,5 @@
 using System;
 using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
@@ -18,7 +16,7 @@ using DummyClient.Packet;
 using System.Linq;
 using DummyClient.Data;
 using DummyClient.Config;
-using Microsoft.VisualBasic;
+using DummyClient.Data.Models;
 
 namespace DummyClient
 {
@@ -42,6 +40,8 @@ namespace DummyClient
 		public long Gold {  get; set; } = 0;
 
 		public PosInfo Position { get; set; }
+
+		public int CurrentMapId { get; set; } = 0;
 
 		// 전투 관련 계산 프로퍼티
 		public bool IsAlive => 0 < Stats.CurrentHP;
@@ -118,13 +118,15 @@ namespace DummyClient
 
 		public static Dictionary<long, ClientPlayerInfo> Players = new();
 
+		public static MapData CurrentMapData { get; set; }
+
 		// 몬스터 추적
 		public static Dictionary<long, MonsterInfo> NearbyMonsters = new Dictionary<long, MonsterInfo>();
 
 		public static long TargetMonsterId = 0;
 		public static bool AutoAttackEnabled = true;		// 자동 공격 활성화.
-		public static readonly float AttackRange = 5.0f;    // 공격 범위(서버와 동일)
-		public static readonly float MoveSpeed = 5.0f;      // 이동 속도 (초당 5 유닛)
+		public static float AttackRange = 5.0f;    // 공격 범위(서버와 동일)
+		public static float MoveSpeed = 5.0f;      // 이동 속도 (초당 5 유닛)
 
 		// 포션 자동 사용 설정
 		public static bool AutoPotionEnabled = true;
@@ -244,6 +246,7 @@ namespace DummyClient
 				config.Connection.ServerPort);
 
 			int clientCount = config.Simulation.ClientCount;
+			MoveSpeed = DataManagerInstance.GameConfigData.PlayerDefaultMoveSpeed;
 
 			if(1 < clientCount)
 			{
@@ -392,6 +395,17 @@ namespace DummyClient
 					return;
 				}
 
+				while(true)
+				{
+					// 룸 입장 대기
+					if(MyPlayer != null && 0 < MyPlayer.PlayerId)
+						break;
+					Thread.Sleep( 100 );
+				}
+
+				logger.LogInformation( "클라이언트 {ClientId}, 플레이어ID: {PlayerId}로 로그인 완료",
+					clientId, MyPlayer.PlayerId );
+
 				//개별 클라이언트 루프 실행 (통합 MainLoop 호출)
 				MainLoop( clientId, (ServerSession)connector.ConnectionSession, config, logger, cancellationToken );
 			}
@@ -487,6 +501,17 @@ namespace DummyClient
 				return;
 			}
 
+			while(true)
+			{
+				// 룸 입장 대기
+				if(MyPlayer != null && 0 < MyPlayer.PlayerId)
+					break;
+				Thread.Sleep( 100 );
+			}
+
+			logger.LogInformation( "클라이언트 {ClientId}, 플레이어ID: {PlayerId}로 로그인 완료",
+				clientId, MyPlayer.PlayerId );
+
 			// 통합 MainLoop 호출
 			MainLoop( (int)clientId, Session, config, logger );
 		}
@@ -549,7 +574,7 @@ namespace DummyClient
 							session.Send( useItemPacket );
 							LastPotionUseTime = DateTime.UtcNow;
 
-							logger.LogWarning( "[Client {ClientId}] [Send] C_UseItem - HP 포션 자동 사용 (HP:{Percent: F1}%)",
+							logger.LogWarning( "[Client {ClientId}] [Send] C_UseItem - HP 포션 자동 사용 (HP:{Percent:F1}%)",
 								clientId, hpPercent);
 						}
 					}
@@ -617,13 +642,36 @@ namespace DummyClient
 							// 목표 위치보다 가까우면 목표 위치로, 아니면 moveDistance만큼 이동.
 							if(distanceToTarget <= moveDistance)
 							{
-								MyPlayer.Position.PosX = targetX;
-								MyPlayer.Position.PosZ = targetZ;
+								if(CurrentMapData.IsWalkableWorld(targetX, targetZ))
+								{
+									MyPlayer.Position.PosX = targetX;
+									MyPlayer.Position.PosZ = targetZ;
+								}
+								else
+								{
+									logger.LogWarning( "[Client {ClientId}] 목표 위치가 이동 불가 지역임: ({X:F1}, {Z:F1})",
+										clientId, targetX, targetZ );
+								}
 							}
 							else
 							{
-								MyPlayer.Position.PosX += dirX * moveDistance;
-								MyPlayer.Position.PosZ += dirZ * moveDistance;
+								float newPosX = MyPlayer.Position.PosX + dirX * moveDistance;
+								float newPosZ = MyPlayer.Position.PosZ + dirZ * moveDistance;
+
+								// 이동 가능 여부 확인
+								if(CurrentMapData.IsWalkableWorld(newPosX, newPosZ))
+								{
+									MyPlayer.Position.PosX = newPosX;
+									MyPlayer.Position.PosZ = newPosZ;
+								}
+								else
+								{
+									if(moveCount % 10 == 0)
+									{
+										logger.LogDebug("[Client {ClientId}] 이동 불가 지역: ({X:F1}, {Z:F1})",
+											clientId, newPosX, newPosZ );
+									}
+								}
 							}
 
 							// Y 좌표를 타겟 몬스터와 동일하게 설정.
@@ -711,10 +759,11 @@ namespace DummyClient
 					// 3. 타겟이 없으면 Room 중앙으로 천천히 이동
 					else
 					{
-						float centerX = 50.0f;
-						float centerY = 0.0f;
-						float centerZ = 50.0f;
+						float centerX = CurrentMapData.Width * CurrentMapData.CellSize / 2;
+						float centerY = CurrentMapData.GroundY;
+						float centerZ = CurrentMapData.Depth * CurrentMapData.CellSize / 2;
 
+						// 중앙까지 거리 계산
 						float dx = centerX - MyPlayer.Position.PosX;
 						float dz = centerZ - MyPlayer.Position.PosZ;
 						float distanceToCenter = (float)Math.Sqrt( dx * dx + dz * dz );
@@ -726,10 +775,17 @@ namespace DummyClient
 
 							float moveDisntace = MoveSpeed * 0.5f * (messageInterval / 1000.0f); // 절반 속도
 
-							MyPlayer.Position.PosX += dirX * moveDisntace;
-							MyPlayer.Position.PosY = centerY;
-							MyPlayer.Position.PosZ += dirZ * moveDisntace;
-							MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
+							float newPosX = MyPlayer.Position.PosX + dirX * moveDisntace;
+							float newPosZ = MyPlayer.Position.PosZ + dirZ * moveDisntace;
+
+							// 이동 가능 여부 확인
+							if(CurrentMapData.IsWalkableWorld( newPosX, newPosZ ))
+							{
+								MyPlayer.Position.PosX = newPosX;
+								MyPlayer.Position.PosZ = newPosZ;
+								MyPlayer.Position.PosY = centerY;
+								MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
+							}
 
 							C_Move movePacket = new C_Move()
 							{

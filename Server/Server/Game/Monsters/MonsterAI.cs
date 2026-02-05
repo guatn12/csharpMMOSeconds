@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
+using Server.Data.Models;
 using Server.Room;
 using Server.Utils;
 using System;
@@ -18,8 +19,8 @@ namespace Server.Game.Monsters
 		private readonly ILogger _logger;
 
 		// AI 셋팅
-		private readonly float _detectionRange;     // 플레이어 감지 범위
-		private readonly float _attackRange;        // 공격 범위
+		private readonly float _detectionRange;		// 플레이어 감지 범위
+		private readonly float _attackRange;			// 공격 범위
 		private readonly float _returnRange;        // 귀환 시작 거리
 		private readonly float _patrolRadius;       // 배회 반경
 
@@ -47,17 +48,11 @@ namespace Server.Game.Monsters
 			_logger = logger;
 
 			// 몬스터 타입에 따른 AI 설정
-			_detectionRange = monster.StaticData.MonsterType switch
-			{
-				"Normal" => 10.0f,
-				"Elite" => 15.0f,
-				"Boss" => 20.0f,
-				_ => 10.0f
-			};
+			_detectionRange = monster.StaticData.DetectRange;
 
-			_attackRange = 6.0f;		// 플레이어 공격 범위(5m)보다 크게 설정
-			_returnRange = 25.0f;
-			_patrolRadius = 5.0f;
+			_attackRange = monster.StaticData.AttackRange;		// 플레이어 공격 범위(5m)보다 크게 설정
+			_returnRange = monster.StaticData.ReturnRange;
+			_patrolRadius = monster.StaticData.PatrolRadius;
 
 			_lastUpdateTime = DateTime.UtcNow;
 			_lastAttackTime = DateTime.UtcNow;
@@ -305,7 +300,9 @@ namespace Server.Game.Monsters
 			Player nearestPlayer = null;
 			float minDistance = float.MaxValue;
 
-			foreach(var session in _room.Players)
+			var Players = _room.RoomMap.GetNearByPlayers(_monster.Position.PosX, _monster.Position.PosZ, (int)_detectionRange);
+
+			foreach(var session in Players)
 			{
 				if(!session.Player.IsAlive) continue;
 
@@ -351,7 +348,7 @@ namespace Server.Game.Monsters
 			float dy = target.PosY - current.PosY;
 			float dz = target.PosZ - current.PosZ;
 
-			float distance = (float)Math.Sqrt(dx*dx+dy*dy+dx*dx);
+			float distance = (float)Math.Sqrt(dx*dx+dy*dy+dz*dz);
 
 			if(distance < 0.01f) return;
 

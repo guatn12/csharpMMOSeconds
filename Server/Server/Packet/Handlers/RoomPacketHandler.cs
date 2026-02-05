@@ -75,12 +75,12 @@ namespace Server.Packet.Handlers
 				PlayerId = session.PlayerId,
 				PosInfo = packet.PosInfo,
 			};
-			_room.Broadcast( response, excludeSession: session );
+			_room.BroadcastInRange( response, session, excludeSession: session );
 
 			// 6. 룸별 이동 후처리
 			await _room.OnPlayerMoveAsync( session, packet );
 
-			_logger.LogDebug("Player {PlayerId} moved to ({X}, {Y}, {Z})",
+			_logger.LogInformation("Player {PlayerId} moved to ({X}, {Y}, {Z})",
 				session.PlayerId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ );
 		}
 

@@ -21,6 +21,14 @@ namespace DummyClient.Data.Models
 		public int Level { get; set; } = 1;
 		public List<int> Skills { get; set; } = new(); // 사용할 수 있는 스킬 ID
 
+		// AI 관련 개체별 설정
+		public float DetectRange { get; set; } = 10.0f;	// 플레이어 감지 범위
+		public float AttackRange { get; set; } = 2.0f;		// 공격 범위
+		public float ChaseRange { get; set; } = 15.0f;		// 추격 최대 범위
+		public float ReturnRange { get; set; } = 25.0f;	// 귀환 시작 거리
+		public float PatrolRadius { get; set; } = 5.0f;	// 배회 반경
+		public float RespawnTime { get; set; } = 5.0f;		// 리스폰 시간 (초)
+
 		// 데이터 검증 메서드
 		public bool IsValid()
 		{
@@ -32,7 +40,12 @@ namespace DummyClient.Data.Models
 				ExpReward >= 0 &&
 				GoldReward >= 0 &&
 				MoveSpeed > 0 &&
-				Level > 0;
+				Level > 0 &&
+				DetectRange > 0 &&
+				AttackRange > 0 &&
+				ChaseRange > 0 &&
+				ReturnRange > 0 &&
+				RespawnTime >= 0;
 		}
 	}
 }

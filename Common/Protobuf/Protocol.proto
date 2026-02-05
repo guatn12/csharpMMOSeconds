@@ -64,6 +64,7 @@ message C_EnterGame {
 message S_EnterGame {
 	option (category) = SYSTEM;
 	PlayerInfo player = 1;
+	int32 mapId = 2;			// 입장한 맵 ID
 }
 
 // 서버 -> 클라이언트

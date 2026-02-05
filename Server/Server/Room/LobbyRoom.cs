@@ -170,9 +170,10 @@ namespace Server.Room
 
 		protected override void SetupDefaultSpawnPoints()
 		{
-			float centerX = MinX + RoomWidth / 2;
-			float centerY = MinY;
-			float centerZ = MinZ + RoomDepth / 2;
+			var mapData = RoomMap.MapData;
+			float centerX = (mapData.Width * mapData.CellSize) / 2;
+			float centerY = mapData.GroundY;
+			float centerZ = (mapData.Depth * mapData.CellSize) / 2;
 
 			// 로비는 평화로운 슬라임만 2마리
 			MonsterManager.AddSpawnPoint( 2201, new Protocol.PosInfo
@@ -288,6 +289,9 @@ namespace Server.Room
 				// Position3DValidator를 사용해 로비 스폰 위치 계산
 				var spawnPosition = Utils.Position3DValidator.GetSpawnPosition(this, new Random());
 
+				session.Player.InitPosition( spawnPosition );
+				RoomMap.AddPlayer( session, spawnPosition.PosX, spawnPosition.PosZ );
+
 				// GameSession을 통해 Redis에 위치 업데이트
 				await _playerPositionService.UpdatePositionAsync(session.PlayerId, spawnPosition );
 
@@ -300,7 +304,7 @@ namespace Server.Room
 
 				SendToPlayer( session, spawnPacket );
 
-				_lobbyLogger.LogDebug( "Player {SessionId} 로비 스폰 위치 설정: ({X}, {Y}, {Z})",
+				_lobbyLogger.LogInformation( "Player {SessionId} 로비 스폰 위치 설정: ({X}, {Y}, {Z})",
 					session.SessionId, spawnPosition.PosX, spawnPosition.PosY, spawnPosition.PosZ );
 			}
 			catch (Exception ex)

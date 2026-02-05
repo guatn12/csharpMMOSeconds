@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using DummyClient.Config;
@@ -22,10 +22,14 @@ namespace DummyClient.Data
 		private readonly ConcurrentDictionary<int, ItemData> _items = new ConcurrentDictionary<int, ItemData>();
 		private readonly ConcurrentDictionary<int, MonsterData> _monsters = new ConcurrentDictionary<int, MonsterData>();
 		private readonly ConcurrentDictionary<int, SkillData> _skills = new ConcurrentDictionary<int, SkillData>();
+		private readonly ConcurrentDictionary<int, MapData> _maps = new ConcurrentDictionary<int, MapData>();
+		private GameConfigData _gameConfigData;
 
 		private bool _isDataLoaded = false;
 		private DateTime _lastLoadTime = DateTime.MinValue;
 		private readonly object _lock = new object();
+
+		public GameConfigData GameConfigData => _gameConfigData;
 
 		public DataManager(
 			GameDataConfig gameDataConfig,
@@ -69,6 +73,17 @@ namespace DummyClient.Data
 			return _skills.TryGetValue( skillId, out var skill ) ? skill : null;
 		}
 
+		public MapData? GetMap( int mapId )
+		{
+			if(!_isDataLoaded)
+			{
+				_logger.LogWarning( "GetMap called but data is not loaded yet" );
+				return null;
+			}
+
+			return _maps.TryGetValue( mapId, out var map ) ? map : null;
+		}
+
 		public IReadOnlyDictionary<int, ItemData> GetAllItems()
 		{
 			if(!_isDataLoaded)
@@ -102,6 +117,16 @@ namespace DummyClient.Data
 			return _skills;
 		}
 
+		public IReadOnlyDictionary<int, MapData> GetAllMaps()
+		{
+			if(!_isDataLoaded)
+			{
+				_logger.LogWarning( "GetAllMaps called but data is not loaded yet" );
+				return new Dictionary<int, MapData>();
+			}
+			return _maps;
+		}
+
 		public int GetTotalItemCount()
 		{
 			return _isDataLoaded ? _items.Count : 0;
@@ -115,6 +140,11 @@ namespace DummyClient.Data
 		public int GetTotalSkillCount()
 		{
 			return _isDataLoaded ? _skills.Count : 0;
+		}
+
+		public int GetTotalMapCount()
+		{
+			return _isDataLoaded ? _maps.Count : 0;
 		}
 
 		public IEnumerable<ItemData> GetItemsByGrade( string grade )
@@ -201,6 +231,8 @@ namespace DummyClient.Data
 				string itemsFilePath = _gameDataConfig.GetDataFilePath("items");
 				string monsterFilePath = _gameDataConfig.GetDataFilePath("monsters");
 				string skillsFilePath = _gameDataConfig.GetDataFilePath("skills");
+				string mapsFilePath = _gameDataConfig.GetDataFilePath("maps");
+				string gameConfigFilePath = _gameDataConfig.GetDataFilePath("gameconfig");
 
 				// 경로 확인 (필요시 디버그 용도)
 				_logger.LogDebug( "Current working directory: {WorkingDir}", Directory.GetCurrentDirectory() );
@@ -225,29 +257,52 @@ namespace DummyClient.Data
 					return false;
 				}
 
+				if(!File.Exists( mapsFilePath ))
+				{
+					_logger.LogError( "Maps data file not found: {FilePath}", mapsFilePath );
+					return false;
+				}
+
+				if(!File.Exists( gameConfigFilePath ))
+				{
+					_logger.LogError( "GameConfig data file not found: {FilePath}", gameConfigFilePath );
+					return false;
+				}
+
 				//json 파일 로드
 				string itemsJson = await File.ReadAllTextAsync(itemsFilePath);
 				string monstersJson = await File.ReadAllTextAsync(monsterFilePath);
 				string skillsJson = await File.ReadAllTextAsync(skillsFilePath);
+				string mapsJson = await File.ReadAllTextAsync(mapsFilePath);
+				string gameConfigJson = await File.ReadAllTextAsync(gameConfigFilePath);
 
 				// json 역직렬화
 				List<ItemData> items = JsonSerializer.Deserialize<List<ItemData>>(itemsJson);
 				List<MonsterData> monsters = JsonSerializer.Deserialize<List<MonsterData>>(monstersJson);
 				List<SkillData> skills = JsonSerializer.Deserialize<List<SkillData>>(skillsJson);
+				List<MapData> maps = JsonSerializer.Deserialize<List<MapData>>(mapsJson);
+				_gameConfigData = JsonSerializer.Deserialize<GameConfigData>(gameConfigJson);
 
-				if(items == null || monsters == null || skills == null)
+				if(items == null || monsters == null || skills == null || maps == null)
 				{
 					_logger.LogError( "Filaed to deserialize game data files" );
 					return false;
+				}
+
+				// 맵 셀 파싱
+				foreach(var map in maps)
+				{
+					map.ParseCells();
 				}
 
 				// dictionary 변환
 				Dictionary<int, ItemData> itemsDict = items.ToDictionary(item => item.Id);
 				Dictionary<int, MonsterData> monstersDict = monsters.ToDictionary(monster => monster.Id);
 				Dictionary<int, SkillData> skillsDict = skills.ToDictionary(skill => skill.Id);
+				Dictionary<int, MapData> mapsDict = maps.ToDictionary(map => map.Id);
 
 				// 스레드 안전하게 데이터 업데이트
-				UpdateData(itemsDict, monstersDict, skillsDict);
+				UpdateData(itemsDict, monstersDict, skillsDict, mapsDict);
 
 				lock(_lock)
 				{
@@ -380,6 +435,35 @@ namespace DummyClient.Data
 				}
 			}
 
+			// Maps 검증
+			IReadOnlyDictionary<int, MapData> maps = _maps;
+			List<int> invalidMaps = new List<int>();
+
+			foreach(var kvp in maps)
+			{
+				var map = kvp.Value;
+
+				// 기본 검증
+				if(!map.IsValid())
+				{
+					invalidMaps.Add( map.Id );
+					_logger.LogError( "Invalid map data: ID={MapId}, Name={Name}", map.Id, map.Name );
+					isValid = false;
+					totalErrors++;
+				}
+
+				// ID 일치성 검증(Dictionary Key와 실제 ID가 같은지)
+				if(kvp.Key != map.Id)
+				{
+					_logger.LogError( "Map ID mismatch: Key={Key}, ActualId={ActualId}", kvp.Key, map.Id );
+					isValid = false;
+					totalErrors++;
+				}
+			}
+
+			// GameConfig 검증
+			isValid = isValid && _gameConfigData.IsValid();
+
 			// 검증 결과 로깅
 			if(isValid)
 			{
@@ -397,15 +481,18 @@ namespace DummyClient.Data
 
 		private void UpdateData( Dictionary<int, ItemData> itemDict,
 			Dictionary<int, MonsterData> monsterDict,
-			Dictionary<int, SkillData> skillDict )
+			Dictionary<int, SkillData> skillDict,
+			Dictionary<int, MapData> mapDict )
 		{
 			_items.Clear();
 			_monsters.Clear();
 			_skills.Clear();
+			_maps.Clear();
 
 			foreach(var kvp in itemDict) _items[ kvp.Key ] = kvp.Value;
 			foreach(var kvp in monsterDict) _monsters[ kvp.Key ] = kvp.Value;
 			foreach(var kvp in skillDict) _skills[ kvp.Key ] = kvp.Value;
+			foreach(var kvp in mapDict) _maps[ kvp.Key ] = kvp.Value;
 		}
 	}
 }

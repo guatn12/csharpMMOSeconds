@@ -59,18 +59,18 @@ namespace Server.Packet.Handlers
 				session.PlayerId, packet.MonsterId, result.Damage);
 
 			// 4. 응답
-			_room.Broadcast( new S_Damage
+			_room.BroadcastInRange( new S_Damage
 			{
 				AttackerId = result.AttackerId,
 				TargetId = result.TargetId,
 				Damage = result.Damage,
 				CurrentHP = result.TargetCurrentHP
-			} );
+			}, session );
 
-			_room.Broadcast( new S_MonsterUpdate
+			_room.BroadcastInRange( new S_MonsterUpdate
 			{
 				Monsters = { monster.Info }
-			} );
+			}, session );
 
 			// 5. 몬스터 사망 처리
 			if(result.TargetDied)
@@ -103,7 +103,7 @@ namespace Server.Packet.Handlers
 				GoldGained = reward.Gold
 			};
 			diePacket.DroppedItems.AddRange( reward.DroppedItem );
-			_room.Broadcast( diePacket );
+			_room.BroadcastInRange( diePacket, killerSession );
 
 			// 4. 몬스터 제거
 			_room.MonsterManager.DespawnMonster( monster.MonsterId );

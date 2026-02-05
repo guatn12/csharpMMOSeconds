@@ -64,16 +64,6 @@ namespace Server.Game.Monsters
 		#region High-Level Search APIs (고수준 검색 API)
 
 		/// <summary>
-		/// 특정 범위 내 모든 몬스터 조회
-		/// </summary>
-		List<Monster> GetMonstersInRange( PosInfo center, float radius );
-
-		/// <summary>
-		/// 가장 가까운 몬스터 찾기 (조건 필터 가능)
-		/// </summary>
-		Monster FindNearestMonster( PosInfo position, Func<Monster, bool> predicate = null );
-
-		/// <summary>
 		/// 특정 템플릿 ID의 모든 몬스터 조회
 		/// </summary>
 		List<Monster> GetMonstersByTemplateId( int templateId );

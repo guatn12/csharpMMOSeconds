@@ -42,7 +42,15 @@ namespace Server.Packet.Handlers
 					_logger.LogWarning( "Player {PlayerId} (Session {SessionId}) failed to join the default lobby.",
 						session.Player.PlayerId, session.SessionId );
 				}
+
+				session.CurrentRoom.SendToPlayer( session, new S_EnterGame()
+				{
+					Player = session.Player.Info,
+					MapId = session.CurrentRoom.RoomMap.MapId,
+				} );
 			}
+
+			
 
 			await Task.CompletedTask;
 		}
