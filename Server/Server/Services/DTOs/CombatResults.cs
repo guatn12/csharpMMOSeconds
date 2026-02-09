@@ -1,4 +1,6 @@
-﻿using System;
+using Server.Game;
+using Server.Game.Monsters;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,8 +13,10 @@ namespace Server.Services.DTOs
 	/// </summary>
 	public class CombatResults
 	{
-		public long AttackerId { get; set; }
-		public long TargetId { get; set; }
+		//public long AttackerId { get; set; }
+		public Player AttackerInfo { get; set; }
+		//public long TargetId { get; set; }
+		public Monster TargetInfo { get; set; }
 		public int Damage { get; set; }
 		public bool IsCritical { get; set; }
 		public int TargetCurrentHP { get; set; }

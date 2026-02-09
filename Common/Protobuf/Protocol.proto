@@ -46,13 +46,8 @@ enum MsgId {
 	S_INVENTORY_UPDATE = 25;	// 인벤토리 변경 알림
 
 	// 몬스터
-	S_MONSTER_SPAWN = 26;		// 몬스터 스폰 알림
-	S_MONSTER_DESPAWN = 27;		// 몬스터 제거 알림
-	S_MONSTER_MOVE = 28;		// 몬스터 이동 알림
-	C_ATTACK_MONSTER = 29;		// 몬스터 공격 요청
-	S_MONSTER_ATTACK = 30;		// 몬스터가 플레이어 공격
-	S_MONSTER_DIE = 31;			// 몬스터 사망 알림
-	S_MONSTER_UPDATE = 32;		// 몬스터 상태 업데이트
+	S_MONSTER_DIE = 26;			// 몬스터 사망 알림
+	S_MONSTER_UPDATE = 27;		// 몬스터 상태 업데이트
 }
 
 message C_EnterGame {
@@ -78,14 +73,14 @@ message S_LeaveGame {
 // 새로운 플레이어, 몬스터 등이 시야에 나왔을 때.
 message S_Spawn {
 	option (category) = ROOM;
-	repeated PlayerInfo players = 1;
+	repeated ObjectInfo objects = 1;
 }
 
 // 서버 -> 클라이언트
 // 플레이어 / 몬스터 등이 시야에서 사라졌을 때.
 message S_Despawn {
 	option (category) = ROOM;
-	repeated int64 objectIds = 1;
+	repeated ObjectInfo objects = 1;
 }
 
 // 클라이언트 -> 서버
@@ -99,8 +94,7 @@ message C_Move {
 // 다른 플레이어 / 몬스터가 이동했을 때 브로드 캐스팅.
 message S_Move {
 	option (category) = ROOM;
-	int64 playerId = 1;
-	PosInfo posInfo = 2;
+	repeated ObjectInfo objects = 1;
 }
 
 // 클라이언트 -> 서버
@@ -132,25 +126,21 @@ message C_PlayerInfo {
 }
 
 message C_UseSkill {
-	option (category) = ROOM;
+	option (category) = COMBAT;
 	int32 skillId = 1;
 	int64 targetId = 2;	// 타겟 Id (0이면 자기 자신)
 }
 
 message S_Damage {
-	option (category) = ROOM;
-	int64 attackerId = 1;
-	int64 targetId = 2;
-	int32 damage = 3;
-	int32 currentHP = 4;	// 데미지 처리 후 현재 HP
+	option (category) = COMBAT;
+	ObjectDamageInfo attacker = 1;
+	repeated ObjectDamageInfo targets = 2;
 }
 
 message S_Heal {
-	option (category) = ROOM;
-	int64 healerId = 1;
-	int64 targetId = 2;
-	int32 healAmount = 3;
-	int32 currentHP = 4;	// 힐 처리 후 현재 HP
+	option (category) = COMBAT;
+	ObjectDamageInfo healer = 1;
+	repeated ObjectDamageInfo targets = 2;
 }
 
 message S_LevelUp {
@@ -228,34 +218,6 @@ message S_InventoryUpdate {
 }
 
 // 몬스터
-message S_MonsterSpawn {
-	option (category) = ROOM;
-	repeated MonsterInfo monsters = 1;
-}
-
-message S_MonsterDespawn {
-	option (category) = ROOM;
-	repeated int64 monsterIds = 1;
-}
-
-message S_MonsterMove {
-	option (category) = COMBAT;
-	repeated MonsterInfo monsters = 1;
-}
-
-message C_AttackMonster {
-	option (category) = COMBAT;
-	int64 monsterId = 1;
-	int32 skillId = 2;				// 사용할 스킬 (기본 공격은 0)
-}
-
-message S_MonsterAttack {
-	option (category) = COMBAT;
-	int64 monsterId = 1;
-	int64 targetPlayerId = 2;
-	int32 damage = 3;
-}
-
 message S_MonsterDie {
 	option (category) = COMBAT;
 	int64 monsterId = 1;
@@ -265,6 +227,7 @@ message S_MonsterDie {
 	repeated InventoryItemInfo droppedItems = 5;
 }
 
+// 몬스터 상태 변경(state, hp 등)
 message S_MonsterUpdate {
 	option (category) = ROOM;
 	repeated MonsterInfo monsters = 1;
@@ -272,6 +235,31 @@ message S_MonsterUpdate {
 
 
 // --------- 공용 데이터 구조 --------- 
+
+enum ObjectType {
+	OBJECT_NONE = 0;
+	OBJECT_PLAYER = 1;
+	OBJECT_MONSTER = 2;
+	OBJECT_NPC = 3;
+}
+
+message ObjectInfo {
+	ObjectType type = 1;
+	int64 objectId = 2;
+	// 2개의 정보 중 1개만 사용된다. - playerInfo에 데이터가 있으면 monsterInfo는 null처리된다.
+	oneof info {
+		PlayerInfo playerInfo = 3;
+		MonsterInfo monsterInfo = 4;
+	}
+}
+
+message ObjectDamageInfo {
+	ObjectType type = 1;
+	int64 objectId = 2;
+	int32 damage = 3;
+	int32 currentHP = 4;
+	bool isCritical = 5;
+}
 
 enum PlayerState {
 	IDLE = 0;

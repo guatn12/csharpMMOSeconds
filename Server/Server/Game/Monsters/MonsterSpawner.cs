@@ -135,6 +135,7 @@ namespace Server.Game.Monsters
 				if(monster != null)
 				{
 					spawnedCount++;
+					OnMonsterSpawned?.Invoke( monster );
 				}
 			}
 
@@ -415,6 +416,22 @@ namespace Server.Game.Monsters
 		{
 			_logger.LogDebug( "Monster {MonsterId} state changed: {OldState} -> {NewState}",
 				  monster.MonsterId, oldState, newState );
+
+			// 중요한 상태 변경만 브로드캐스트
+			bool shouldBroadcast = newState switch
+			{
+				MonsterState.MonsterChase => true,   // 추적 시작
+				MonsterState.MonsterReturn => true,  // 귀환 시작
+				MonsterState.MonsterIdle => true,    // 대기 상태
+				MonsterState.MonsterDie => false,    // S_MonsterDie로 별도 처리
+				_ => false
+			};
+
+			if(shouldBroadcast)
+			{
+				var packet = new S_MonsterUpdate { Monsters = { monster.Info } };
+				_room.BroadcastInRange( packet, monster.Position );
+			}
 		}
 	}
 }

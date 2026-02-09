@@ -1,7 +1,9 @@
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Protocol;
+using Server.Core.Jobs;
 using Server.Database.Entities;
+using Server.Extensions;
 using Server.Game;
 using Server.Packet;
 using Server.Room;
@@ -356,15 +358,28 @@ namespace Server.Core.Session
         // 플레이어 죽음 이벤트 핸들러
         private void OnPlayerDeath(Player player)
         {
-            S_Despawn packet = new S_Despawn
+			S_Despawn packet = new S_Despawn();
+			packet.Objects.Add( player.ToObjectInfo() );
+			IRoom reEnterRoom = CurrentRoom;
+			if(CurrentRoom != null)
             {
-                ObjectIds = {player.PlayerId}
-            };
+				// 룸 내 다른 플레이어에게 사망 패킷 브로드캐스트
+				CurrentRoom.BroadcastInRange ( packet, player.Position, this );
+				bool result = CurrentRoom.TryLeaveAsync( this ).GetAwaiter().GetResult();
+				if( result == false)
+				{
+					_logger.LogError( "Player failed to leave room after death. PlayerId={PlayerId}, RoomId={RoomId}",
+						player.PlayerId, CurrentRoom.RoomId );
+				}
+			}
 
-            if(CurrentRoom != null)
-            {
-                CurrentRoom.Broadcast( packet );
-            }
+			// 사망 후 리스폰 처리 (임시: 바로 룸 재입장)
+			if(reEnterRoom != null && reEnterRoom is BaseRoom baseRoom)
+			{
+				var respawnJob = new RespawnJob();
+				respawnJob.Initialize( baseRoom, this, _logger );
+				baseRoom.Push( respawnJob );
+			}
 
 			_logger.LogWarning( "[Event] Player Death: PlayerId={PlayerId}", player.PlayerId );
 		}

@@ -73,6 +73,27 @@ namespace DummyClient
 			};
 		}
 
+		public void Clear()
+		{
+			PlayerId = 0;
+			PlayerName = "Unknown";
+			Level = 0;
+			Stats.MaxMP = 0;
+			Stats.MaxHP = 0;
+			Stats.CurrentHP = 0;
+			Stats.CurrentMP = 0;
+			CurrentExp = 0;
+			MaxExp = 0;
+			Gold = 0;
+			Position.PosX = 0;
+			Position.PosY = 0;
+			Position.PosZ = 0;
+			Position.RotationX = 0;
+			Position.RotationY = 0;
+			Position.RotationZ = 0;
+			CurrentMapId = 0;
+		}
+
 		public float DistanceTo(PosInfo target)
 		{
 			if(target == null || Position == null) return float.MaxValue;
@@ -736,9 +757,9 @@ namespace DummyClient
 							else
 							{
 								// 기존 일반 공격
-								var attackPacket = new C_AttackMonster
+								var attackPacket = new C_UseSkill
 								{
-									MonsterId = TargetMonsterId,
+									TargetId = TargetMonsterId,
 									SkillId = 0
 								};
 

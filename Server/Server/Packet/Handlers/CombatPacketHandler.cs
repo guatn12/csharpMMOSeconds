@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
+using Server.Extensions;
 using Server.Game.Monsters;
 using Server.Room;
 using Server.Services.Combat;
@@ -28,26 +29,49 @@ namespace Server.Packet.Handlers
 			InitializeHandlers();
 		}
 
-		private async Task HandleC_AttackMonsterAsync( IClientSession session, C_AttackMonster packet)
+		private async Task HandleC_UseSkillAsync(IClientSession session, C_UseSkill packet )
 		{
-			// 1. 기본 검증
+			// 기본 검증
 			var validation = PacketValidators.ValidateBasic(session, _room);
 			if(!validation.IsValid)
 			{
-				_logger.LogWarning( "AttackMonster validation failed: {Error}", validation.ErrorMessage );
+				_logger.LogWarning( "UseSkill validation failed: {Error}", validation.ErrorMessage );
 				return;
 			}
 
-			// 2. Monster 검증
-			Monster monster = _room.MonsterManager?.GetMonster(packet.MonsterId);
+			if(!session.Player.IsAlive)
+			{
+				_logger.LogWarning( "Player {PlayerId} is dead and cannot use skills", session.PlayerId );
+				return;
+			}
+
+			Monster monster = _room.MonsterManager?.GetMonster(packet.TargetId);
 			var monsterValidation = PacketValidators.ValidateMonster(monster);
 			if(!monsterValidation.IsValid)
 			{
-				_logger.LogWarning("Monster validation failed: {Error}", monsterValidation.ErrorMessage );
+				_logger.LogWarning( "Monster validation failed: {Error}", monsterValidation.ErrorMessage );
 				return;
 			}
 
-			// 3. 전투 처리
+			if(!await _room.ValidatePlayerUseSkillAsync( session, packet ))
+			{
+				_logger.LogWarning( "Skill validation failed for Player {PlayerId}, Skill {SkillId}",
+					session.PlayerId, packet.SkillId );
+				return;
+			}
+
+			// 4. 스킬 사용
+			bool skillUsed = session.Player.UseSkill( packet.SkillId );
+			if(!skillUsed)
+			{
+				_logger.LogWarning( "Player {PlayerId} failed to use skill {SkillId}",
+					session.PlayerId, packet.SkillId );
+				return;
+			}
+
+			// 룸별 스킬 효과 처리
+			await _room.OnPlayerUseSkillAsync( session, packet );
+
 			CombatResults result = await _combatService.ProcessPlayerAttackMonsterAsync(session.Player, monster);
 			if(result == null)
 			{
@@ -55,22 +79,14 @@ namespace Server.Packet.Handlers
 				return;
 			}
 
-			_logger.LogInformation("Player {PlayerId} attacked Monster {MonsterId} for {Damage} damage",
-				session.PlayerId, packet.MonsterId, result.Damage);
+			_logger.LogInformation( "Player {PlayerId} attacked Monster {TargetId} for {Damage} damage",
+				session.PlayerId, packet.TargetId, result.Damage );
 
-			// 4. 응답
 			_room.BroadcastInRange( new S_Damage
 			{
-				AttackerId = result.AttackerId,
-				TargetId = result.TargetId,
-				Damage = result.Damage,
-				CurrentHP = result.TargetCurrentHP
-			}, session );
-
-			_room.BroadcastInRange( new S_MonsterUpdate
-			{
-				Monsters = { monster.Info }
-			}, session );
+				Attacker = result.AttackerInfo.ToObjectDamageInfo(result.Damage, result.IsCritical),
+				Targets = { result.TargetInfo.ToObjectDamageInfo( result.Damage, result.IsCritical ) },
+			}, session.Player.Position );
 
 			// 5. 몬스터 사망 처리
 			if(result.TargetDied)
@@ -103,7 +119,7 @@ namespace Server.Packet.Handlers
 				GoldGained = reward.Gold
 			};
 			diePacket.DroppedItems.AddRange( reward.DroppedItem );
-			_room.BroadcastInRange( diePacket, killerSession );
+			_room.BroadcastInRange( diePacket, killerSession.Player.Position );
 
 			// 4. 몬스터 제거
 			_room.MonsterManager.DespawnMonster( monster.MonsterId );

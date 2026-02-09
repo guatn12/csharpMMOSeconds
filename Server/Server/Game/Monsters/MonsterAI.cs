@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
 using Server.Data.Models;
+using Server.Extensions;
 using Server.Room;
 using Server.Utils;
 using System;
@@ -279,7 +280,14 @@ namespace Server.Game.Monsters
 				_logger.LogInformation( "Monster {MonsterId} attacked Player {PlayerId} for {Damage} damage",
 					_monster.MonsterId, targetPlayer.Player.PlayerId, damage);
 
-				// TODO: S_MonsterAttack 패킷 브로드캐스트(BaseRoom에서 처리)
+				// TODO: S_Damage 패킷 브로드캐스트
+				S_Damage damagePacket = new S_Damage
+				{
+					Attacker = _monster.ToObjectDamageInfo(damage, false),
+					Targets = { targetPlayer.Player.ToObjectDamageInfo(damage, false) }
+				};
+
+				_room.BroadcastInRange( damagePacket, _monster.Position );
 			}
 		}
 
@@ -381,6 +389,13 @@ namespace Server.Game.Monsters
 				_monster.UpdatePosition( newPosition );
 				_room.RoomMap.UpdateMonsters( _monster, newPosition.PosX, newPosition.PosZ );
 			}
+
+			// TODO: S_Move 패킷 브로드캐스트
+			S_Move movePacket = new S_Move
+			{
+				Objects = { _monster.ToObjectInfo() }
+			};
+			_room.BroadcastInRange( movePacket, _monster.Position );
 		}
 	}
 }

@@ -25,8 +25,8 @@ namespace Server.Packet.Handlers
 			Handlers = new Dictionary<Type, Func<IClientSession, IMessage, Task>>();
 			_onRecv = new Dictionary<ushort, Func<IClientSession, ArraySegment<byte>, ValueTask>>();
 
-			Handlers.Add(typeof(C_AttackMonster), async (s, p) => await HandleC_AttackMonsterAsync( s, (C_AttackMonster)p));
-			_onRecv.Add((ushort)PacketID.C_AttackMonster, HandleC_AttackMonsterAsync);
+			Handlers.Add(typeof(C_UseSkill), async (s, p) => await HandleC_UseSkillAsync( s, (C_UseSkill)p));
+			_onRecv.Add((ushort)PacketID.C_UseSkill, HandleC_UseSkillAsync);
 		}
 
 		public async ValueTask HandleAsync(IClientSession session, ushort id, ArraySegment<byte> buffer)
@@ -40,11 +40,11 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning( "CombatPacketHandler _onRecv Dictionary Not Found id {id.ToString()}"  );
 			}
 		}
-		private async ValueTask HandleC_AttackMonsterAsync(IClientSession session, ArraySegment<byte> buffer)
+		private async ValueTask HandleC_UseSkillAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
-			var packet = new C_AttackMonster();
+			var packet = new C_UseSkill();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-			await HandleC_AttackMonsterAsync(session, packet);
+			await HandleC_UseSkillAsync(session, packet);
 		}
 	}
 }

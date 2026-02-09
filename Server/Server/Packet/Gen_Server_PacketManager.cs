@@ -49,10 +49,6 @@ namespace Server.Packet
             _packetTypeToId.Add(typeof(S_ItemUnequipped), PacketID.S_ItemUnequipped);
             _packetTypeToId.Add(typeof(S_ItemAdded), PacketID.S_ItemAdded);
             _packetTypeToId.Add(typeof(S_InventoryUpdate), PacketID.S_InventoryUpdate);
-            _packetTypeToId.Add(typeof(S_MonsterSpawn), PacketID.S_MonsterSpawn);
-            _packetTypeToId.Add(typeof(S_MonsterDespawn), PacketID.S_MonsterDespawn);
-            _packetTypeToId.Add(typeof(S_MonsterMove), PacketID.S_MonsterMove);
-            _packetTypeToId.Add(typeof(S_MonsterAttack), PacketID.S_MonsterAttack);
             _packetTypeToId.Add(typeof(S_MonsterDie), PacketID.S_MonsterDie);
             _packetTypeToId.Add(typeof(S_MonsterUpdate), PacketID.S_MonsterUpdate);
             // System 카테고리
@@ -61,14 +57,13 @@ namespace Server.Packet
             _packetCategoryCache.Add(PacketID.C_Move, PacketCategory.Room);
             _packetCategoryCache.Add(PacketID.C_Chat, PacketCategory.Room);
             _packetCategoryCache.Add(PacketID.C_PlayerInfo, PacketCategory.Room);
-            _packetCategoryCache.Add(PacketID.C_UseSkill, PacketCategory.Room);
+            // Combat 카테고리
+            _packetCategoryCache.Add(PacketID.C_UseSkill, PacketCategory.Combat);
             // Inventory 카테고리
             _packetCategoryCache.Add(PacketID.C_InventoryRequest, PacketCategory.Inventory);
             _packetCategoryCache.Add(PacketID.C_UseItem, PacketCategory.Inventory);
             _packetCategoryCache.Add(PacketID.C_EquipItem, PacketCategory.Inventory);
             _packetCategoryCache.Add(PacketID.C_UnequipItem, PacketCategory.Inventory);
-            // Combat 카테고리
-            _packetCategoryCache.Add(PacketID.C_AttackMonster, PacketCategory.Combat);
         }
 
 		public async ValueTask HandlePacket(IClientSession session, ArraySegment<byte> buffer)

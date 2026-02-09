@@ -1,4 +1,5 @@
 using Google.Protobuf;
+using Protocol;
 using Server.Core.Session;
 using Server.Game.Map;
 using Server.Packet.Handlers;
@@ -43,6 +44,8 @@ namespace Server.Room
 		IClientSession FindPlayerToPlayerId(long playerId);
 		// 룸 내 모든 플레이어에게 브로드캐스트
 		void Broadcast( IMessage packet, IClientSession excludeSession = null );
+		// 룸 내 특정 범위 내 플레이어에게 브로드캐스트
+		void BroadcastInRange( IMessage packet, PosInfo position, IClientSession excludeSession = null );
 		// 룸 내 특정 플레이어에게 전달
 		void SendToPlayer( IClientSession session, IMessage packet );
 		//룸 초기화
@@ -51,11 +54,11 @@ namespace Server.Room
 		Task CleanupAsync();
 
 		bool IsEmpty { get; }	// 룸이 비어 있는지 확인
-		bool IsFull { get; }	// 룸이 가득 찼는지 확인
+		bool IsFull { get; }    // 룸이 가득 찼는지 확인
 
-		// 플레이어 입장 이벤트
+		///<summary> 플레이어 입장 이벤트 - 외부(로깅, 퀘스트 등)에서 구독 가능 </summary> 
 		event EventHandler<PlayerRoomEventArgs> PlayerEntered;
-		// 플레이어 퇴장 이벤트
+		/// <summary> 플레이어 퇴장 이벤트 - 외부(로깅, 퀘스트 등)에서 구독 가능 </summary>
 		event EventHandler<PlayerRoomEventArgs> PlayerLeft;
 	}
 

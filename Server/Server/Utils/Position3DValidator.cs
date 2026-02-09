@@ -165,7 +165,6 @@ namespace Server.Utils
 			var mapData = room.RoomMap.MapData;
 
 			// 룸 중앙 셀에서 부터 이동 가능 지역 탐색.
-			float posX, posZ = 0.0f;
 			int walkableX, walkableZ = 0;
 			// 중앙에서 부터 x를 1씩 증가
 			for(int x = mapData.Width / 2; x < mapData.Width; x++)

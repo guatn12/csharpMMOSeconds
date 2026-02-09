@@ -31,8 +31,6 @@ namespace Server.Packet.Handlers
 			_onRecv.Add((ushort)PacketID.C_Chat, HandleC_ChatAsync);
 			Handlers.Add(typeof(C_PlayerInfo), async (s, p) => await HandleC_PlayerInfoAsync( s, (C_PlayerInfo)p));
 			_onRecv.Add((ushort)PacketID.C_PlayerInfo, HandleC_PlayerInfoAsync);
-			Handlers.Add(typeof(C_UseSkill), async (s, p) => await HandleC_UseSkillAsync( s, (C_UseSkill)p));
-			_onRecv.Add((ushort)PacketID.C_UseSkill, HandleC_UseSkillAsync);
 		}
 
 		public async ValueTask HandleAsync(IClientSession session, ushort id, ArraySegment<byte> buffer)
@@ -63,12 +61,6 @@ namespace Server.Packet.Handlers
 			var packet = new C_PlayerInfo();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_PlayerInfoAsync(session, packet);
-		}
-		private async ValueTask HandleC_UseSkillAsync(IClientSession session, ArraySegment<byte> buffer)
-		{
-			var packet = new C_UseSkill();
-			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
-			await HandleC_UseSkillAsync(session, packet);
 		}
 	}
 }

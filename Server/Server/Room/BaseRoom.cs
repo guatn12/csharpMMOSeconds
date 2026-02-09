@@ -19,6 +19,7 @@ using Server.Game.Monsters;
 using Server.Services;
 using Server.Packet.Handlers;
 using Server.Game.Map;
+using Server.Extensions;
 
 namespace Server.Room
 {
@@ -222,16 +223,7 @@ namespace Server.Room
 				// 입장 시 session의 currentRoom 변경
 				session.SetCurrentRoom( this );
 
-				// 플레이어 위치 정보 추가 - 기본 스폰 위치 할당(룸별 입장 시 덮어쓰기 가능)
-				var posInfo = Utils.Position3DValidator.GetSpawnPosition( this );
-
-				session.Player.InitPosition( posInfo );
-				RoomMap.AddPlayer( session, posInfo.PosX, posInfo.PosZ);
-
-				_logger.LogInformation( "BaseRoom Player {SessionId} spawned at position ({X}, {Y}, {Z}) in room {RoomId}",
-					session.SessionId, posInfo.PosX, posInfo.PosY, posInfo.PosZ, RoomId );
-
-				// 룸 별 입장 로직 실행
+				// 룸 별 입장 로직 실행 - 룸 입장 위치 정보는 개별 룸에서 처리.
 				await OnPlayerEnterAsync( session );
 
 				// 이벤트 발생
@@ -283,12 +275,12 @@ namespace Server.Room
 			}
 		}
 
-		public virtual void BroadcastInRange(IMessage packet, IClientSession session, IClientSession excludeSession = null )
+		public virtual void BroadcastInRange(IMessage packet, PosInfo position, IClientSession excludeSession = null )
 		{
 			if(packet == null)
 				return;
 
-			var currentPlayers = RoomMap.GetNearByPlayers(session.Player.Position.PosX, session.Player.Position.PosZ,
+			var currentPlayers = RoomMap.GetNearByPlayers(position.PosX, position.PosZ,
 				_dataManager.GameConfig.ViewDistance);
 
 			foreach(var player in currentPlayers)
@@ -320,25 +312,40 @@ namespace Server.Room
 		protected virtual Task OnCleanupAsync() => Task.CompletedTask;
 		protected virtual async Task OnPlayerEnterAsync( IClientSession session )
 		{
-			// 현재 스폰된 몬스터 정보 전송
-			if(MonsterManager != null)
-			{
-				var aliveMonsters = MonsterManager.GetAliveMonsters();
-				if(0 < aliveMonsters.Count)
-				{
-					var monsterSpawnPacket = new Protocol.S_MonsterSpawn();
-					foreach(var monster in aliveMonsters)
-					{
-						monsterSpawnPacket.Monsters.Add( monster.Info );
-					}
-					SendToPlayer( session, monsterSpawnPacket );
+			// 현재 스폰된 몬스터 중 플레이어 근처 몬스터 정보 전송
+			var monsters = RoomMap.GetNearByMonster(session.Player.Position.PosX, session.Player.Position.PosZ,
+					_dataManager.GameConfig.ViewDistance );
 
-					_logger.LogDebug( "Sent {Count} monsters info to Player {SessionId}",
-						aliveMonsters.Count, session.SessionId );
-				}
+			var spawnPacket = new S_Spawn();
+			foreach(var monster in monsters)
+			{
+				spawnPacket.Objects.Add( monster.ToObjectInfo() );
 			}
+
+			// 근처 플레이어 정보 전송
+			var players = RoomMap.GetNearByPlayers( session.Player.Position.PosX, session.Player.Position.PosZ,
+				_dataManager.GameConfig.ViewDistance );
+
+			foreach(var player in players)
+			{
+				spawnPacket.Objects.Add( player.Player.ToObjectInfo() );
+			}
+
+			SendToPlayer( session, spawnPacket );
+
+
+			// 근처 플레이어 들에게 들어온 플레이어 전송
+			var playerSpawnPacket = new S_Spawn();
+			playerSpawnPacket.Objects.Add( session.Player.ToObjectInfo() );
+			BroadcastInRange( playerSpawnPacket, session.Player.Position );
 		}
-		protected virtual Task OnPlayerLeaveAsync( IClientSession session ) => Task.CompletedTask;
+		protected virtual async Task OnPlayerLeaveAsync( IClientSession session )
+		{
+			// 룸 퇴장 패킷 전달
+			var leavePacket = new S_LeaveGame();
+			leavePacket.PlayerId = session.PlayerId;
+			SendToPlayer( session, leavePacket );
+		}
 		public virtual Task OnPlayerMoveAsync( IClientSession session, Protocol.C_Move packet ) => Task.CompletedTask;
 		public virtual Task OnPlayerChatAsync( IClientSession session, Protocol.C_Chat packet ) => Task.CompletedTask;
 		public virtual Task OnPlayerUseSkillAsync( IClientSession session, Protocol.C_UseSkill packet ) => Task.CompletedTask;
@@ -416,11 +423,15 @@ namespace Server.Room
 				}
 
 				// S_MonsterDespawn 브로드캐스트
-				S_MonsterDespawn despawnPacket = new S_MonsterDespawn();
-				despawnPacket.MonsterIds.Add( monsterId );
+				S_Despawn despawnPacket = new S_Despawn();
+				despawnPacket.Objects.Add( new ObjectInfo
+				{
+					Type = ObjectType.ObjectMonster,
+					ObjectId = monsterId
+				} );
 
 				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
-				Broadcast( despawnPacket );
+				BroadcastInRange( despawnPacket, monster.Position );
 
 				_logger.LogInformation( "Broadcasted S_MonsterDespawn for Monster {MonsterId} in Room {RoomId}",
 					monsterId, RoomId );
@@ -443,15 +454,20 @@ namespace Server.Room
 				// gameMap에 몬스터 위치 정보 추가
 				if(monster != null)
 				{
-					RoomMap.AddMonster( monster, monster.Info.PosInfo.PosX, monster.Info.PosInfo.PosZ );
+					RoomMap.AddMonster( monster, monster.Position.PosX, monster.Position.PosZ );
 				}
 
 				// S_MonsterSpawn 브로드 캐스트
-				S_MonsterSpawn spawnPacket = new S_MonsterSpawn();
-				spawnPacket.Monsters.Add( monster.Info );
+				S_Spawn spawnPacket = new S_Spawn();
+				spawnPacket.Objects.Add(new ObjectInfo
+				{
+					Type = ObjectType.ObjectMonster,
+					ObjectId = monster.MonsterId,
+					MonsterInfo = monster.Info
+				} );
 
 				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
-				Broadcast( spawnPacket );
+				BroadcastInRange( spawnPacket, monster.Position );
 
 				_logger.LogInformation( "Broadcasted S_MonsterSpawn for Monster {MonsterId} ({Name}) in Room {RoomId}",
 					monster.MonsterId, monster.Name, RoomId );
@@ -550,6 +566,9 @@ namespace Server.Room
 
 			// 퇴장 시 room의 맵에서 플레이어 위치 정보 제거
 			RoomMap.RemovePlayer( session );
+
+			// 퇴장 시 session의 currentRoom 초기화
+			session.SetCurrentRoom( null );
 
 			try
 			{

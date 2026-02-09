@@ -4,6 +4,7 @@ using Protocol;
 using Server.Config;
 using Server.Core.Session;
 using Server.Data;
+using Server.Extensions;
 using Server.Game.Monsters;
 using Server.Services;
 using Server.Services.Combat;
@@ -294,15 +295,6 @@ namespace Server.Room
 
 				// GameSession을 통해 Redis에 위치 업데이트
 				await _playerPositionService.UpdatePositionAsync(session.PlayerId, spawnPosition );
-
-				// 클라이언트에 위치 정보 전송
-				var spawnPacket = new Protocol.S_Move
-				{
-					PlayerId = session.SessionId,
-					PosInfo = spawnPosition
-				};
-
-				SendToPlayer( session, spawnPacket );
 
 				_lobbyLogger.LogInformation( "Player {SessionId} 로비 스폰 위치 설정: ({X}, {Y}, {Z})",
 					session.SessionId, spawnPosition.PosX, spawnPosition.PosY, spawnPosition.PosZ );

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Game;
 using Server.Game.Monsters;
@@ -60,6 +60,13 @@ namespace Server.Services.Combat
 				return null;
 			}
 
+			if(!player.IsAlive)
+			{
+				_logger.LogWarning( "Dead player {PlayerId} tried to attack monster {MonsterId}",
+					player.PlayerId, monster.MonsterId );
+				return null;
+			}
+
 			if(!monster.IsAlive)
 			{
 				_logger.LogWarning( "Player {PlayerId} tried to attack dead monster {MonsterId}",
@@ -97,8 +104,8 @@ namespace Server.Services.Combat
 			// 결과 반환
 			return new CombatResults
 			{
-				AttackerId = player.PlayerId,
-				TargetId = monster.MonsterId,
+				AttackerInfo = player,
+				TargetInfo = monster,
 				Damage = damage,
 				IsCritical = isCritical,
 				TargetCurrentHP = monster.CurrentHP,

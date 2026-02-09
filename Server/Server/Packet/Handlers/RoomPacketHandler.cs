@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
+using Server.Extensions;
 using Server.Room;
 using Server.Services;
 using Server.Utils;
@@ -35,6 +36,12 @@ namespace Server.Packet.Handlers
 				return;
 			}
 
+			if(!session.Player.IsAlive)
+			{
+				_logger.LogWarning( "Dead player {PlayerId} attempted to move", session.PlayerId );
+				return;
+			}
+
 			// 2. 범위 검증
 			var rangeValidation = PacketValidators.ValidateRange(packet.PosInfo, _room);
 
@@ -49,9 +56,9 @@ namespace Server.Packet.Handlers
 				{
 					var correctionPacket = new S_Move
 					{
-						PlayerId = session.PlayerId,
-						PosInfo = currentPos,
+						Objects = { session.Player.ToObjectInfo() }
 					};
+
 					_room.SendToPlayer(session, correctionPacket);
 
 					_logger.LogInformation( "Position corrected: Session={SessionId}, Pos=({X}, {Y}, {Z})",
@@ -72,10 +79,9 @@ namespace Server.Packet.Handlers
 			// 5. 브로드캐스트 (본인 제외)
 			var response = new S_Move
 			{
-				PlayerId = session.PlayerId,
-				PosInfo = packet.PosInfo,
+				Objects = { session.Player.ToObjectInfo() }
 			};
-			_room.BroadcastInRange( response, session, excludeSession: session );
+			_room.BroadcastInRange( response, session.Player.Position, excludeSession: session );
 
 			// 6. 룸별 이동 후처리
 			await _room.OnPlayerMoveAsync( session, packet );
@@ -147,51 +153,6 @@ namespace Server.Packet.Handlers
 			_room.SendToPlayer( session, response );
 
 			_logger.LogDebug( "Player {PlayerId} requested player info", session.PlayerId );
-		}
-
-		/// <summary>
-		/// C_UseSkill 패킷 처리
-		/// 스킬 사용 및 효과 처리
-		/// </summary>
-		private async Task HandleC_UseSkillAsync( IClientSession session, C_UseSkill packet)
-		{
-			// 1. 기본 검증
-			var validation = PacketValidators.ValidateBasic(session, _room);
-			if(!validation.IsValid)
-			{
-				_logger.LogWarning( "UseSkill validation failed: {Error}", validation.ErrorMessage );
-				return;
-			}
-
-			// 2. 대상 확인
-			if(!_room.ContainsPlayerToPlayerId(packet.TargetId))
-			{
-				_logger.LogWarning( "Target player {TargetId} not found in room", packet.TargetId );
-				return;
-			}
-
-			// 3. 스킬 사용 검증 (room에 따라, 스킬 사용 가능 룸과 불가 룸을 구분)
-			if(!await _room.ValidatePlayerUseSkillAsync(session, packet))
-			{
-				_logger.LogWarning( "Skill validation failed for Player {PlayerId}, Skill {SkillId}",
-					session.PlayerId, packet.SkillId );
-				return;
-			}
-
-			// 4. 스킬 사용
-			bool skillUsed = session.Player.UseSkill( packet.SkillId );
-			if(!skillUsed)
-			{
-				_logger.LogWarning( "Player {PlayerId} failed to use skill {SkillId}",
-					session.PlayerId, packet.SkillId );
-				return;
-			}
-
-			// 룸별 스킬 효과 처리
-			await _room.OnPlayerUseSkillAsync( session, packet );
-
-			_logger.LogDebug( "Player {PlayerId} used skill {SkillId} on target {TargetId}",
-				session.PlayerId, packet.SkillId, packet.TargetId );
 		}
 	}
 }

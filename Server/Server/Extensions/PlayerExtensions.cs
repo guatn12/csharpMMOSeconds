@@ -1,4 +1,4 @@
-﻿using Protocol;
+using Protocol;
 using Server.Game;
 using System;
 using System.Collections.Generic;
@@ -18,7 +18,7 @@ namespace Server.Extensions
 		public static EquipmentInfo ToEquipmentInfo(this Player player)
 		{
 			if(player == null)
-				throw new ArgumentNullException(nameof(player));
+				ArgumentNullException.ThrowIfNull( nameof( player ) );
 
 			var equipmentData = player.GetEquipmentData();
 			var result = new EquipmentInfo();
@@ -68,7 +68,7 @@ namespace Server.Extensions
 		public static PlayerStats ToPlayerStats(this Player player)
 		{
 			if(player == null) 
-				throw new ArgumentNullException(nameof (player));
+				ArgumentNullException.ThrowIfNull( nameof( player ) );
 
 			return new PlayerStats
 			{
@@ -132,5 +132,36 @@ namespace Server.Extensions
 			return !player.Equipment.IsSlotEquipped( slot );
 		}
 		#endregion
+
+		/// <summary>
+		/// Player의 Info를 Protocol ObjectInfo로 변환
+		/// </summary>
+		public static ObjectInfo ToObjectInfo (this Player player)
+		{
+			if(player == null)
+				ArgumentNullException.ThrowIfNull( nameof(player) );
+
+			return new ObjectInfo
+			{
+				ObjectId = player.PlayerId,
+				Type = ObjectType.ObjectPlayer,
+				PlayerInfo = player.Info.Clone()
+			};
+		}
+
+		public static ObjectDamageInfo ToObjectDamageInfo(this Player player, int damage, bool isCritical )
+		{
+			if(player == null)
+				ArgumentNullException.ThrowIfNull( nameof( player ) );
+
+			return new ObjectDamageInfo
+			{
+				ObjectId = player.PlayerId,
+				Damage = damage,
+				IsCritical = isCritical,
+				CurrentHP = player.CurrentHP,
+				Type = ObjectType.ObjectPlayer,
+			};
+		}
 	}
 }

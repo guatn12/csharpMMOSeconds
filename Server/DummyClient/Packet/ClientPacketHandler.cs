@@ -1,3 +1,4 @@
+using DummyClient.Extensions;
 using Microsoft.Extensions.Logging; // Added for ILogger
 using Protocol; // Added for packet types
 using ServerCore;
@@ -63,36 +64,144 @@ namespace DummyClient.Packet
 		public override ValueTask On_S_LeaveGame( NetworkSession session, S_LeaveGame packet )
 		{
 			_logger.LogInformation( "[Client] Received S_LeaveGame. PlayerId: {PlayerId}", packet.PlayerId );
+
+			Program.MyPlayer.Clear();
+			Program.CurrentMapData = null;
+			Program.NearbyMonsters.Clear();
+			Program.Players.Clear();
+
 			return ValueTask.CompletedTask;
 		}
 
 		public override ValueTask On_S_Spawn( NetworkSession session, S_Spawn packet )
 		{
-			_logger.LogInformation( "[Client] S_Spawn - {PlayersCount} players spawned", packet.Players.Count );
-			foreach(var player in packet.Players)
+			_logger.LogInformation( "[Client] S_Spawn - {ObjectCount} Object spawned", packet.Objects.Count );
+			foreach(var objectInfo in packet.Objects)
 			{
-				_logger.LogDebug( "  Player {PlayerId} at ({PosX:F2}, {PosY:F2}, {PosZ:F2})",
-					player.PlayerId, player.PosInfo.PosX, player.PosInfo.PosY, player.PosInfo.PosZ );
+				switch(objectInfo.Type)
+				{
+				case ObjectType.ObjectPlayer:
+					var player = objectInfo.PlayerInfo;
+					Program.Players.TryAdd( objectInfo.ObjectId, objectInfo.ToClientPlayerInfo() );
+					_logger.LogInformation( "Player Spawned: ID {PlayerId}, Name: {PlayerName}, Level: {Level}",
+						player.PlayerId, player.Name, player.Level );
+					break;
+				
+				case ObjectType.ObjectMonster:
+					var monster = objectInfo.MonsterInfo;
+					Program.NearbyMonsters[monster.MonsterId] = monster;
+					_logger.LogInformation( "Monster Spawned: ID {MonsterId}, Name: {Name}, Level: {Level}",
+						monster.MonsterId, monster.Name, monster.Level );
+					break;
+				
+				case ObjectType.ObjectNone:
+					_logger.LogWarning( "Unknown Object Type: ObjectNone" );
+					break;
+				default:
+					_logger.LogWarning( "Unknown Object Type: {ObjectType}", objectInfo.Type );
+					break;
+				}
 			}
 			return ValueTask.CompletedTask;
 		}
 
 		public override ValueTask On_S_Despawn( NetworkSession session, S_Despawn packet )
 		{
-			_logger.LogInformation( "[Client] Received S_Despawn. ObjectIds: {ObjectIds}", string.Join( ", ", packet.ObjectIds ) );
+			_logger.LogInformation( "[Client] Received S_Despawn. ObjectCount: {ObjectCount}", packet.Objects.Count );
+
+			foreach(var objectInfo in packet.Objects)
+			{
+				switch(objectInfo.Type)
+				{
+					case ObjectType.ObjectPlayer:
+						var player = objectInfo.PlayerInfo;
+						if(Program.Players.Remove( objectInfo.ObjectId ))
+						{
+							_logger.LogInformation( "Player Despawned: ID {PlayerId}, Name: {PlayerName}",
+								player.PlayerId, player.Name );
+						}
+						else
+						{
+							_logger.LogWarning( "Player Despawn Failed: ID {PlayerId} Not Found",
+								player.PlayerId );
+						}
+					break;
+					case ObjectType.ObjectMonster:
+						var monster = objectInfo.MonsterInfo;
+						if(Program.NearbyMonsters.Remove( monster.MonsterId ))
+						{
+							_logger.LogInformation( "Monster Despawned: ID {MonsterId}, Name: {Name}",
+								monster.MonsterId, monster.Name );
+						}
+						else
+						{
+							_logger.LogWarning( "Monster Despawn Failed: ID {MonsterId} Not Found",
+								monster.MonsterId );
+						}
+					break;
+					case ObjectType.ObjectNone:
+						_logger.LogWarning( "Unknown Object Type: ObjectNone" );
+					break;
+					default:
+						_logger.LogWarning( "Unknown Object Type: {ObjectType}", objectInfo.Type );
+					break;
+				}
+			}
+
 			return ValueTask.CompletedTask;
 		}
 
 		public override ValueTask On_S_Move( NetworkSession session, S_Move packet )
 		{
-			_logger.LogInformation( "[Client] S_Move - PlayerId: {PlayerId}, " +
-				"3D Position: ({PosX:F2}, {PosY:F2}, {PosZ:F2}), " +
-				"Rotation: ({RotX:F1}, {RotY:F1}, {RotZ:F1}), " +
-				"Timestamp: {Timestamp}",
-				packet.PlayerId,
-				packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ,
-				packet.PosInfo.RotationX, packet.PosInfo.RotationY, packet.PosInfo.RotationZ,
-				packet.PosInfo.Timestamp );
+			foreach(var obj in packet.Objects)
+			{
+				switch(obj.Type)
+				{
+					case ObjectType.ObjectPlayer:
+						if(obj.ObjectId == Program.MyPlayer.PlayerId)
+						{
+							// 내 위치 정보 업데이트
+							Program.MyPlayer.Position.PosX = obj.PlayerInfo.PosInfo.PosX;
+							Program.MyPlayer.Position.PosY = obj.PlayerInfo.PosInfo.PosY;
+							Program.MyPlayer.Position.PosZ = obj.PlayerInfo.PosInfo.PosZ;
+							Program.MyPlayer.Position.RotationX = obj.PlayerInfo.PosInfo.RotationX;
+							Program.MyPlayer.Position.RotationY = obj.PlayerInfo.PosInfo.RotationY;
+							Program.MyPlayer.Position.RotationZ = obj.PlayerInfo.PosInfo.RotationZ;
+							_logger.LogInformation( "[Client] S_Move - MyPlayer moved to ({PosX:F1}, {PosY:F1}, {PosZ:F1})",
+								obj.PlayerInfo.PosInfo.PosX, obj.PlayerInfo.PosInfo.PosY, obj.PlayerInfo.PosInfo.PosZ );
+							break;
+						}
+						else
+						{
+							if(Program.Players.TryGetValue( obj.ObjectId, out var player ))
+							{
+								player.Position.PosX = obj.PlayerInfo.PosInfo.PosX;
+								player.Position.PosY = obj.PlayerInfo.PosInfo.PosY;
+								player.Position.PosZ = obj.PlayerInfo.PosInfo.PosZ;
+								player.Position.RotationX = obj.PlayerInfo.PosInfo.RotationX;
+								player.Position.RotationY = obj.PlayerInfo.PosInfo.RotationY;
+								player.Position.RotationZ = obj.PlayerInfo.PosInfo.RotationZ;
+								_logger.LogInformation( "[Client] S_Move - Player {PlayerId} moved to ({PosX:F1}, {PosY:F1}, {PosZ:F1})",
+									obj.ObjectId, obj.PlayerInfo.PosInfo.PosX, obj.PlayerInfo.PosInfo.PosY, obj.PlayerInfo.PosInfo.PosZ );
+							}
+						}
+						break;
+					case ObjectType.ObjectMonster:
+						if(Program.NearbyMonsters.TryGetValue( obj.ObjectId, out var monster ))
+						{
+							monster.PosInfo.PosX = obj.MonsterInfo.PosInfo.PosX;
+							monster.PosInfo.PosY = obj.MonsterInfo.PosInfo.PosY;
+							monster.PosInfo.PosZ = obj.MonsterInfo.PosInfo.PosZ;
+							monster.PosInfo.RotationX = obj.MonsterInfo.PosInfo.RotationX;
+							monster.PosInfo.RotationY = obj.MonsterInfo.PosInfo.RotationY;
+							monster.PosInfo.RotationZ = obj.MonsterInfo.PosInfo.RotationZ;
+							_logger.LogInformation( "[Client] S_Move - Monster {MonsterId} ({Name}) moved to ({PosX:F1}, {PosY:F1}, {PosZ:F1})",
+								obj.ObjectId, monster.Name, obj.MonsterInfo.PosInfo.PosX, obj.MonsterInfo.PosInfo.PosY, obj.MonsterInfo.PosInfo.PosZ );
+						}
+						break;
+				}
+			}
+
 			return ValueTask.CompletedTask;
 		}
 
@@ -162,66 +271,87 @@ namespace DummyClient.Packet
 		public override ValueTask On_S_Damage( NetworkSession session, S_Damage packet )
 		{
 			// 공격자와 피해자 정보 파악
-			string attackerName = packet.AttackerId < 1000
-				? $"Player {packet.AttackerId}"
-				: (Program.NearbyMonsters.TryGetValue(packet.AttackerId, out var attacker)
+			string attackerName = packet.Attacker.Type == ObjectType.ObjectPlayer
+				? $"Player {packet.Attacker.ObjectId}"
+				: (Program.NearbyMonsters.TryGetValue(packet.Attacker.ObjectId, out var attacker)
 					? attacker.Name
-					: $"Monster {packet.AttackerId}");
+					: $"Monster {packet.Attacker.ObjectId}");
 
 			// 몬스터의 경우 (임시 구분)
-			if(1000 <= packet.TargetId)
+			foreach(var target in packet.Targets)
 			{
-				if(!Program.NearbyMonsters.TryGetValue( packet.TargetId, out var target ))
+				switch(target.Type)
 				{
-					_logger.LogWarning( "[Client] Target Monster {TargetId} Not Found From NearByMonsters", packet.TargetId );
-					return ValueTask.CompletedTask;
-				}
-
-				target.CurrentHP = packet.CurrentHP;
-
-				_logger.LogInformation( "[Client] Damage: {Attacker} -> {Target} | Damage: {Damage} | Remaining HP: {CurrentHP}",
-					attackerName, target.Name, packet.Damage, packet.CurrentHP );
-			}
-			// 플레이인 경우(임시 구분)
-			else
-			{
-				// 타겟이 나인 경우
-				if(packet.TargetId == Program.MyPlayer.PlayerId)
-				{
-					Program.MyPlayer.Stats.CurrentHP = packet.CurrentHP;
-
-					_logger.LogWarning( "[Client] 피격! {Attacker} -> 나 | Damage: {Damage} | Remaining HP:{CurrentHP}/{MaxHP} ({Percent:F1}%)",
-						attackerName, packet.Damage, packet.CurrentHP, Program.MyPlayer.Stats.MaxHP, Program.MyPlayer.HPPercent);
-
-					// HP 위험 경고
-					if(Program.MyPlayer.HPPercent < 30f)
+				case ObjectType.ObjectNone:
+					_logger.LogWarning( "[Client] Target Type is ObjectNone. Skipping..." );
+					continue;
+					case ObjectType.ObjectPlayer:
+					// 타겟이 나인 경우
+					if(target.ObjectId == Program.MyPlayer.PlayerId)
 					{
-						_logger.LogError( "HP 위험! 포션 사용 또는 도망 필요!" );
+						Program.MyPlayer.Stats.CurrentHP = target.CurrentHP;
+						string playerCriticalStr = target.IsCritical ? " [CRITICAL!]" : "";
+						_logger.LogWarning( "[Client] 피격! {Attacker} -> 나 | Damage: {Damage}{Critical} | Remaining HP:{CurrentHP}/{MaxHP} ({Percent:F1}%)",
+							attackerName, target.Damage, playerCriticalStr, target.CurrentHP, Program.MyPlayer.Stats.MaxHP, Program.MyPlayer.HPPercent );
+						// HP 위험 경고
+						if(Program.MyPlayer.HPPercent < 30f)
+						{
+							_logger.LogError( "HP 위험! 포션 사용 또는 도망 필요!" );
+						}
 					}
+					break;
+				case ObjectType.ObjectMonster:
+					if(!Program.NearbyMonsters.TryGetValue( target.ObjectId, out var monster ))
+					{
+						_logger.LogWarning( "[Client] Target Monster {TargetId} Not Found From NearByMonsters", target.ObjectId );
+						continue;
+					}
+					monster.CurrentHP = target.CurrentHP;
+					string criticalStr = target.IsCritical ? " [CRITICAL!]" : "";
+					_logger.LogInformation( "[Client] Damage: {Attacker} -> {Target} | Damage: {Damage}{Critical} | Remaining HP: {CurrentHP}",
+						attackerName, monster.Name, target.Damage, criticalStr, target.CurrentHP );
+					break;
+				default:
+					_logger.LogWarning( "[Client] Target Type is Unknown{Type}. Skipping...", target.Type );
+					continue;
 				}
 			}
 
 			return ValueTask.CompletedTask;
 		}
 		public override ValueTask On_S_Heal( NetworkSession session, S_Heal packet ) 
-		{ 
-			int oldHP = Program.MyPlayer.Stats.CurrentHP;
-			if(packet.HealAmount <= 0)
+		{
+			
+			if(packet.Healer.Damage <= 0)
 			{
-				_logger.LogWarning( "[Client] S_Heal - HealAmount({HealAmount}) is Zero or Negative!!!", packet.HealAmount);
+				_logger.LogWarning( "[Client] S_Heal - HealAmount({HealAmount}) is Zero or Negative!!!", packet.Healer.Damage );
 				return ValueTask.CompletedTask;
 			}
 
-			// 힐 타겟이 나인 경우 HP 업데이트
-			if(packet.TargetId == Program.MyPlayer.PlayerId)
+			foreach(var target in packet.Targets)
 			{
-				Program.MyPlayer.Stats.CurrentHP = packet.CurrentHP;
+				// 힐 타겟이 나인 경우 HP 업데이트
+				if(target.ObjectId == Program.MyPlayer.PlayerId)
+				{
+					int oldHP = Program.MyPlayer.Stats.CurrentHP;
+					Program.MyPlayer.Stats.CurrentHP = target.CurrentHP;
+
+					_logger.LogInformation( "[Client] Heal!!! healerId: {healerId} -> TargetId: {TargetId}", packet.Healer.ObjectId, target.ObjectId );
+					_logger.LogInformation( "HealAmount: {healAmount} | oldHP: {oldHP} -> CurrentHP: {CurrentHP} (ChangeValue: {Change}) ",
+					packet.Healer.Damage, oldHP, target.CurrentHP, target.CurrentHP - oldHP );
+					continue;
+				}
+
+				// 다른 플레이어 힐
+				if(Program.Players.TryGetValue( target.ObjectId, out var player ))
+				{
+					int oldHP = Program.MyPlayer.Stats.CurrentHP;
+					player.Stats.CurrentHP = target.CurrentHP;
+					_logger.LogInformation( "[Client] Heal!!! healerId: {healerId} -> TargetId: {TargetId}", packet.Healer.ObjectId, target.ObjectId );
+					_logger.LogInformation( "HealAmount: {healAmount} | oldHP: {oldHP} -> CurrentHP: {CurrentHP} (ChangeValue: {Change}) ",
+					packet.Healer.Damage, oldHP, target.CurrentHP, target.CurrentHP - oldHP );
+				}
 			}
-
-			_logger.LogInformation( "[Client] Heal!!! healerId: {healerId} -> TargetId: {TargetId}", packet.HealerId, packet.TargetId );
-			_logger.LogInformation( "HealAmount: {healAmount} | oldHP: {oldHP} -> CurrentHP: {CurrentHP} (ChangeValue: {Change}) ",
-				packet.HealAmount, oldHP, packet.CurrentHP, packet.CurrentHP - oldHP );
-
 
 			return ValueTask.CompletedTask; 
 		}
@@ -390,66 +520,66 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 		public override ValueTask On_S_InventoryUpdate( NetworkSession session, S_InventoryUpdate packet ) { Console.WriteLine( "Received but not handled: S_InventoryUpdate" ); return ValueTask.CompletedTask; }
-		public override ValueTask On_S_MonsterSpawn( NetworkSession session, S_MonsterSpawn packet )
-		{
-			_logger.LogInformation( "[Client] S_MonsterSpawn - {Count} monsters spawned", packet.Monsters.Count );
+		//public override ValueTask On_S_MonsterSpawn( NetworkSession session, S_MonsterSpawn packet )
+		//{
+		//	_logger.LogInformation( "[Client] S_MonsterSpawn - {Count} monsters spawned", packet.Monsters.Count );
 
-			foreach(var monster in packet.Monsters)
-			{
-				_logger.LogInformation( "Monster {MonsterId}: {Name} (Lv.{Level})" + "" +
-					"HP:{CurrentHP}/{MaxHP} State:{State} at ({PosX:F1},{PosY:F1},{PosZ:F1})",
-					monster.MonsterId, monster.Name, monster.Level, monster.CurrentHP, monster.MaxHP,
-					monster.State, monster.PosInfo.PosX, monster.PosInfo.PosY, monster.PosInfo.PosZ );
+		//	foreach(var monster in packet.Monsters)
+		//	{
+		//		_logger.LogInformation( "Monster {MonsterId}: {Name} (Lv.{Level})" + "" +
+		//			"HP:{CurrentHP}/{MaxHP} State:{State} at ({PosX:F1},{PosY:F1},{PosZ:F1})",
+		//			monster.MonsterId, monster.Name, monster.Level, monster.CurrentHP, monster.MaxHP,
+		//			monster.State, monster.PosInfo.PosX, monster.PosInfo.PosY, monster.PosInfo.PosZ );
 
-				// 몬스터 정보를 Program의 정적 딕셔너리에 저장
-				Program.NearbyMonsters[ monster.MonsterId ] = monster;
-			}
+		//		// 몬스터 정보를 Program의 정적 딕셔너리에 저장
+		//		Program.NearbyMonsters[ monster.MonsterId ] = monster;
+		//	}
 
-			// 자동 타겟 설정 (첫 번째 몬스터)(
-			if (Program.TargetMonsterId == 0 && 0 < packet.Monsters.Count)
-			{
-				Program.TargetMonsterId = packet.Monsters[0].MonsterId;
-				_logger.LogInformation( "Auto-target set to Monster {MonsterId}",
-					Program.TargetMonsterId );
-			}
+		//	// 자동 타겟 설정 (첫 번째 몬스터)(
+		//	if (Program.TargetMonsterId == 0 && 0 < packet.Monsters.Count)
+		//	{
+		//		Program.TargetMonsterId = packet.Monsters[0].MonsterId;
+		//		_logger.LogInformation( "Auto-target set to Monster {MonsterId}",
+		//			Program.TargetMonsterId );
+		//	}
 
-			return ValueTask.CompletedTask;
-		}
-		public override ValueTask On_S_MonsterDespawn( NetworkSession session, S_MonsterDespawn packet )
-		{
-			_logger.LogInformation( "[Client] S_MonsterDespawn - {Count} monsters removed",
-				packet.MonsterIds.Count );
+		//	return ValueTask.CompletedTask;
+		//}
+		//public override ValueTask On_S_MonsterDespawn( NetworkSession session, S_MonsterDespawn packet )
+		//{
+		//	_logger.LogInformation( "[Client] S_MonsterDespawn - {Count} monsters removed",
+		//		packet.MonsterIds.Count );
 
-			foreach(var monsterId in packet.MonsterIds)
-			{
-				if(Program.NearbyMonsters.TryGetValue( monsterId, out MonsterInfo monster ))
-				{
-					_logger.LogInformation( "Removed Monster {MonsterId}: {Name}", monsterId, monster.Name );
-					Program.NearbyMonsters.Remove( monsterId );
-				}
+		//	foreach(var monsterId in packet.MonsterIds)
+		//	{
+		//		if(Program.NearbyMonsters.TryGetValue( monsterId, out MonsterInfo monster ))
+		//		{
+		//			_logger.LogInformation( "Removed Monster {MonsterId}: {Name}", monsterId, monster.Name );
+		//			Program.NearbyMonsters.Remove( monsterId );
+		//		}
 
-				// 타겟이 제거되었으면 초기화
-				if(Program.TargetMonsterId == monsterId)
-				{
-					Program.TargetMonsterId = 0;
-					_logger.LogWarning( "Current target removed, searching new target..." );
-				}
-			}
+		//		// 타겟이 제거되었으면 초기화
+		//		if(Program.TargetMonsterId == monsterId)
+		//		{
+		//			Program.TargetMonsterId = 0;
+		//			_logger.LogWarning( "Current target removed, searching new target..." );
+		//		}
+		//	}
 
-			return ValueTask.CompletedTask;
-		}
-		public override ValueTask On_S_MonsterMove( NetworkSession session, S_MonsterMove packet ) { Console.WriteLine( "Received but not handled: S_MonsterMove" ); return ValueTask.CompletedTask; }
-		public override ValueTask On_S_MonsterAttack( NetworkSession session, S_MonsterAttack packet )
-		{
-			string monsterName = Program.NearbyMonsters.TryGetValue(packet.MonsterId, out var monster)
-				? monster.Name
-				: $"Monster {packet.MonsterId}";
+		//	return ValueTask.CompletedTask;
+		//}
+		//public override ValueTask On_S_MonsterMove( NetworkSession session, S_MonsterMove packet ) { Console.WriteLine( "Received but not handled: S_MonsterMove" ); return ValueTask.CompletedTask; }
+		//public override ValueTask On_S_MonsterAttack( NetworkSession session, S_MonsterAttack packet )
+		//{
+		//	string monsterName = Program.NearbyMonsters.TryGetValue(packet.MonsterId, out var monster)
+		//		? monster.Name
+		//		: $"Monster {packet.MonsterId}";
 
-			_logger.LogWarning( "[Client] Monster Attack! {Name} attacked Player {PlayerId} for {Damage} damage",
-				monsterName, packet.TargetPlayerId, packet.Damage );
+		//	_logger.LogWarning( "[Client] Monster Attack! {Name} attacked Player {PlayerId} for {Damage} damage",
+		//		monsterName, packet.TargetPlayerId, packet.Damage );
 
-			return ValueTask.CompletedTask;
-		}
+		//	return ValueTask.CompletedTask;
+		//}
 
 		public override ValueTask On_S_MonsterDie( NetworkSession session, S_MonsterDie packet )
 		{
@@ -507,14 +637,14 @@ namespace DummyClient.Packet
 						int hpChange = monster.CurrentHP - oldMonster.CurrentHP;
 						string changeStr = 0 < hpChange ? $"+{hpChange}" : hpChange.ToString();
 
-						_logger.LogDebug( "[Client] Monster {MonsterId} HP: {OldHP} -> {NewHP} ({Change})",
+						_logger.LogInformation( "[Client] S_MonsterUpdate - Monster {MonsterId} HP: {OldHP} -> {NewHP} ({Change})",
 							monster.MonsterId, oldMonster.CurrentHP, monster.CurrentHP, changeStr );
 					}
 
 					// 상태 변경 로그
 					if (oldMonster.State != monster.State)
 					{
-						_logger.LogDebug( "[Client] Monster {MonsterId} State: {OldState} -> {NewState}",
+						_logger.LogInformation( "[Client] S_MonsterUpdate - Monster {MonsterId} State: {OldState} -> {NewState}",
 							monster.MonsterId, oldMonster.State, monster.State );
 					}
 
