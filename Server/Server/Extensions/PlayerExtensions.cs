@@ -18,7 +18,7 @@ namespace Server.Extensions
 		public static EquipmentInfo ToEquipmentInfo(this Player player)
 		{
 			if(player == null)
-				ArgumentNullException.ThrowIfNull( nameof( player ) );
+				ArgumentNullException.ThrowIfNull( player );
 
 			var equipmentData = player.GetEquipmentData();
 			var result = new EquipmentInfo();
@@ -68,7 +68,7 @@ namespace Server.Extensions
 		public static PlayerStats ToPlayerStats(this Player player)
 		{
 			if(player == null) 
-				ArgumentNullException.ThrowIfNull( nameof( player ) );
+				ArgumentNullException.ThrowIfNull( player );
 
 			return new PlayerStats
 			{
@@ -139,7 +139,7 @@ namespace Server.Extensions
 		public static ObjectInfo ToObjectInfo (this Player player)
 		{
 			if(player == null)
-				ArgumentNullException.ThrowIfNull( nameof(player) );
+				ArgumentNullException.ThrowIfNull( player );
 
 			return new ObjectInfo
 			{
@@ -152,7 +152,7 @@ namespace Server.Extensions
 		public static ObjectDamageInfo ToObjectDamageInfo(this Player player, int damage, bool isCritical )
 		{
 			if(player == null)
-				ArgumentNullException.ThrowIfNull( nameof( player ) );
+				ArgumentNullException.ThrowIfNull( player );
 
 			return new ObjectDamageInfo
 			{

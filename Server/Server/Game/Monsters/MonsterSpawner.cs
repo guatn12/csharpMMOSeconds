@@ -173,6 +173,9 @@ namespace Server.Game.Monsters
 			if(!_monsters.TryAdd(monsterId, monster))
 			{
 				_logger.LogError( "Failed to add monster {MonsterId} to dictionary", monsterId );
+				monster.OnDeath -= OnMonsterDeath;
+				monster.OnHealthChanged -= OnMonsterHealthChanged;
+				monster.OnStateChanged -= OnMonsterStateChanged;
 				return null;
 			}
 
@@ -182,6 +185,9 @@ namespace Server.Game.Monsters
 			{
 				_monsters.TryRemove( monsterId, out _ );
 				_logger.LogError( "Failed to add monster AI for monster {MonsterId}", monsterId );
+				monster.OnDeath -= OnMonsterDeath;
+				monster.OnHealthChanged -= OnMonsterHealthChanged;
+				monster.OnStateChanged -= OnMonsterStateChanged;
 				return null;
 			}
 

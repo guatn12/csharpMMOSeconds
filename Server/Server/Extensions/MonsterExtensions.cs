@@ -17,7 +17,7 @@ namespace Server.Extensions
 		public static ObjectInfo ToObjectInfo( this Monster monster )
 		{
 			if(monster == null)
-				ArgumentNullException.ThrowIfNull( nameof( monster ) );
+				ArgumentNullException.ThrowIfNull( monster );
 
 			return new ObjectInfo
 			{
@@ -30,7 +30,7 @@ namespace Server.Extensions
 		public static ObjectDamageInfo ToObjectDamageInfo( this Monster monster, int damage, bool isCritical )
 		{
 			if(monster == null)
-				ArgumentNullException.ThrowIfNull( nameof( monster ) );
+				ArgumentNullException.ThrowIfNull( monster );
 
 			return new ObjectDamageInfo
 			{

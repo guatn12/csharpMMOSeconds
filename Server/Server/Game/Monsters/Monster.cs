@@ -12,8 +12,6 @@ namespace Server.Game.Monsters
 		// 정적 데이터 참조
 		public MonsterData StaticData { get; private set; }
 
-		private static int _monsterNextId = 0;
-
 		// 스폰 정보
 		public PosInfo SpawnPosition { get; private set; }
 		public DateTime SpawnTime { get; private set; }

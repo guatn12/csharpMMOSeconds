@@ -78,8 +78,8 @@ namespace Server.Game
 		public long Experience => Info.Experience;
 
 		public bool IsAlive => Info.State != PlayerState.Dead;
-		public float HPPercentage => 0 < Info.MaxHP ? (float)Info.CurrentHP : 0f;
-		public float MPPercentage => 0 < Info.MaxMP ? (float)Info.CurrentMP : 0f;
+		public float HPPercentage => 0 < Info.MaxHP ? (float)Info.CurrentHP / MaxHP : 0f;
+		public float MPPercentage => 0 < Info.MaxMP ? (float)Info.CurrentMP / MaxMP : 0f;
 		public long RequiredExp => Info.Level * 100; // 임시 레벨업 필요 경험치.
 		public long CombatTargetId => _combatTargetId;
 
@@ -259,6 +259,8 @@ namespace Server.Game
 		public void EnterCombat( Player target = null )
 		{
 			if(!CanPerformAction()) return;
+
+			if(target == null) return;
 
 			_combatTargetId = target.PlayerId;
 			SetState( PlayerState.InCombat );

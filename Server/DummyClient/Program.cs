@@ -260,6 +260,7 @@ namespace DummyClient
 			_logger.LogInformation( " - 아이템: {ItemCount}개", DataManagerInstance.GetTotalItemCount() );
 			_logger.LogInformation( " - 몬스터: {MonsterCount}개", DataManagerInstance.GetTotalMonsterCount() );
 			_logger.LogInformation( " - 스킬: {SkillCount}개", DataManagerInstance.GetTotalSkillCount() );
+			_logger.LogInformation( " - 맵: {MapCount}개", DataManagerInstance.GetTotalMapCount() );
 			// DataManager 초기화 끝.
 
 			IPEndPoint endPoint = new IPEndPoint(

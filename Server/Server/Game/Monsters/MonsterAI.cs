@@ -38,6 +38,9 @@ namespace Server.Game.Monsters
 		private DateTime _lastPatrolChange;
 		private readonly TimeSpan _patrolChangeInterval = TimeSpan.FromSeconds(3);
 
+		// Idle 타임
+		private DateTime _lastIdleTime;
+
 		// 타겟 손실 유예 (플레이어를 찾지 못했을 때 바로 귀환하지 않음)
 		private DateTime _targetLostTime = DateTime.MinValue;
 		private readonly TimeSpan _targetLostGracePeriod = TimeSpan.FromSeconds(3);
@@ -109,7 +112,7 @@ namespace Server.Game.Monsters
 			}
 
 			// 일정 시간 후 배회
-			if(TimeSpan.FromSeconds( 2 ) < DateTime.UtcNow - _lastUpdateTime)
+			if(TimeSpan.FromSeconds( 2 ) < DateTime.UtcNow - _lastIdleTime)
 			{
 				_monster.UpdateState( MonsterState.MonsterPatrol );
 			}
@@ -147,6 +150,7 @@ namespace Server.Game.Monsters
 			if(distanceToTarget < 0.5f)
 			{
 				_monster.UpdateState( MonsterState.MonsterIdle );
+				_lastIdleTime = DateTime.UtcNow;
 			}
 		}
 
@@ -211,6 +215,7 @@ namespace Server.Game.Monsters
 				_monster.UpdatePosition( _monster.SpawnPosition );
 				_monster.Restore();
 				_monster.UpdateState( MonsterState.MonsterIdle );
+				_lastIdleTime = DateTime.UtcNow;
 				_logger.LogDebug( "Monster {MonsterId} retuned to spawn position", _monster.MonsterId );
 				return;
 			}
