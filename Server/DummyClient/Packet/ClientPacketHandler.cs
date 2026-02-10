@@ -24,6 +24,7 @@ namespace DummyClient.Packet
 				packet.Player.PlayerId, packet.Player.Name,
 				packet.Player.Level, packet.Player.CurrentHP, packet.Player.MaxHP );
 
+			// 플레이어 초기화.
 			Program.MyPlayer.PlayerId = packet.Player.PlayerId;
 			Program.MyPlayer.PlayerName = packet.Player.Name;
 			Program.MyPlayer.Level = packet.Player.Level;
@@ -45,6 +46,7 @@ namespace DummyClient.Packet
 				Program.MyPlayer.Position.RotationZ = packet.Player.PosInfo.RotationZ;
 			}
 
+			// 맵 데이터 로드
 			Program.CurrentMapData = Program.DataManagerInstance.GetMap( packet.MapId );
 			if(Program.CurrentMapData != null)
 			{
@@ -56,6 +58,10 @@ namespace DummyClient.Packet
 				_logger.LogWarning( "맵 데이터 없음. MapId: {MapId}", packet.MapId );
 			}
 
+			// 데이터 초기화 - 타겟 몬스터 초기화
+			Program.TargetMonsterId = 0;
+
+			// 전체 출력
 			Program.MyPlayer.LogStatus( _logger );
 
 			return ValueTask.CompletedTask;
@@ -69,7 +75,7 @@ namespace DummyClient.Packet
 			Program.CurrentMapData = null;
 			Program.NearbyMonsters.Clear();
 			Program.Players.Clear();
-
+			
 			return ValueTask.CompletedTask;
 		}
 

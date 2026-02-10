@@ -20,6 +20,7 @@ using Server.Services;
 using Server.Packet.Handlers;
 using Server.Game.Map;
 using Server.Extensions;
+using Server.Utils;
 
 namespace Server.Room
 {
@@ -424,11 +425,7 @@ namespace Server.Room
 
 				// S_MonsterDespawn 브로드캐스트
 				S_Despawn despawnPacket = new S_Despawn();
-				despawnPacket.Objects.Add( new ObjectInfo
-				{
-					Type = ObjectType.ObjectMonster,
-					ObjectId = monsterId
-				} );
+				despawnPacket.Objects.Add( monster.ToObjectInfo() );
 
 				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
 				BroadcastInRange( despawnPacket, monster.Position );
@@ -459,12 +456,7 @@ namespace Server.Room
 
 				// S_MonsterSpawn 브로드 캐스트
 				S_Spawn spawnPacket = new S_Spawn();
-				spawnPacket.Objects.Add(new ObjectInfo
-				{
-					Type = ObjectType.ObjectMonster,
-					ObjectId = monster.MonsterId,
-					MonsterInfo = monster.Info
-				} );
+				spawnPacket.Objects.Add( monster.ToObjectInfo() );
 
 				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
 				BroadcastInRange( spawnPacket, monster.Position );
@@ -482,31 +474,13 @@ namespace Server.Room
 		// 기본 스폰 포인트 설정 (하위 클래스에서 재정의)
 		protected virtual void SetupDefaultSpawnPoints()
 		{
-			//ex) 룸 중앙에 슬라임 3마리 스폰
-			float centerX = 0 + RoomMap.Width / 2;
-			float centerY = RoomMap.MapData.GroundY;
-			float centerZ = 0 + RoomMap.Depth / 2;
+			var monsterDataList = _dataManager.GetAllMonsters();
 
-			MonsterManager.AddSpawnPoint( 2201, new PosInfo
+			foreach( var monster in monsterDataList )
 			{
-				PosX = centerX - 5,
-				PosY = centerY,
-				PosZ = centerZ
-			} );
-
-			MonsterManager.AddSpawnPoint( 2201, new PosInfo
-			{
-				PosX = centerX + 5,
-				PosY = centerY,
-				PosZ = centerZ
-			} );
-
-			MonsterManager.AddSpawnPoint( 2001, new PosInfo
-			{
-				PosX = centerX,
-				PosY = centerY,
-				PosZ = centerZ + 10
-			} );
+				var position = Position3DValidator.GetSpawnPosition(this);
+				MonsterManager.AddSpawnPoint( monster.Key, position );
+			}
 		}
 
 		// 몬스터 업데이트 메서드
@@ -629,7 +603,7 @@ namespace Server.Room
 			PlayerPositionService playerPositionService )
 		{
 			RoomPacketHandler = new RoomPacketHandler( loggerFactory.CreateLogger<RoomPacketHandler>(), this, playerPositionService );
-			CombatPacketHandler = new CombatPacketHandler( loggerFactory.CreateLogger<CombatPacketHandler>(), this, combatService, rewardService );
+			CombatPacketHandler = new CombatPacketHandler( loggerFactory.CreateLogger<CombatPacketHandler>(), this, combatService, rewardService, _dataManager );
 			InventoryPacketHandler = new InventoryPacketHandler( loggerFactory.CreateLogger<InventoryPacketHandler>(), this );
 
 		}

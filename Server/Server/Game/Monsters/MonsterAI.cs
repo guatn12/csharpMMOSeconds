@@ -328,20 +328,35 @@ namespace Server.Game.Monsters
 		// 랜덤 배회 위치 생성
 		public PosInfo GetRandomPatrolPosition()
 		{
-			Random random = new Random();
+			Random random = Random.Shared;
+			int maxAttempts = 10;
 
-			// 스폰 위치 기준으로 _patrolRadius 반경 내 랜덤 위치
-			float angle = (float)(random.NextDouble() * 2 * Math.PI);
-			float distance = (float)(random.NextDouble() * _patrolRadius);
+			for(int i = 0; i < maxAttempts; i++)
+			{
+				// 스폰 위치 기준으로 _patrolRadius 반경 내 랜덤 위치
+				float angle = (float)(random.NextDouble() * 2 * Math.PI);
+				float distance = (float)(random.NextDouble() * _patrolRadius);
 
-			float offsetX = distance * (float)Math.Cos(angle);
-			float offsetZ = distance * (float)Math.Sin(angle);
+				float posX = _monster.SpawnPosition.PosX + distance * (float)Math.Cos(angle);
+				float posZ = _monster.SpawnPosition.PosZ + distance * (float)Math.Sin(angle);
 
+				if(_room.RoomMap.IsWalkableWorld(posX, posZ))
+				{
+					return new PosInfo
+					{
+						PosX = posX,
+						PosY = _room.RoomMap.MapData.GetWorldHeight( posX, posZ ),
+						PosZ = posZ,
+					};
+				}
+			}
+
+			// 전부 실패 시 현재 위치 유지
 			return new PosInfo
 			{
-				PosX = _monster.SpawnPosition.PosX + offsetX,
-				PosY = _monster.SpawnPosition.PosY,
-				PosZ = _monster.SpawnPosition.PosZ + offsetZ,
+				PosX = _monster.Position.PosX,
+				PosY = _monster.Position.PosY,
+				PosZ = _monster.Position.PosZ,
 			};
 		}
 
@@ -371,16 +386,34 @@ namespace Server.Game.Monsters
 			// 목표 위치보다 가까우면 목표 위치로 이동.
 			if( distance <= moveDistance)
 			{
+				if(!_room.RoomMap.IsWalkableWorld(target.PosX, target.PosZ))
+				{
+					_logger.LogWarning( "Monster {MonsterId} Move Position Is Not Walkable. newPosition: {X}, {Z}",
+						_monster.MonsterId, target.PosX, target.PosZ );
+					return;
+				}
+
 				_monster.UpdatePosition( target );
 				_room.RoomMap.UpdateMonsters( _monster, target.PosX, target.PosZ );
 			}
 			else
 			{
+				float posX = current.PosX + dirX * moveDistance;
+				float posY = current.PosY + dirY * moveDistance;
+				float posZ = current.PosZ + dirZ * moveDistance;
+
+				if(!_room.RoomMap.IsWalkableWorld(posX, posZ))
+				{
+					_logger.LogWarning( "Monster {MonsterId} Move Position Is Not Walkable. newPosition: {X}, {Z}",
+						_monster.MonsterId, posX, posZ );
+					return;
+				}
+
 				PosInfo newPosition = new PosInfo
 				{
-					PosX = current.PosX + dirX * moveDistance,
-					PosY = current.PosY + dirY * moveDistance,
-					PosZ = current.PosZ + dirZ * moveDistance,
+					PosX = posX,
+					PosY = posY,
+					PosZ = posZ,
 					RotationX = current.RotationX,
 					RotationY = (float)Math.Atan2(dirX, dirZ) * (180f / (float)Math.PI), // Yaw 계산
 					RotationZ = current.RotationZ

@@ -86,6 +86,11 @@ namespace Server.Game.Map
 			return _mapData.IsWalkable(x, z);
 		}
 
+		public bool IsWalkableWorld(float x, float z)
+		{
+			return _mapData.IsWalkableWorld(x, z);
+		}
+
 		#endregion
 
 		#region 셀 접근

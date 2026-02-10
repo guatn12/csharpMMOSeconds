@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
+using Server.Data;
 using Server.Extensions;
 using Server.Game.Monsters;
 using Server.Room;
@@ -8,6 +9,7 @@ using Server.Services.Combat;
 using Server.Services.DTOs;
 using Server.Services.Reward;
 using Server.Utils;
+using System;
 using System.Threading.Tasks;
 
 namespace Server.Packet.Handlers
@@ -18,14 +20,16 @@ namespace Server.Packet.Handlers
 		private readonly BaseRoom _room;
 		private readonly ICombatService _combatService;
 		private readonly IRewardService _rewardService;
+		private readonly DataManager _dataManager;
 
 		public CombatPacketHandler(ILogger<CombatPacketHandler> logger, BaseRoom room, 
-			ICombatService combatService, IRewardService rewardService )
+			ICombatService combatService, IRewardService rewardService, DataManager dataManager )
 		{
 			_logger = logger;
 			_room = room;
 			_combatService = combatService;
 			_rewardService = rewardService;
+			_dataManager = dataManager;
 			InitializeHandlers();
 		}
 
@@ -119,10 +123,10 @@ namespace Server.Packet.Handlers
 				GoldGained = reward.Gold
 			};
 			diePacket.DroppedItems.AddRange( reward.DroppedItem );
-			_room.BroadcastInRange( diePacket, killerSession.Player.Position );
+			_room.BroadcastInRange( diePacket, monster.Position );
 
 			// 4. 몬스터 제거
-			_room.MonsterManager.DespawnMonster( monster.MonsterId );
+			_room.MonsterManager.DespawnMonster( monster.MonsterId, TimeSpan.FromSeconds(_dataManager.GameConfig.MonsterDespawnDelaySeconds) );
 
 			_logger.LogInformation( "Monster {MonsterId} defeated by Player {PlayerId}, Exp={Exp}, Gold={Gold}, LevelUp={LevelUp}",
 				monster.MonsterId, killerPlayerId, reward.Experience, reward.Gold, reward.LeveledUp );

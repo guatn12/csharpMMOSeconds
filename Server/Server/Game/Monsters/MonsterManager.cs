@@ -343,8 +343,8 @@ namespace Server.Game.Monsters
 			{
 				if(_monsterSpawner != null)
 				{
-					_monsterSpawner.OnMonsterDespawned -= (monsterId, monster) => OnMonsterDespawned?.Invoke(monsterId, monster);
-					_monsterSpawner.OnMonsterSpawned -= (monster) => OnMonsterSpawned?.Invoke(monster);
+					_monsterSpawner.OnMonsterDespawned -= HandleMonsterDespawned;
+					_monsterSpawner.OnMonsterSpawned -= HandleMonsterSpawned;
 				}
 				_monsterSpawner?.ClearAllMonsters();
 				_monsterSpawner = null;

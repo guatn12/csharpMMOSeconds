@@ -1,6 +1,7 @@
 using Protocol;
 using Server.Data.Models;
 using Server.Game.Map;
+using Server.Game.Monsters;
 using Server.Room;
 using System;
 using System.Collections.Generic;
@@ -213,6 +214,62 @@ namespace Server.Utils
 
 			var returnValue = GetRoomCenter(room);
 			return mapData.WorldToCell( returnValue.PosX, returnValue.PosZ );
+		}
+
+		public PosInfo MoveTowards( IRoom room, PosInfo current, PosInfo target, double intervalSeconds, float speed )
+		{
+			if(target == null) return current;
+
+			//방향 벡터 계산
+			float dx = target.PosX - current.PosX;
+			float dy = target.PosY - current.PosY;
+			float dz = target.PosZ - current.PosZ;
+
+			float distance = (float)Math.Sqrt(dx*dx+dy*dy+dz*dz);
+
+			if(distance < 0.01f) return current;
+
+			// 정규화된 방향 벡터
+			float dirX = dx / distance;
+			float dirY = dy / distance;
+			float dirZ = dz / distance;
+
+			// 이동 거리 (초당 speed 단위)
+			float moveDistance = speed * (float)intervalSeconds;
+
+			// 목표 위치보다 가까우면 목표 위치로 이동.
+			if(distance <= moveDistance)
+			{
+				if(!room.RoomMap.IsWalkableWorld( target.PosX, target.PosZ ))
+				{
+					return current;
+				}
+
+				return target;
+			}
+			else
+			{
+				float posX = current.PosX + dirX * moveDistance;
+				float posY = current.PosY + dirY * moveDistance;
+				float posZ = current.PosZ + dirZ * moveDistance;
+
+				if(!room.RoomMap.IsWalkableWorld( posX, posZ ))
+				{
+					return current;
+				}
+
+				PosInfo newPosition = new PosInfo
+				{
+					PosX = posX,
+					PosY = posY,
+					PosZ = posZ,
+					RotationX = current.RotationX,
+					RotationY = (float)Math.Atan2(dirX, dirZ) * (180f / (float)Math.PI), // Yaw 계산
+					RotationZ = current.RotationZ
+				};
+
+				return newPosition;
+			}
 		}
 	}
 }

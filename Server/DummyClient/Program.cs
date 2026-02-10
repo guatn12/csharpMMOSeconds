@@ -605,7 +605,8 @@ namespace DummyClient
 					if(0 < NearbyMonsters.Count)
 					{
 						// 타겟이 없거나, 현재 타겟이 사라졌으면 새로 선택
-						if(TargetMonsterId == 0 || !NearbyMonsters.ContainsKey( TargetMonsterId ))
+						if(TargetMonsterId == 0 || !NearbyMonsters.ContainsKey( TargetMonsterId ) ||
+							NearbyMonsters[TargetMonsterId].State == MonsterState.MonsterDie)
 						{
 							// 가장 가까운 몬스터 선택
 							var aliveMonsters = NearbyMonsters.Values
@@ -689,7 +690,7 @@ namespace DummyClient
 								{
 									if(moveCount % 10 == 0)
 									{
-										logger.LogDebug("[Client {ClientId}] 이동 불가 지역: ({X:F1}, {Z:F1})",
+										logger.LogWarning("[Client {ClientId}] 이동 불가 지역: ({X:F1}, {Z:F1})",
 											clientId, newPosX, newPosZ );
 									}
 								}
@@ -807,20 +808,25 @@ namespace DummyClient
 								MyPlayer.Position.PosY = centerY;
 								MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
 							}
-
-							C_Move movePacket = new C_Move()
+							else
 							{
-								PosInfo = new PosInfo()
+								logger.LogWarning( "[Client {ClientId}] 이동 불가 지역: ({X:F1}, {Z:F1})",
+											clientId, newPosX, newPosZ );
+							}
+
+								C_Move movePacket = new C_Move()
 								{
-									PosX = MyPlayer.Position.PosX,
-									PosY = MyPlayer.Position.PosY,
-									PosZ = MyPlayer.Position.PosZ,
-									RotationX = MyPlayer.Position.RotationX,
-									RotationY = MyPlayer.Position.RotationY,
-									RotationZ = MyPlayer.Position.RotationZ,
-									Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-								}
-							};
+									PosInfo = new PosInfo()
+									{
+										PosX = MyPlayer.Position.PosX,
+										PosY = MyPlayer.Position.PosY,
+										PosZ = MyPlayer.Position.PosZ,
+										RotationX = MyPlayer.Position.RotationX,
+										RotationY = MyPlayer.Position.RotationY,
+										RotationZ = MyPlayer.Position.RotationZ,
+										Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+									}
+								};
 							session.Send( movePacket );
 
 							if(moveCount % 10 == 0)

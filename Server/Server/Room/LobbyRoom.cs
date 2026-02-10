@@ -9,6 +9,7 @@ using Server.Game.Monsters;
 using Server.Services;
 using Server.Services.Combat;
 using Server.Services.Reward;
+using Server.Utils;
 using ServerCore;
 using System;
 using System.Threading;
@@ -171,25 +172,13 @@ namespace Server.Room
 
 		protected override void SetupDefaultSpawnPoints()
 		{
-			var mapData = RoomMap.MapData;
-			float centerX = (mapData.Width * mapData.CellSize) / 2;
-			float centerY = mapData.GroundY;
-			float centerZ = (mapData.Depth * mapData.CellSize) / 2;
+			var monsterDataList = _dataManager.GetAllMonsters();
 
-			// 로비는 평화로운 슬라임만 2마리
-			MonsterManager.AddSpawnPoint( 2201, new Protocol.PosInfo
+			foreach(var monster in monsterDataList)
 			{
-				PosX = centerX - 10,
-				PosY = centerY,
-				PosZ = centerZ
-			} );
-
-			MonsterManager.AddSpawnPoint( 2201, new Protocol.PosInfo
-			{
-				PosX = centerX + 10,
-				PosY = centerY,
-				PosZ = centerZ
-			} );
+				var position = Position3DValidator.GetSpawnPosition(this);
+				MonsterManager.AddSpawnPoint( monster.Key, position );
+			}
 		}
 
 		// 로비 환경 설정(초기화 시 호출)
@@ -200,7 +189,7 @@ namespace Server.Room
 			await Task.CompletedTask;
 		}
 
-		private async Task SendWelcomeMessageAsync(IClientSession session)
+		private Task SendWelcomeMessageAsync(IClientSession session)
 		{
 			try
 			{
@@ -221,14 +210,16 @@ namespace Server.Room
 				_lobbyLogger.LogError( ex, "Failed to send welcome message to Player {SessionId} in lobby '{RoomName}'",
 					  session.SessionId, RoomName );
 			}
+
+			return Task.CompletedTask;
 		}
 
-		private async Task NotifyPlayerJoinedAsync(IClientSession session)
+		private Task NotifyPlayerJoinedAsync(IClientSession session)
 		{
 			try
 			{
 				string joinMessage = $"Player_{session.SessionId}님이 로비에 입장했습니다.";
-				Protocol.S_Chat joinPacket = new Protocol.S_Chat
+				S_Chat joinPacket = new S_Chat
 				{
 					PlayerId = session.Player.PlayerId,
 					Message = joinMessage,
@@ -241,14 +232,16 @@ namespace Server.Room
 				_lobbyLogger.LogError( ex, "Failed to notify player join for Player {SessionId} in lobby '{RoomName}'",
 					 session.SessionId, RoomName );
 			}
+
+			return Task.CompletedTask;
 		}
 
-		private async Task NotifyPlayerLeftAsync(IClientSession session)
+		private Task NotifyPlayerLeftAsync(IClientSession session)
 		{
 			try
 			{
 				string leaveMessage = $"Player_{session.SessionId}님이 로비를 떠났습니다.";
-				Protocol.S_Chat leavePacket = new Protocol.S_Chat
+				S_Chat leavePacket = new S_Chat
 				{
 					PlayerId = 0, // 시스템 메시지
 					Message = leaveMessage,
@@ -261,14 +254,16 @@ namespace Server.Room
 				_lobbyLogger.LogError( ex, "Failed to notify player leave for Player {SessionId} in lobby '{RoomName}'",
 					  session.SessionId, RoomName );
 			}
+
+			return Task.CompletedTask;
 		}
 
-		private async Task SendLobbyStatusAsync(IClientSession session)
+		private Task SendLobbyStatusAsync(IClientSession session)
 		{
 			try
 			{
 				string statusMessage = $"현재 로비 접속자: {CurrentPlayerCount}/{MaxPlayers}명";
-				Protocol.S_Chat statusPacket = new Protocol.S_Chat
+				S_Chat statusPacket = new S_Chat
 				{
 					PlayerId = 0, // 시스템 메시지
 					Message = statusMessage,
@@ -281,6 +276,8 @@ namespace Server.Room
 				_lobbyLogger.LogError( ex, "Failed to send lobby status to Player {SessionId} in lobby '{RoomName}'",
 					  session.SessionId, RoomName );
 			}
+
+			return Task.CompletedTask;
 		}
 
 		private async Task SetPlayerSpawnPositionAsync(IClientSession session)

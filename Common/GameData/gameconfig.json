@@ -1,5 +1,6 @@
 {
   "ViewDistance": 50,
   "BroadCastRange": 100,
-  "PlayerDefaultMoveSpeed": 5
+  "PlayerDefaultMoveSpeed": 5,
+  "MonsterDespawnDelaySeconds": 3
 }
