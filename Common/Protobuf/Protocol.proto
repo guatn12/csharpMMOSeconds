@@ -58,7 +58,7 @@ message C_EnterGame {
 // 게임 입장
 message S_EnterGame {
 	option (category) = SYSTEM;
-	PlayerInfo player = 1;
+	ObjectInfo player = 1;
 	int32 mapId = 2;			// 입장한 맵 ID
 }
 
@@ -66,7 +66,7 @@ message S_EnterGame {
 // 플레이어가 게임을 떠났을 때,
 message S_LeaveGame {
 	option (category) = SYSTEM;
-	int64 playerId = 1;
+	int64 objectId = 1;
 }
 
 // 서버 -> 클라이언트
@@ -112,12 +112,12 @@ message S_Chat {
 
 message S_PlayerUpdate {
 	option (category) = ROOM;
-	PlayerInfo player = 1;
+	ObjectInfo player = 1;
 }
 
 message S_PlayerStat {
 	option (category) = ROOM;
-	PlayerInfo player = 1;
+	ObjectInfo player = 1;
 }
 
 message C_PlayerInfo {
@@ -188,7 +188,7 @@ message S_ItemEquipped {
 	int32 inventorySlot = 2;
 	int32 equipSlot = 3;
 	EquipmentInfo updatedEquipment = 4;
-	PlayerStats updatedStats = 5;
+	StatInfo updatedStats = 5;
 }
 
 message C_UnequipItem {
@@ -202,7 +202,7 @@ message S_ItemUnequipped {
 	int32 equipSlot = 2;
 	int32 returnedToSlot = 3;			// 인벤토리로 돌아간 슬롯?
 	EquipmentInfo updatedEquipment = 4;
-	PlayerStats updatedStats = 5;
+	StatInfo updatedStats = 5;
 }
 
 message S_ItemAdded {
@@ -230,7 +230,7 @@ message S_MonsterDie {
 // 몬스터 상태 변경(state, hp 등)
 message S_MonsterUpdate {
 	option (category) = ROOM;
-	repeated MonsterInfo monsters = 1;
+	repeated ObjectInfo monsters = 1;
 }
 
 
@@ -244,15 +244,19 @@ enum ObjectType {
 }
 
 message ObjectInfo {
-	ObjectType type = 1;
-	int64 objectId = 2;
+	int64 objectId = 1;
+	string name = 2;
+	PosInfo posInfo = 3;
+	StatInfo statInfo = 4;
+	State state = 5;
 	// 2개의 정보 중 1개만 사용된다. - playerInfo에 데이터가 있으면 monsterInfo는 null처리된다.
 	oneof info {
-		PlayerInfo playerInfo = 3;
-		MonsterInfo monsterInfo = 4;
+		PlayerDetailInfo playerDetailInfo = 6;
+		MonsterDetailInfo monsterDetailInfo = 7;
 	}
 }
 
+// 데미지 처리 임시. 다시 수정 필요.
 message ObjectDamageInfo {
 	ObjectType type = 1;
 	int64 objectId = 2;
@@ -261,29 +265,16 @@ message ObjectDamageInfo {
 	bool isCritical = 5;
 }
 
-enum PlayerState {
-	IDLE = 0;
-	WALKING = 1;
-	RUNNING = 2;
-	JUMPING = 3;
-	FLYING = 4;
-	FALLING = 5;
-	IN_COMBAT = 6;		// 전투 중인 상태 (PacketCategory.COMBAT과 충돌 방지)
-	DEAD = 7;
-	DISCONNECTED = 8;
-}
-
-message PlayerInfo {
-	int64 playerId = 1;
-	string name = 2;
-	PosInfo posInfo = 3;
-	int32 level = 4;
-	int32 currentHP = 5;
-	int32 maxHP = 6;
-	int32 currentMP = 7;
-	int32 maxMP = 8;
-	int64 experience = 9;
-	PlayerState state = 10;
+message StatInfo {
+	int32 attack = 1;			// 기본 공격력
+	int32 defense = 2;			// 기본 방어력
+	int32 maxHP = 3;			// 최대 HP
+	int32 maxMP = 4;			// 최대 MP
+	int32 currentHP = 5;		// 현재 HP
+	int32 currentMP = 6;		// 현재 MP
+	int64 experience = 7;		// 경험치
+	int32 level = 8;			// 레벨
+	float speed = 9;			// 이동 속도
 }
 
 message PosInfo {
@@ -294,6 +285,23 @@ message PosInfo {
 	float rotationY = 5;	// y축 회전 (yaw) - 좌/우
 	float rotationZ = 6;	// z축 회전 (roll) - 기울기
 	int64 timestamp = 7;	// 위치 업데이트 시간 (성능용)
+}
+
+enum State {
+	IDLE = 0;					// 대기
+	PATROL = 1;					// 탐색 
+	WALKING = 2;				// 걷기
+	RUNNING = 3;				// 달리기
+	JUMPING = 4;				// 점프
+	CHASE = 5;					// 추적
+	FLYING = 6;					// 날기
+	FALLING = 7;				// 추락
+	IN_COMBAT = 8;				// 전투
+	DEAD = 9;					// 사망
+}
+
+message PlayerDetailInfo {
+	bool isGameMaster = 1;
 }
 
 message InventoryItemInfo{
@@ -313,31 +321,6 @@ message EquipmentInfo {
 	int32 glovesItemId = 4;		// 장갑
 }
 
-message PlayerStats {
-	int32 attack =1;
-	int32 defense = 2;
-	int32 maxHP = 3;
-	int32 maxMP = 4;
-	int32 currentHP = 5;
-	int32 currentMP = 6;
-}
-
-message MonsterInfo {
-	int64 monsterId = 1;
-	int32 templateId = 2;
-	string name = 3;
-	PosInfo posInfo = 4;
-	int32 level = 5;
-	int32 currentHP = 6;
-	int32 maxHP = 7;
-	MonsterState state = 8;
-}
-
-enum MonsterState {
-	MONSTER_IDLE = 0;
-	MONSTER_PATROL = 1;
-	MONSTER_CHASE = 2;
-	MONSTER_ATTACK = 3;
-	MONSTER_RETURN = 4;
-	MONSTER_DIE = 5;
+message MonsterDetailInfo {
+	int32 templatedId = 1;
 }
