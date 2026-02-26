@@ -1,22 +1,17 @@
 using Protocol;
 using Server.Database.Entities;
+using Server.Game.Objects;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Server.Game
 {
-	public class Player
+	public class Player : GameObject
 	{
 		// 플레이어 데이터
-		public PlayerInfo Info { get; private set; }
-		public DateTime LastUpdateTime { get; private set; }
-		
 		private long _combatTargetId = 0;
 		private readonly Dictionary<int, DateTime> _skillCooldowns = new Dictionary<int, DateTime>();
-		private readonly object _playerLock = new object();
 
 		// 공격 쿨다운 (이동 제한용)
 		private DateTime _lastAttackTime = DateTime.MinValue;
@@ -28,10 +23,7 @@ namespace Server.Game
 
 		// 이벤트 시스템
 		public event Action<Player> OnLevelUp;
-		public event Action<Player> OnDeath;
-		public event Action<Player, int, int> OnHealthChanged; // (Player, oldHP, newHP)
 		public event Action<Player, int, int> OnManaChanged;   // (Player, oldMP, newMP)
-		public event Action<Player, PlayerState, PlayerState> OnStateChanged; // (Player, oldState, newState)
 
 		// 인벤, 장비 관련 이벤트
 		public event Action<Player, int, InventoryItem> OnItemAdded;									// 아이템 획득
@@ -40,85 +32,71 @@ namespace Server.Game
 		public event Action<Player, PlayerEquipment.EquipSlot, InventoryItem> OnItemUnequipped;			// 장비 해제
 		public event Action<Player, Dictionary<PlayerEquipment.StatType, int>> OnEquipmentStatsChanged; // 장비 스탯 변경
 		
-		public Player( long playerId, string playerName )
+		public Player( long playerRawId, string playerName )
+			:base(GameObjectId.Generate(ObjectType.ObjectPlayer, playerRawId ), ObjectType.ObjectPlayer)
 		{
-			Info = new PlayerInfo
-			{
-				PlayerId = playerId,
-				Name = playerName ?? $"Player_{playerId}",
-				PosInfo = new PosInfo { PosX = 0, PosY = 0, PosZ = 0 },
-				Level = 1,
-				CurrentHP = 100,
-				MaxHP = 100,
-				CurrentMP = 50,
-				MaxMP = 50,
-				Experience = 0,
-				State = PlayerState.Idle
-			};
+			_name = playerName ?? $"Player_{playerRawId}";
+			_posInfo = new PosInfo { PosX = 0, PosY = 0, PosZ = 0 };
+			_statInfo.Level = 1;
+			_statInfo.CurrentHP = 100;
+			_statInfo.CurrentMP = 100;
+			_statInfo.MaxHP = 100;
+			_statInfo.MaxMP = 100;
+			_statInfo.Experience = 0;
+			_statInfo.Attack = 10;
+			_statInfo.Defense = 10;
+			_statInfo.Speed = 5.0f;
+			_creatureState = State.Idle;
 
-			LastUpdateTime = DateTime.UtcNow;
+			_lastUpdateTime = DateTime.UtcNow;
 			_combatTargetId = 0;
 
-			Inventory = new PlayerInventory( playerId );
-			Equipment = new PlayerEquipment( playerId );
+			Inventory = new PlayerInventory( playerRawId );
+			Equipment = new PlayerEquipment( playerRawId );
 
 			// 이벤트 구독 설정
 			SetupCompositionEvents();
 		}
 
-		public long PlayerId => Info.PlayerId;
-		public string PlayerName => Info.Name;
-		public PosInfo Position => Info.PosInfo;
-		public int Level => Info.Level;
-		public int CurrentHP => Info.CurrentHP;
-		public int MaxHP => Info.MaxHP;
-		public int CurrentMP => Info.CurrentMP;
-		public int MaxMP => Info.MaxMP;
-		public PlayerState State => Info.State;
-		public long Experience => Info.Experience;
-
-		public bool IsAlive => Info.State != PlayerState.Dead;
-		public float HPPercentage => 0 < Info.MaxHP ? (float)Info.CurrentHP / MaxHP : 0f;
-		public float MPPercentage => 0 < Info.MaxMP ? (float)Info.CurrentMP / MaxMP : 0f;
-		public long RequiredExp => Info.Level * 100; // 임시 레벨업 필요 경험치.
+		public long Experience => Stats.Experience;
+		public float HPPercentage => 0 < Stats.MaxHP ? (float)Stats.CurrentHP / MaxHP : 0f;
+		public float MPPercentage => 0 < Stats.MaxMP ? (float)Stats.CurrentMP / MaxMP : 0f;
+		public long RequiredExp => Stats.Level * 100; // 임시 레벨업 필요 경험치.
 		public long CombatTargetId => _combatTargetId;
 
 		public void InitPosition(PosInfo newPosInfo)
 		{
 			if(newPosInfo == null) return;
 
-			Info.PosInfo = newPosInfo;
-			SetState( PlayerState.Idle );
+			_posInfo = newPosInfo;
+			SetState( State.Idle );
 			UpdateLastUpdateTime();
 		}
 
 		// 상태 관리 메서드
-		public void UpdatePosition( PosInfo newPosition )
+		public override void UpdatePosition( PosInfo newPosition )
 		{
-			if(newPosition == null) return;
-
-			Info.PosInfo = newPosition;
-			SetState( PlayerState.Walking );
-			UpdateLastUpdateTime();
+			base.UpdatePosition( newPosition );
+			SetState( State.Walking );
 		}
 
-		public bool TakeDamage( int damage )
+		public override bool TakeDamage( int damage, long attackerId )
 		{
-			lock(_playerLock)
+			lock(_lock)
 			{
 				if(!IsAlive || damage <= 0) return false;
 
 				int oldHP = CurrentHP;
-				Info.CurrentHP = Math.Max( 0, CurrentHP - damage );
+				Stats.CurrentHP = Math.Max( 0, CurrentHP - damage );
 
 				// HP 변경 이벤트 발생
-				OnHealthChanged?.Invoke( this, oldHP, CurrentHP );
+				RaiseOnHealthChanged( oldHP, CurrentHP );
 
 				if(CurrentHP <= 0)
 				{
-					SetState( PlayerState.Dead );
+					SetState( State.Dead );
 					// 사망 이벤트 발생
-					OnDeath?.Invoke( this );
+					RaiseOnDeath();
 				}
 			}
 			
@@ -126,26 +104,21 @@ namespace Server.Game
 			return true;
 		}
 
-		public bool Heal( int amount )
+		public override bool Heal( int amount )
 		{
-			lock(_playerLock)
+			lock(_lock)
 			{
 				if(!IsAlive || amount <= 0) return false;
 
 				int oldHP = CurrentHP;
-				Info.CurrentHP = Math.Min( MaxHP, CurrentHP + amount );
+				Stats.CurrentHP = Math.Min( MaxHP, CurrentHP + amount );
 
 				// HP 변경 이벤트 발생
-				OnHealthChanged?.Invoke( this, oldHP, CurrentHP );
-
-				if(State == PlayerState.Dead && 0 < CurrentHP)
-				{
-					SetState( PlayerState.Idle );
-				}
+				RaiseOnHealthChanged(oldHP, CurrentHP );
 			}
 			
 
-			LastUpdateTime = DateTime.UtcNow;
+			UpdateLastUpdateTime();
 			return true;
 		}
 
@@ -153,98 +126,82 @@ namespace Server.Game
 		{
 			if(exp <= 0) return false;
 
-			Info.Experience += exp;
+			Stats.Experience += exp;
 
 			// 레벨업 체크
 			bool levelUp = false;
 			while(RequiredExp <= Experience && Level < 100) // 최대 레벨 100 제한
 			{
-				Info.Experience -= RequiredExp;
-				Info.Level++;
+				Stats.Experience -= RequiredExp;
+				Stats.Level++;
 				levelUp = true;
 
 				// 레벨업 시 스탯 증가
 				int oldHP = CurrentHP;
 				int oldMP = CurrentMP;
-				Info.MaxHP += 10;
-				Info.MaxMP += 5;
-				Info.CurrentHP = MaxHP;
-				Info.CurrentMP = MaxMP;
+				Stats.MaxHP += 10;
+				Stats.MaxMP += 5;
+				Stats.CurrentHP = MaxHP;
+				Stats.CurrentMP = MaxMP;
 
 				// 레벨업 이벤트 발생
-				OnLevelUp?.Invoke( this );
+				OnLevelUp.Invoke( this );
 
 				// HP/MP 변경 이벤트 발생
-				OnHealthChanged?.Invoke( this, oldHP, CurrentHP );
-				OnManaChanged?.Invoke( this, oldMP, CurrentMP );
+				RaiseOnHealthChanged( oldHP, CurrentHP );
+				OnManaChanged.Invoke(this, oldMP, CurrentMP );
 			}
 
 			UpdateLastUpdateTime();
 			return levelUp;
 		}
 
-		public void SetState( PlayerState newState )
-		{
-			lock(_playerLock)
-			{
-				if(State == newState) return;
-
-				PlayerState oldState = State;
-				Info.State = newState;
-
-				// 상태 변경 이벤트 발생
-				OnStateChanged?.Invoke( this, oldState, newState );
-			}
-
-			LastUpdateTime = DateTime.UtcNow;
-		}
-
-		public void RestoreToIdleIfMoving()
-		{
-			if(State == PlayerState.Walking || State == PlayerState.Running)
-			{
-				SetState( PlayerState.Idle );
-			}
-		}
+		//public void RestoreToIdleIfMoving()
+		//{
+		//	if(State == PlayerState.Walking || State == PlayerState.Running)
+		//	{
+		//		SetState( PlayerState.Idle );
+		//	}
+		//}
 
 		public void Revive()
 		{
 			if(IsAlive) return;
-			Info.CurrentHP = MaxHP; // 부활 시 체력 회복
-			Info.CurrentMP = MaxMP; // 부활 시 마나 회복
-			SetState( PlayerState.Idle );
+			Stats.CurrentHP = MaxHP; // 부활 시 체력 회복
+			Stats.CurrentMP = MaxMP; // 부활 시 마나 회복
+			SetState( State.Idle );
 		}
 
-		public void Disconnect()
-		{
-			SetState( PlayerState.Disconnected );
-		}
+		//public void Disconnect()
+		//{
+		//	SetState( PlayerState.Disconnected );
+		//}
 
 		// 디버깅용 메서드
 		public override string ToString()
 		{
-			return $"Player[{PlayerId}:{PlayerName}] Lv.{Level} HP:{CurrentHP}/{MaxHP} " +
-				$"State:{State}Pos: ({Position?.PosX},{Position?.PosY},{Position?.PosZ})";
+			return $"Player[{ObjectId}:{_name}] Lv.{Level} HP:{CurrentHP}/{MaxHP} " +
+				$"State:{_creatureState} Pos: ({PosInfo.PosX},{PosInfo.PosY},{PosInfo.PosZ})";
 		}
 
 		// 상태 검증 메서드들
-		public bool IsValidState()
-		{
-			return Enum.IsDefined( typeof( PlayerState ), State );
-		}
+		//public bool IsValidState()
+		//{
+		//	return Enum.IsDefined( typeof( PlayerState ), State );
+		//}
 
-		public bool IsValidStats()
-		{
-			return 0 <= CurrentHP && CurrentHP <= MaxHP &&
-				0 <= CurrentMP && CurrentMP <= MaxMP &&
-				1 <= Level && Level <= 100 &&
-				0 <=Experience;
-		}
+		//public bool IsValidStats()
+		//{
+		//	return 0 <= CurrentHP && CurrentHP <= MaxHP &&
+		//		0 <= CurrentMP && CurrentMP <= MaxMP &&
+		//		1 <= Level && Level <= 100 &&
+		//		0 <=Experience;
+		//}
 
-		public bool CanPerformAction()
-		{
-			return IsAlive && State != PlayerState.Disconnected;
-		}
+		//public bool CanPerformAction()
+		//{
+		//	return IsAlive;
+		//}
 
 		public bool CanMove()
 		{
@@ -252,26 +209,26 @@ namespace Server.Game
 			if(DateTime.UtcNow - _lastAttackTime < _attackCooldown)
 				return false;
 
-			return CanPerformAction() && State != PlayerState.InCombat;
+			return IsAlive && CreatureState != State.InCombat;
 		}
 
 		// 고급 상태 관리 메서드
 		public void EnterCombat( Player target = null )
 		{
-			if(!CanPerformAction()) return;
+			if(!IsAlive) return;
 
 			if(target == null) return;
 
-			_combatTargetId = target.PlayerId;
-			SetState( PlayerState.InCombat );
+			_combatTargetId = target.ObjectId;
+			SetState( State.InCombat );
 		}
 
 		public void ExitCombat()
 		{
-			if(State == PlayerState.InCombat)
+			if(CreatureState == State.InCombat)
 			{
 				_combatTargetId = 0;
-				SetState( PlayerState.Idle );
+				SetState( State.Idle );
 			}
 		}
 
@@ -283,10 +240,10 @@ namespace Server.Game
 
 		public bool CanUseSkill( int skillId )
 		{
-			if(!CanPerformAction()) return false;
+			if(!IsAlive) return false;
 
 			// 기본 스킬 사용 조건 검증
-			if(State == PlayerState.Dead || State == PlayerState.Disconnected) return false;
+			if(CreatureState == State.Dead) return false;
 
 			// MP 체크 (임시 - 추후 스킬 데이터로 확장)
 			//int requiredMP = 10; // 임시 MP 계산
@@ -302,10 +259,10 @@ namespace Server.Game
 			// MP 소모 (매개변수가 0이면 기본 계산 사용)
 			int actualMpCost = mpCost > 0 ? mpCost : skillId * 10;
 			int oldMP = CurrentMP;
-			Info.CurrentMP = Math.Max( 0, CurrentMP - actualMpCost );
+			Stats.CurrentMP = Math.Max( 0, CurrentMP - actualMpCost );
 
 			// MP 변경 이벤트 발생
-			OnManaChanged?.Invoke( this, oldMP, CurrentMP );
+			OnManaChanged.Invoke( this, oldMP, CurrentMP );
 
 			UpdateLastUpdateTime();
 			return true;
@@ -431,9 +388,25 @@ namespace Server.Game
 			return Equipment.GetCriticalRate();
 		}
 
-		public int GetSpeed()
+		public float GetSpeed()
 		{
-			return Equipment.GetSpeed();
+			return _statInfo.Speed + (float)Equipment.GetSpeed();
+		}
+
+		public StatInfo GetStatInfo()
+		{
+			return new StatInfo
+			{
+				Speed = _statInfo.Speed + (float)Equipment.GetSpeed(),
+				Level = _statInfo.Level,
+				Experience = _statInfo.Experience,
+				Attack = _statInfo.Attack + Equipment.GetTotalAttack(),
+				Defense = _statInfo.Defense + Equipment.GetTotalDefense(),
+				CurrentHP = _statInfo.CurrentHP,
+				CurrentMP = _statInfo.CurrentMP,
+				MaxHP = _statInfo.MaxHP + Equipment.GetTotalHP(),
+				MaxMP = _statInfo.MaxMP + Equipment.GetTotalMP(),
+			};
 		}
 
 		// 데이터 동기화 관련
@@ -469,11 +442,6 @@ namespace Server.Game
 		public Dictionary<PlayerEquipment.EquipSlot, InventoryItem> GetEquipmentData()
 		{
 			return Equipment.ToEquipmentDictionary();
-		}
-
-		private void UpdateLastUpdateTime()
-		{
-			LastUpdateTime = DateTime.UtcNow;
 		}
 
 		private void SetupCompositionEvents()
@@ -521,23 +489,23 @@ namespace Server.Game
 			int equipmentMP = Equipment.GetTotalMP();
 
 			// 최대 HP/MP 업데이트
-			int oldMaxHP = Info.MaxHP;
-			int oldMaxMP = Info.MaxMP;
+			int oldMaxHP = Stats.MaxHP;
+			int oldMaxMP = Stats.MaxMP;
 
-			Info.MaxHP = baseHP + equipmentHP;
-			Info.MaxMP = baseMP + equipmentMP;
+			Stats.MaxHP = baseHP + equipmentHP;
+			Stats.MaxMP = baseMP + equipmentMP;
 
 			// 현재 HP/MP도 비례적으로 조정
 			if(0 < oldMaxHP)
 			{
-				float hpRatio = (float)Info.CurrentHP / oldMaxHP;
-				Info.CurrentHP = Math.Min(Info.MaxHP, (int)(Info.MaxHP * hpRatio));
+				float hpRatio = (float)Stats.CurrentHP / oldMaxHP;
+				Stats.CurrentHP = Math.Min( Stats.MaxHP, (int)(Stats.MaxHP * hpRatio));
 			}
 
 			if(0 < oldMaxMP)
 			{
-				float mpRatio = (float)Info.CurrentMP / oldMaxMP;
-				Info.CurrentMP = Math.Min(Info.MaxMP, (int)(Info.MaxMP * mpRatio));
+				float mpRatio = (float)Stats.CurrentMP / oldMaxMP;
+				Stats.CurrentMP = Math.Min( Stats.MaxMP, (int)(Stats.MaxMP * mpRatio));
 			}
 
 			UpdateLastUpdateTime();
@@ -567,9 +535,9 @@ namespace Server.Game
 			if(MaxMP <= CurrentMP) return false;
 
 			int oldMP = CurrentMP;
-			Info.CurrentMP = Math.Min(MaxMP, CurrentMP + manaAmount);
+			Stats.CurrentMP = Math.Min(MaxMP, CurrentMP + manaAmount);
 
-			OnManaChanged?.Invoke( this, oldMP, CurrentMP );
+			OnManaChanged.Invoke( this, oldMP, CurrentMP );
 			UpdateLastUpdateTime();
 			return true;
 		}
@@ -581,11 +549,11 @@ namespace Server.Game
 			int oldHP = CurrentHP;
 			int oldMP = CurrentMP;
 
-			Info.CurrentHP = MaxHP;
-			Info.CurrentMP = MaxMP;
+			Stats.CurrentHP = MaxHP;
+			Stats.CurrentMP = MaxMP;
 
-			OnHealthChanged?.Invoke( this, oldHP, oldMP );
-			OnManaChanged?.Invoke(this, oldMP, CurrentMP );
+			RaiseOnHealthChanged( oldHP, CurrentHP );
+			OnManaChanged.Invoke(this, oldMP, CurrentMP );
 			UpdateLastUpdateTime();
 			return true;
 		}
@@ -604,6 +572,23 @@ namespace Server.Game
 				>= 8000 and < 9000 => PlayerEquipment.EquipSlot.Necklace,
 				>= 9000 and < 10000 => PlayerEquipment.EquipSlot.Earring,
 				_ => PlayerEquipment.EquipSlot.None
+			};
+		}
+
+		public override ObjectInfo ToObjectInfo()
+		{
+			return new ObjectInfo
+			{
+				PosInfo = PosInfo.Clone(),
+				ObjectId = ObjectId,
+				Type = Type,
+				Name = Name,
+				State = CreatureState,
+				StatInfo = Stats.Clone(),
+				PlayerDetailInfo = new PlayerDetailInfo
+				{
+					IsGameMaster = false
+				}
 			};
 		}
 	}

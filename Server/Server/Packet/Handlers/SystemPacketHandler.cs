@@ -35,17 +35,17 @@ namespace Server.Packet.Handlers
 				if(result == RoomEnterResult.Success)
 				{
 					_logger.LogInformation( "Player {PlayerId} (Session {SessionId}) automatically joined the default lobby.",
-						session.Player.PlayerId, session.SessionId );
+						session.Player.ObjectId, session.SessionId );
 				}
 				else
 				{
 					_logger.LogWarning( "Player {PlayerId} (Session {SessionId}) failed to join the default lobby.",
-						session.Player.PlayerId, session.SessionId );
+						session.Player.ObjectId, session.SessionId );
 				}
 
 				session.CurrentRoom.SendToPlayer( session, new S_EnterGame()
 				{
-					Player = session.Player.Info,
+					Player = session.Player.ToObjectInfo(),
 					MapId = session.CurrentRoom.RoomMap.MapId,
 				} );
 			}

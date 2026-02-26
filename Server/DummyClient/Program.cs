@@ -30,18 +30,19 @@ namespace DummyClient
 	{
 		public long PlayerId { get; set; }
 		public string PlayerName { get; set; } = "Unknown";
-		public int Level { get; set; }
+		
+		public StatInfo Stats { get; set; }
 
-		public PlayerStats Stats { get; set; }
-
-		// 경험치
-		public long CurrentExp { get; set; } = 0;
 		public long MaxExp { get; set; } = 100;
 		public long Gold {  get; set; } = 0;
 
 		public PosInfo Position { get; set; }
 
 		public int CurrentMapId { get; set; } = 0;
+
+		// 경험치
+		public int Level => Stats.Level;
+		public long CurrentExp => Stats.Experience;
 
 		// 전투 관련 계산 프로퍼티
 		public bool IsAlive => 0 < Stats.CurrentHP;
@@ -52,14 +53,17 @@ namespace DummyClient
 		public ClientPlayerInfo()
 		{
 			// Stats 초기화
-			Stats = new PlayerStats
+			Stats = new StatInfo
 			{
 				Attack = 10,
 				Defense = 5,
 				MaxHP = 100,
 				MaxMP = 50,
 				CurrentHP = 100,
-				CurrentMP = 50
+				CurrentMP = 50,
+				Experience = 0,
+				Level = 0,
+				Speed = 5.0f
 			};
 
 			Position = new PosInfo
@@ -77,12 +81,15 @@ namespace DummyClient
 		{
 			PlayerId = 0;
 			PlayerName = "Unknown";
-			Level = 0;
+			Stats.Level = 0;
 			Stats.MaxMP = 0;
 			Stats.MaxHP = 0;
 			Stats.CurrentHP = 0;
 			Stats.CurrentMP = 0;
-			CurrentExp = 0;
+			Stats.Experience = 0;
+			Stats.Attack = 0;
+			Stats.Defense = 0;
+			Stats.Speed = 0;
 			MaxExp = 0;
 			Gold = 0;
 			Position.PosX = 0;
@@ -137,12 +144,10 @@ namespace DummyClient
 		// 플레이어 정보 추가
 		public static ClientPlayerInfo MyPlayer = new ClientPlayerInfo();
 
-		public static Dictionary<long, ClientPlayerInfo> Players = new();
-
 		public static MapData CurrentMapData { get; set; }
 
 		// 몬스터 추적
-		public static Dictionary<long, MonsterInfo> NearbyMonsters = new Dictionary<long, MonsterInfo>();
+		public static Dictionary<long, ObjectInfo> NearbyObjects = new Dictionary<long, ObjectInfo>();
 
 		public static long TargetMonsterId = 0;
 		public static bool AutoAttackEnabled = true;		// 자동 공격 활성화.
@@ -602,21 +607,22 @@ namespace DummyClient
 					}
 					// ===== 포션 자동 끝 =====
 
-					// 1. 타겟 몬스터 선택 및 위치 업데이트
-					if(0 < NearbyMonsters.Count)
+					// 1. 주변 오브젝트에 몬스터가 있는지 확인.
+					if(NearbyObjects.Values.Any(o => o.Type == ObjectType.ObjectMonster))
 					{
 						// 타겟이 없거나, 현재 타겟이 사라졌으면 새로 선택
-						if(TargetMonsterId == 0 || !NearbyMonsters.ContainsKey( TargetMonsterId ) ||
-							NearbyMonsters[TargetMonsterId].State == MonsterState.MonsterDie)
+						if(TargetMonsterId == 0 || !NearbyObjects.ContainsKey( TargetMonsterId ) ||
+							NearbyObjects[ TargetMonsterId].State == State.Dead)
 						{
 							// 가장 가까운 몬스터 선택
-							var aliveMonsters = NearbyMonsters.Values
-								.Where(m => m.State != MonsterState.MonsterDie).ToList();
+							// TODO : 현재는 리스트에서 첫번째 몬스터 선택중 수정 필요.
+							var aliveMonsters = NearbyObjects.Values
+								.Where(m => m.Type == ObjectType.ObjectMonster && m.State != State.Dead).ToList();
 
 							if(0 < aliveMonsters.Count)
 							{
 								var nearestMonster = aliveMonsters.First();
-								TargetMonsterId = nearestMonster.MonsterId;
+								TargetMonsterId = nearestMonster.ObjectId;
 
 								logger.LogInformation( "[Client {ClientId}] [타겟 변경] 새 타겟: {Name} (ID:{MonsterId})",
 								clientId, nearestMonster.Name, TargetMonsterId );
@@ -638,7 +644,7 @@ namespace DummyClient
 					}
 
 					// 2. 타겟이 있으면 이동 및 공격 처리.
-					if(0 < TargetMonsterId && NearbyMonsters.TryGetValue( TargetMonsterId, out var targetMonster ))
+					if(0 < TargetMonsterId && NearbyObjects.TryGetValue( TargetMonsterId, out var targetMonster ))
 					{
 						float targetX = targetMonster.PosInfo.PosX;
 						float targetZ = targetMonster.PosInfo.PosZ;
@@ -768,7 +774,7 @@ namespace DummyClient
 								session.Send( attackPacket );
 
 								logger.LogInformation( "[Client {ClientId}] [공격] {Target} | 거리: {Distance:F2}m | 내 HP: {MyHP:F1}% | 타겟 HP: {TargetHP}/{MaxHP}",
-									clientId, targetName, distanceToTarget, MyPlayer.HPPercent, targetMonster.CurrentHP, targetMonster.MaxHP );
+									clientId, targetName, distanceToTarget, MyPlayer.HPPercent, targetMonster.StatInfo.CurrentHP, targetMonster.StatInfo.MaxHP );
 							}
 
 							// 공격 범위 내에서는 이동하지 않음 (위치 패킷 전송 안 함)

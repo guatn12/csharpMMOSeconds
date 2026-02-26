@@ -49,7 +49,7 @@ namespace Server.Packet.Handlers
 				return;
 			}
 
-			Monster monster = _room.MonsterManager?.GetMonster(packet.TargetId);
+			Monster monster = _room.ObjectManager.GetObject<Monster>(packet.TargetId);
 			var monsterValidation = PacketValidators.ValidateMonster(monster);
 			if(!monsterValidation.IsValid)
 			{
@@ -64,6 +64,13 @@ namespace Server.Packet.Handlers
 				return;
 			}
 
+			var skillData = _dataManager.GetSkill(packet.SkillId);
+			if(skillData == null)
+			{
+				_logger.LogWarning( "Skill data not found for SkillId {SkillId}", packet.SkillId );
+				return;
+			}
+
 			// 4. 스킬 사용
 			bool skillUsed = session.Player.UseSkill( packet.SkillId );
 			if(!skillUsed)
@@ -73,10 +80,10 @@ namespace Server.Packet.Handlers
 				return;
 			}
 
-			// 룸별 스킬 효과 처리
+			// 룸별 스킬 효과 처리 - 예: 범위 공격, 버프/디버프 적용 등
 			await _room.OnPlayerUseSkillAsync( session, packet );
 
-			CombatResults result = await _combatService.ProcessPlayerAttackMonsterAsync(session.Player, monster);
+			CombatResults result = await _combatService.ProcessPlayerAttackMonsterAsync(session.Player, monster, skillData);
 			if(result == null)
 			{
 				_logger.LogWarning( "Combat service returned null" );
@@ -90,7 +97,7 @@ namespace Server.Packet.Handlers
 			{
 				Attacker = result.AttackerInfo.ToObjectDamageInfo(result.Damage, result.IsCritical),
 				Targets = { result.TargetInfo.ToObjectDamageInfo( result.Damage, result.IsCritical ) },
-			}, session.Player.Position );
+			}, session.Player.PosInfo );
 
 			// 5. 몬스터 사망 처리
 			if(result.TargetDied)
@@ -117,19 +124,19 @@ namespace Server.Packet.Handlers
 			// 3. S_MonsterDie 브로드캐스트 (보상 정보 포함)
 			var diePacket = new S_MonsterDie
 			{
-				MonsterId = monster.MonsterId,
+				MonsterId = monster.ObjectId,
 				KillPlayerId = killerPlayerId,
 				ExpGained = reward.Experience,
 				GoldGained = reward.Gold
 			};
 			diePacket.DroppedItems.AddRange( reward.DroppedItem );
-			_room.BroadcastInRange( diePacket, monster.Position );
+			_room.BroadcastInRange( diePacket, monster.PosInfo );
 
 			// 4. 몬스터 제거
-			_room.MonsterManager.DespawnMonster( monster.MonsterId, TimeSpan.FromSeconds(_dataManager.GameConfig.MonsterDespawnDelaySeconds) );
+			_room.MonsterManager.DespawnMonster( monster.ObjectId, TimeSpan.FromSeconds(_dataManager.GameConfig.MonsterDespawnDelaySeconds) );
 
 			_logger.LogInformation( "Monster {MonsterId} defeated by Player {PlayerId}, Exp={Exp}, Gold={Gold}, LevelUp={LevelUp}",
-				monster.MonsterId, killerPlayerId, reward.Experience, reward.Gold, reward.LeveledUp );
+				monster.ObjectId, killerPlayerId, reward.Experience, reward.Gold, reward.LeveledUp );
 		}
 	}
 }

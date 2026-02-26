@@ -1,4 +1,5 @@
-﻿using Protocol;
+using Protocol;
+using Server.Data.Models;
 using Server.Game;
 using Server.Game.Monsters;
 using Server.Services.DTOs;
@@ -18,7 +19,7 @@ namespace Server.Services.Combat
 		/// <summary>
 		/// 플레이어가 몬스터를 공격합니다.
 		/// </summary>
-		Task<CombatResults?> ProcessPlayerAttackMonsterAsync( Player player, Monster monster );
+		Task<CombatResults> ProcessPlayerAttackMonsterAsync( Player player, Monster monster, SkillData skillData );
 		
 		/// <summary>
 		/// 데미지를 계산

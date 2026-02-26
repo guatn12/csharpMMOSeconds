@@ -1,9 +1,10 @@
-using Server.Core.Session;
 using Server.Data.Models;
 using Server.Game.Monsters;
+using Server.Game.Objects;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 
 namespace Server.Game.Map
 {
@@ -29,7 +30,7 @@ namespace Server.Game.Map
 		/// </summary>
 		private readonly MapCell[,] _cells;
 		/// <summary> 플레이어 → 현재 소속 셀 매핑 (역참조용)</summary>
-		private readonly Dictionary<IClientSession, (int x, int z)> _playerPositions;
+		private readonly Dictionary<Player, (int x, int z)> _playerPositions;
 		/// <summary> 몬스터 → 현재 소속 셀 매핑 (역참조용)</summary>
 		private readonly Dictionary<Monster, (int x, int z)> _monsterPositions;
 
@@ -47,7 +48,7 @@ namespace Server.Game.Map
 		{
 			_mapData = mapData;
 			_cells = new MapCell[mapData.Width, mapData.Depth];
-			_playerPositions = new Dictionary<IClientSession, (int x, int z)>();
+			_playerPositions = new Dictionary<Player, (int x, int z)>();
 			_monsterPositions = new Dictionary<Monster, (int x, int z)>();
 
 			// 각 셀 초기화
@@ -116,7 +117,7 @@ namespace Server.Game.Map
 		#region 플레이어 관리
 
 		/// <summary> 플레이어를 지정한 셀에 추가 </summary>
-		public void AddPlayer(IClientSession player, float worldX, float worldZ)
+		public void AddPlayer(Player player, float worldX, float worldZ)
 		{
 			if(player == null)
 				return;
@@ -136,7 +137,7 @@ namespace Server.Game.Map
 		}
 
 		/// <summary> 플레이어를 현재 셀에서 제거 </summary>
-		public void RemovePlayer(IClientSession player )
+		public void RemovePlayer(Player player )
 		{
 			if(player == null)
 				return;
@@ -149,7 +150,7 @@ namespace Server.Game.Map
 		}
 
 		/// <summary> 플레이어의 위치를 업데이트 (셀 이동 시) </summary>
-		public void UpdatePlayer(IClientSession player, float worldX, float worldZ)
+		public void UpdatePlayer(Player player, float worldX, float worldZ)
 		{
 			if(player == null)
 				return;
@@ -232,10 +233,10 @@ namespace Server.Game.Map
 		#region 범위 검색
 
 		/// <summary> 주변 셀에 있는 모든 플레이어를 반환합니다. </summary>
-		public IEnumerable<IClientSession> GetNearByPlayers(float worldX, float worldZ, int radius)
+		public IEnumerable<Player> GetNearByPlayers(float worldX, float worldZ, int radius)
 		{
 			var (centerX, centerZ) = _mapData.WorldToCell(worldX, worldZ);
-			var result = new List<IClientSession>();
+			var result = new List<Player>();
 
 			for(int x = centerX - radius; x <= centerX + radius; x++)
 			{
@@ -267,6 +268,81 @@ namespace Server.Game.Map
 						continue;
 
 					result.AddRange( _cells[ x, z ].Monsters );
+				}
+			}
+
+			return result;
+		}
+
+		#endregion
+
+		#region 통합 인터페이스
+
+		/// <summary> GameObject를 타입에 따라 적절한 컬렉션에 추가 </summary>
+		public void Add(GameObject obj, float worldX, float worldZ)
+		{
+			switch(obj)
+			{
+			case Player player: AddPlayer(player, worldX, worldZ); break;
+			case Monster monster: AddMonster(monster, worldX, worldZ); break;
+			}
+		}
+
+		/// <summary> GameObject를 타입에 따라 적절한 컬렉션에서 제거 </summary>
+		public void Remove(GameObject obj)
+		{
+			switch(obj)
+			{
+			case Player player: RemovePlayer(player); break;
+			case Monster monster: RemoveMonster(monster); break;
+			}
+		}
+
+		/// <summary> GameObject 위치를 타입에 따라 업데이트 </summary>
+		public void Update(GameObject obj, float worldX, float worldZ)
+		{
+			switch(obj)
+			{
+			case Player player: UpdatePlayer(player, worldX, worldZ); break;
+			case Monster monster: UpdateMonsters(monster, worldX, worldZ); break;
+			}
+		}
+
+		/// <summary> 주변 셀에 있는 T 타입 오브젝트를 반환 </summary>
+		public IEnumerable<T> GetNearByObjects<T>( float worldX, float worldZ, int radius) where T : GameObject
+		{
+			var (centerX, centerZ) = _mapData.WorldToCell( worldX, worldZ );
+			var result = new List<T>();
+
+			Type type = typeof(T);
+			bool searchPlayer = type == typeof(Player);
+			bool searchMonster = type == typeof(Monster);
+
+			for(int x = centerX - radius; x <= centerX + radius; x++)
+			{
+				for(int z = centerZ - radius; z <= centerZ + radius; z++)
+				{
+					// 맵 경계 체크
+					if(!IsValidCell( x, z ))
+						continue;
+
+					var cell = _cells[x,z];
+
+					if(searchPlayer)
+					{
+						foreach(var player in cell.Players)
+						{
+							result.Add( (T)(object)player );
+						}
+					}
+
+					if(searchMonster)
+					{
+						foreach(var monster in cell.Monsters)
+						{
+							result.Add( (T)(object)monster );
+						}
+					}
 				}
 			}
 

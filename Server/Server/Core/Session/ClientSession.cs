@@ -5,12 +5,14 @@ using Server.Core.Jobs;
 using Server.Database.Entities;
 using Server.Extensions;
 using Server.Game;
+using Server.Game.Objects;
 using Server.Packet;
 using Server.Room;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Numerics;
 
 namespace Server.Core.Session
 {
@@ -38,8 +40,8 @@ namespace Server.Core.Session
 
 		public long SessionId { get; private set; }
         public Player Player { get; private set; }
-        public string PlayerName => Player.PlayerName ?? $"Player_{Player.PlayerId}";
-        public long PlayerId => Player.PlayerId;
+        public string PlayerName => Player.Name ?? $"Player_{Player.ObjectId}";
+        public long PlayerId => Player.ObjectId;
 
         public ClientSession( ILogger<ClientSession> logger, PacketManager packetManager, ISessionManager sessionManager, long sessionId)
         {
@@ -110,7 +112,7 @@ namespace Server.Core.Session
             }
 
            // 플레이어 상태를 Disconnected상태로 처리
-			Player?.Disconnect();
+			//Player?.Disconnect();
 
             // 세션 매니저에서 세션 해제
             _sessionManager.UnregisterSession( SessionId );
@@ -131,36 +133,37 @@ namespace Server.Core.Session
             Player.OnItemRemoved += OnPlayerItemRemoved;
             Player.OnEquipmentStatsChanged += OnEquipmentStatsChanged;
             Player.OnDeath += OnPlayerDeath;
+			Player.OnStateChanged += OnPlayerStateChanged;
 
 			_logger.LogInformation( "Player initialized: {PlayerInfo}", Player.ToString() );
         }
 
         // HP 변경 이벤트 핸들러
-        private void OnPlayerHealthChanged(Player player, int oldHP, int newHP)
+        private void OnPlayerHealthChanged(IGameObject obj, int oldHP, int newHP)
         {
             S_PlayerUpdate packet = new S_PlayerUpdate
             {
-                Player = player.Info
+                Player = obj.ToObjectInfo()
             };
 
             Send(packet);
 
 			_logger.LogDebug( "[Event] Player HP Changed: PlayerId={PlayerId}, {OldHP} → {NewHP}",
-                player.PlayerId, oldHP, newHP);
+                obj.ObjectId, oldHP, newHP);
 		}
 
         // MP 변경 이벤트 핸들러
-        private void OnPlayerManaChanged(Player player, int oldMP, int newMP)
+        private void OnPlayerManaChanged( IGameObject obj, int oldMP, int newMP)
         {
 			S_PlayerUpdate packet = new S_PlayerUpdate
 			{
-				Player = player.Info
+				Player = obj.ToObjectInfo(),
 			};
 
 			Send( packet );
 
 			_logger.LogDebug( "[Event] Player MP Changed: PlayerId={PlayerId}, {OldMP} → {NewMP}",
-				player.PlayerId, oldMP, newMP );
+				obj.ObjectId, oldMP, newMP );
 		}
 
         // 레벨 업 이벤트 핸들러
@@ -168,7 +171,7 @@ namespace Server.Core.Session
         {
             S_LevelUp packet = new S_LevelUp
             {
-                PlayerId = player.PlayerId,
+                PlayerId = player.ObjectId,
                 NewLevel = player.Level,
                 NewMaxHP = player.MaxHP,
                 NewMaxMP = player.MaxMP,
@@ -183,7 +186,7 @@ namespace Server.Core.Session
             }
 
 			_logger.LogInformation( "[Event] Player Level Up: PlayerId={PlayerId},NewLevel={NewLevel}, HP={MaxHP}, MP={MaxMP}",
-                player.PlayerId, player.Level, player.MaxHP, player.MaxMP);
+                player.ObjectId, player.Level, player.MaxHP, player.MaxMP);
 		}
 
         // 아이템 추가 이벤트 핸들러
@@ -217,7 +220,7 @@ namespace Server.Core.Session
             Send( packet );
 
 			_logger.LogInformation( "[Event] Item Added: PlayerId={PlayerId}, ItemId={ItemId}, Slot={Slot}, Qty={Quantity}",
-                player.PlayerId, item.ItemId, item.Slot, item.Quantity);
+                player.ObjectId, item.ItemId, item.Slot, item.Quantity);
 		}
 
         // 장비 착용 이벤트 핸들러
@@ -254,20 +257,12 @@ namespace Server.Core.Session
 				}
             }
 
-            packet.UpdatedStats = new PlayerStats
-            {
-                Attack = player.GetTotalAttack(),
-                Defense = player.GetTotalDefense(),
-                MaxHP = player.MaxHP,
-                MaxMP = player.MaxMP,
-                CurrentHP = player.CurrentHP,
-                CurrentMP = player.CurrentMP,
-            };
+			packet.UpdatedStats = player.GetStatInfo();
 
             Send( packet );
 
 			_logger.LogInformation( "[Event] Item Equipped: PlayerId={PlayerId}, Slot={Slot}, ItemId={ItemId}",
-                player.PlayerId, slot, item?.ItemId ?? 0);
+                player.ObjectId, slot, item?.ItemId ?? 0);
 		}
 
         private void OnPlayerItemUnequipped(Player player, PlayerEquipment.EquipSlot slot, InventoryItem item)
@@ -302,20 +297,12 @@ namespace Server.Core.Session
 				}
 			}
 
-            packet.UpdatedStats = new PlayerStats
-            {
-                Attack = player.GetTotalAttack(),
-                Defense = player.GetTotalDefense(),
-                MaxHP = player.MaxHP,
-                MaxMP = player.MaxMP,
-                CurrentHP = player.CurrentHP,
-                CurrentMP = player.CurrentMP,
-            };
+            packet.UpdatedStats = player.GetStatInfo();
 
             Send( packet );
 
 			_logger.LogInformation( "[Event] Item Unequipped: PlayerId={PlayerId}, Slot={Slot}, ReturnedSlot={ReturnedSlot}",
-                player.PlayerId, slot, item?.Slot ?? -1);
+                player.ObjectId, slot, item?.Slot ?? -1);
 		}
 
         // 아이템 제거 이벤트 핸들러
@@ -338,38 +325,39 @@ namespace Server.Core.Session
             Send( packet );
 
 			_logger.LogInformation( "[Event] Item Removed: PlayerId={PlayerId}, ItemId={ItemId}, Slot={Slot}",
-                player.PlayerId, item.ItemId, slot);
+                player.ObjectId, item.ItemId, slot);
 		}
 
         // 장비 스탯 변경 이벤트 핸들러
+		// TODO - 장비 변경 이벤트인데, 플레이어 정보를 보냄, 이는 장비 변경으로 인해 플레이어 스탯 정보를 변경해야한다는 의미 - 현재 구조와 다름.
         private void OnEquipmentStatsChanged(Player player, Dictionary<PlayerEquipment.StatType, int> stats)
         {
             S_PlayerStat packet = new S_PlayerStat
             {
-                Player = player.Info
+                Player = player.ToObjectInfo(),
             };
 
 			Send( packet );
 
 			_logger.LogDebug( "[Event] Equipment Stats Changed: PlayerId={PlayerId}",
-                player.PlayerId );
+                player.ObjectId );
 		}
 
         // 플레이어 죽음 이벤트 핸들러
-        private void OnPlayerDeath(Player player)
+        private void OnPlayerDeath(IGameObject obj)
         {
 			S_Despawn packet = new S_Despawn();
-			packet.Objects.Add( player.ToObjectInfo() );
+			packet.Objects.Add( obj.ToObjectInfo() );
 			IRoom reEnterRoom = CurrentRoom;
 			if(CurrentRoom != null)
             {
 				// 룸 내 다른 플레이어에게 사망 패킷 브로드캐스트
-				CurrentRoom.BroadcastInRange ( packet, player.Position, this );
+				CurrentRoom.BroadcastInRange ( packet, obj.PosInfo, this );
 				bool result = CurrentRoom.TryLeaveAsync( this ).GetAwaiter().GetResult();
 				if( result == false)
 				{
 					_logger.LogError( "Player failed to leave room after death. PlayerId={PlayerId}, RoomId={RoomId}",
-						player.PlayerId, CurrentRoom.RoomId );
+						obj.ObjectId, CurrentRoom.RoomId );
 				}
 			}
 
@@ -381,41 +369,54 @@ namespace Server.Core.Session
 				baseRoom.Push( respawnJob );
 			}
 
-			_logger.LogWarning( "[Event] Player Death: PlayerId={PlayerId}", player.PlayerId );
+			_logger.LogWarning( "[Event] Player Death: PlayerId={PlayerId}", obj.ObjectId );
 		}
 
-        public bool TakeDamage( int damage)
-        {
-            if(Player == null) return false;
+		private void OnPlayerStateChanged( IGameObject obj, int oldState, int newState )
+		{
+			S_PlayerUpdate packet = new S_PlayerUpdate
+			{
+				Player = obj.ToObjectInfo(),
+			};
 
-            bool result = Player.TakeDamage(damage);
-            if(result)
-            {
-                if(Player.State == PlayerState.Dead)
-                {
-                    // TODO : 플레이어 Dead 상태 전달 필요.
-                }
-            }
+			Send( packet );
 
-            return result;
-        }
+			_logger.LogDebug( "[Event] Player State Changed: PlayerId={PlayerId}, {OldState} → {NewState}",
+				obj.ObjectId, oldState, newState );
+		}
 
-        public bool Heal(int amount)
-        {
-            if(Player == null) return false;
+		//public bool TakeDamage( int damage)
+		//{
+		//    if(Player == null) return false;
 
-            return Player.Heal(amount);
-        }
+			//    bool result = Player.TakeDamage(damage, 0);
+			//    if(result)
+			//    {
+			//        if(Player.CreatureState == State.Dead)
+			//        {
+			//            // TODO : 플레이어 Dead 상태 전달 필요.
+			//        }
+			//    }
 
-        public bool GainExperience(long exp)
-        {
-            if(Player == null) return false;
+			//    return result;
+			//}
 
-            return Player.GainExperience(exp);
-        }
+			//public bool Heal(int amount)
+			//{
+			//    if(Player == null) return false;
 
-        // 현재 상태 정보 조회
-        public GameSessionInfo GetSessionInfo()
+			//    return Player.Heal(amount);
+			//}
+
+			//public bool GainExperience(long exp)
+			//{
+			//    if(Player == null) return false;
+
+			//    return Player.GainExperience(exp);
+			//}
+
+			// 현재 상태 정보 조회
+		public GameSessionInfo GetSessionInfo()
         {
             return new GameSessionInfo
             {
@@ -428,9 +429,9 @@ namespace Server.Core.Session
         }
 
         // 전체 플레이어 정보 반환 메서드
-        public PlayerInfo GetPlayerFullInfo()
+        public ObjectInfo GetPlayerFullInfo()
         {
-            return Player?.Info;
+			return Player.ToObjectInfo();
         }
 
 		// 디버깅용

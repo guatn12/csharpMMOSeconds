@@ -2,51 +2,88 @@ using Protocol;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace Server.Game.Objects
 {
-	public class GameObject : IGameObject
+	public abstract class GameObject : IGameObject
 	{
+		protected readonly object _lock = new object();
+		protected readonly long _objectId;
+		protected readonly ObjectType _type;
+		protected string _name;
+		protected PosInfo _posInfo = new PosInfo();
+		protected State _creatureState = State.Idle;
+		protected StatInfo _statInfo = new StatInfo();
+		protected DateTime _lastUpdateTime = DateTime.UtcNow;
 
-
-		public long ObjectId => throw new NotImplementedException();
-
-		public ObjectType Type => throw new NotImplementedException();
-
-		public PosInfo PosInfo => throw new NotImplementedException();
-
-		public State CreatureState => throw new NotImplementedException();
-
-		public StatInfo Stats => throw new NotImplementedException();
-
-		public bool IsAlive => throw new NotImplementedException();
-
-		public DateTime LastUpdateTime => throw new NotImplementedException();
+		public long ObjectId => _objectId;
+		public long ObjectRawId => GameObjectId.GetRawId(ObjectId);
+		public ObjectType Type => _type;
+		public PosInfo PosInfo => _posInfo;
+		public State CreatureState => _creatureState;
+		public StatInfo Stats => _statInfo;
+		public bool IsAlive => CreatureState != State.Dead && 0 < Stats.CurrentHP;
+		public DateTime LastUpdateTime => _lastUpdateTime;
+		public int CurrentHP => Stats.CurrentHP;
+		public int MaxHP => Stats.MaxHP;
+		public int CurrentMP => Stats.CurrentMP;
+		public int MaxMP => Stats.MaxMP;
+		public int Level => Stats.Level;
+		public string Name => _name;
 
 		public event Action<IGameObject> OnDeath;
 		public event Action<IGameObject, int, int> OnHealthChanged;
 		public event Action<IGameObject, int, int> OnStateChanged;
 
-		public bool Heal( int amount )
+		public GameObject(long objectId, ObjectType type)
 		{
-			throw new NotImplementedException();
+			_objectId = objectId;
+			_type = type;
 		}
 
-		public bool TakeDamage( int damage, long attackerId )
+		public abstract bool Heal( int amount );
+		public abstract bool TakeDamage( int damage, long attackerId );
+		public abstract ObjectInfo ToObjectInfo();
+
+		public virtual void UpdatePosition( PosInfo newPosition )
 		{
-			throw new NotImplementedException();
+			if(newPosition == null) return;
+
+			_posInfo = newPosition;
+			UpdateLastUpdateTime();
 		}
 
-		public ObjectInfo ToObjectInfo()
+		public void SetState(State newState)
 		{
-			throw new NotImplementedException();
+			lock(_lock)
+			{
+				if(newState == CreatureState) return;
+
+				var oldState = CreatureState;
+				_creatureState = newState;
+
+				OnStateChanged.Invoke( this, (int)oldState, (int)newState );
+			}
+
+			UpdateLastUpdateTime();
 		}
 
-		public void UpdatePosition( PosInfo newPosition )
+		public void UpdateLastUpdateTime()
 		{
-			throw new NotImplementedException();
+			_lastUpdateTime = DateTime.UtcNow;
+		}
+
+		protected void RaiseOnDeath()
+		{
+			OnDeath.Invoke( this );
+		}
+
+		protected void RaiseOnHealthChanged(int oldValue, int newValue)
+		{
+			OnHealthChanged.Invoke( this, oldValue, newValue );
 		}
 	}
 }

@@ -17,26 +17,17 @@ namespace DummyClient.Extensions
 			if(objectInfo == null)
 				throw new ArgumentNullException( nameof( objectInfo ) );
 
-			if(objectInfo.Type != ObjectType.ObjectPlayer || objectInfo.InfoCase != ObjectInfo.InfoOneofCase.PlayerInfo)
-				throw new InvalidOperationException( $"ObjectInfo is not a player. Type:{objectInfo.Type}, InfoCase: { objectInfo.InfoCase}");
-
-			PlayerInfo playerInfo = objectInfo.PlayerInfo;
+			if(objectInfo.Type == null || objectInfo.Type == ObjectType.ObjectNone || objectInfo.Type != ObjectType.ObjectPlayer)
+				return null;
 
 			return new ClientPlayerInfo
 			{
-				PlayerId = playerInfo.PlayerId,
-				PlayerName = string.IsNullOrEmpty( playerInfo.Name ) ? $"Player_{playerInfo.PlayerId}" : playerInfo.Name,
-				Level = playerInfo.Level,
-				CurrentExp = playerInfo.Experience,
-				Position = playerInfo.PosInfo?.Clone() ?? new PosInfo(),
-				Stats = new PlayerStats
-				{
-					MaxHP = playerInfo.MaxHP,
-					MaxMP = playerInfo.MaxMP,
-					CurrentHP = playerInfo.CurrentHP,
-					CurrentMP = playerInfo.CurrentMP,
-					// Attack, Defense는 PlayerInfo에 없음 → 기본값 유지
-				}
+				PlayerId = objectInfo.ObjectId,
+				PlayerName = string.IsNullOrEmpty( objectInfo.Name ) ? $"Player_{objectInfo.ObjectId}" : objectInfo.Name,
+
+				Position = objectInfo.PosInfo?.Clone() ?? new PosInfo(),
+				Stats = objectInfo.StatInfo.Clone(),
+				
 			};
 		}
 	}

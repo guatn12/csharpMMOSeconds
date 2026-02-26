@@ -221,7 +221,7 @@ namespace Server.Room
 				string joinMessage = $"Player_{session.SessionId}님이 로비에 입장했습니다.";
 				S_Chat joinPacket = new S_Chat
 				{
-					PlayerId = session.Player.PlayerId,
+					PlayerId = session.Player.ObjectId,
 					Message = joinMessage,
 				};
 
@@ -288,7 +288,7 @@ namespace Server.Room
 				var spawnPosition = Utils.Position3DValidator.GetSpawnPosition(this, new Random());
 
 				session.Player.InitPosition( spawnPosition );
-				RoomMap.AddPlayer( session, spawnPosition.PosX, spawnPosition.PosZ );
+				RoomMap.Add( session.Player, spawnPosition.PosX, spawnPosition.PosZ );
 
 				// GameSession을 통해 Redis에 위치 업데이트
 				await _playerPositionService.UpdatePositionAsync(session.PlayerId, spawnPosition );

@@ -45,7 +45,7 @@ namespace Server.Game.Objects
 		private static long _monsterSequence = 0;
 		public static long GenerateMonsterId()
 		{
-			long seq = Interlocked.Increment(ref _monsterSequence);
+			var seq = Interlocked.Increment(ref _monsterSequence);
 			return Generate( ObjectType.ObjectMonster, seq );
 		}
 	}

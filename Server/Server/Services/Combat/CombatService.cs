@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Protocol;
+using Server.Data.Models;
 using Server.Game;
 using Server.Game.Monsters;
 using Server.Services.DTOs;
@@ -51,7 +52,7 @@ namespace Server.Services.Combat
 			return distance <= range;
 		}
 
-		public async Task<CombatResults?> ProcessPlayerAttackMonsterAsync( Player player, Monster monster )
+		public async Task<CombatResults> ProcessPlayerAttackMonsterAsync( Player player, Monster monster, SkillData skillData )
 		{
 			// 기본 검증
 			if(player == null || monster == null)
@@ -63,35 +64,35 @@ namespace Server.Services.Combat
 			if(!player.IsAlive)
 			{
 				_logger.LogWarning( "Dead player {PlayerId} tried to attack monster {MonsterId}",
-					player.PlayerId, monster.MonsterId );
+					player.ObjectId, monster.ObjectId );
 				return null;
 			}
 
 			if(!monster.IsAlive)
 			{
 				_logger.LogWarning( "Player {PlayerId} tried to attack dead monster {MonsterId}",
-					player.PlayerId, monster.MonsterId );
+					player.ObjectId, monster.ObjectId );
 				return null;
 			}
 
 			// 거리 검증
-			if(!IsInAttackRange(player.Position, monster.Position))
+			if(!IsInAttackRange(player.PosInfo, monster.PosInfo))
 			{
 				_logger.LogWarning( "Player {PlayerId} out of attack range for monster {MonsterId}",
-					player.PlayerId, monster.MonsterId );
+					player.ObjectId, monster.ObjectId );
 				return null;
 			}
 
 			// 데미지 계산
-			int attackPower = player.GetTotalAttack();
+			int attackPower = player.GetTotalAttack() + ( player.GetTotalAttack() * skillData.Damage / 100); // 스킬 데미지 비율 적용
 			int defense = monster.StaticData.Defense;
 			var (damage, isCritical) = CalculateDamage( attackPower, defense );
 
 			// 데미지 적용
-			bool damaged = monster.TakeDamage(damage, player.PlayerId);
+			bool damaged = monster.TakeDamage(damage, player.ObjectId);
 			if(!damaged)
 			{
-				_logger.LogWarning( "Failed to apply damage to monster {MonsterId}", monster.MonsterId );
+				_logger.LogWarning( "Failed to apply damage to monster {MonsterId}", monster.ObjectId );
 				return null;
 			}
 
@@ -99,7 +100,7 @@ namespace Server.Services.Combat
 			player.StartAttackCooldown();
 			_logger.LogInformation(
 				 "Player {PlayerId} attacked Monster {MonsterId} for {Damage} damage (Critical: {IsCritical}) - Remaining HP: {CurrentHP}",
-				 player.PlayerId, monster.MonsterId, damage, isCritical, monster.CurrentHP );
+				 player.ObjectId, monster.ObjectId, damage, isCritical, monster.CurrentHP );
 
 			// 결과 반환
 			return new CombatResults

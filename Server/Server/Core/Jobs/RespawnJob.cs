@@ -48,7 +48,7 @@ namespace Server.Core.Jobs
 				// 부활 및 재입장 알림
 				_session.CurrentRoom.SendToPlayer( _session, new S_EnterGame()
 				{
-					Player = _session.Player.Info,
+					Player = _session.Player.ToObjectInfo(),
 					MapId = _session.CurrentRoom.RoomMap.MapId,
 				} );
 			}

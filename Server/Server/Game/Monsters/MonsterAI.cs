@@ -74,21 +74,21 @@ namespace Server.Game.Monsters
 			_lastUpdateTime = now;
 
 			// 상태별 업데이트
-			switch(_monster.State)
+			switch(_monster.CreatureState)
 			{
-			case MonsterState.MonsterIdle:
+			case State.Idle:
 				UpdateIdleState();
 				break;
-			case MonsterState.MonsterAttack:
+			case State.InCombat:
 				UpdateAttackState();
 				break;
-			case MonsterState.MonsterPatrol:
+			case State.Patrol:
 				UpdatePatrolState();
 				break;
-			case MonsterState.MonsterChase:
+			case State.Chase:
 				UpdateChaseState();
 				break;
-			case MonsterState.MonsterReturn:
+			case State.Return:
 				UpdateReturnState();
 				break;
 			}
@@ -100,13 +100,13 @@ namespace Server.Game.Monsters
 			Player nearestPlayer = FindNearestPlayer();
 			if(nearestPlayer != null)
 			{
-				float distance = Position3DValidator.CalculateDistance3D(_monster.Position, nearestPlayer.Position);
+				float distance = Position3DValidator.CalculateDistance3D(_monster.PosInfo, nearestPlayer.PosInfo);
 				if(distance <= _detectionRange)
 				{
-					_monster.SetTarget( nearestPlayer.PlayerId );
-					_monster.UpdateState( MonsterState.MonsterChase );
-					_logger.LogDebug( "Monster {MonsterId} detected player {PlayerId}", _monster.MonsterId,
-						nearestPlayer.PlayerId );
+					_monster.SetTarget( nearestPlayer.ObjectId );
+					_monster.SetState( State.Chase );
+					_logger.LogDebug( "Monster {MonsterId} detected player {PlayerId}", _monster.ObjectId,
+						nearestPlayer.ObjectId );
 					return;
 				}
 			}
@@ -114,7 +114,7 @@ namespace Server.Game.Monsters
 			// 일정 시간 후 배회
 			if(TimeSpan.FromSeconds( 2 ) < DateTime.UtcNow - _lastIdleTime)
 			{
-				_monster.UpdateState( MonsterState.MonsterPatrol );
+				_monster.SetState( State.Patrol );
 			}
 		}
 
@@ -124,13 +124,13 @@ namespace Server.Game.Monsters
 			Player nearestPlayer = FindNearestPlayer();
 			if(nearestPlayer != null)
 			{
-				float distance = Position3DValidator.CalculateDistance3D(_monster.Position, nearestPlayer.Position);
+				float distance = Position3DValidator.CalculateDistance3D(_monster.PosInfo, nearestPlayer.PosInfo);
 				if(distance <= _detectionRange)
 				{
-					_monster.SetTarget( nearestPlayer.PlayerId );
-					_monster.UpdateState( MonsterState.MonsterChase );
-					_logger.LogDebug( "Monster {MonsterId} detected player {PlayerId}", _monster.MonsterId,
-						nearestPlayer.PlayerId );
+					_monster.SetTarget( nearestPlayer.ObjectId );
+					_monster.SetState( State.Chase );
+					_logger.LogDebug( "Monster {MonsterId} detected player {PlayerId}", _monster.ObjectId,
+						nearestPlayer.ObjectId );
 					return;
 				}
 			}
@@ -146,10 +146,10 @@ namespace Server.Game.Monsters
 			MoveTowards( _currentPatrolTarget, _monster.StaticData.MoveSpeed * 0.5f );
 
 			// 목표 위치 도달 확인
-			float distanceToTarget = Position3DValidator.CalculateDistance3D(_monster.Position, _currentPatrolTarget);
+			float distanceToTarget = Position3DValidator.CalculateDistance3D(_monster.PosInfo, _currentPatrolTarget);
 			if(distanceToTarget < 0.5f)
 			{
-				_monster.UpdateState( MonsterState.MonsterIdle );
+				_monster.SetState( State.Idle );
 				_lastIdleTime = DateTime.UtcNow;
 			}
 		}
@@ -157,7 +157,7 @@ namespace Server.Game.Monsters
 		public void UpdateAttackState()
 		{
 			// 타겟 플레이어 찾기
-			var targetPlayer = _room.Players.FirstOrDefault(p => p.Player.PlayerId == _monster.TargetPlayerId);
+			var targetPlayer = _room.Players.FirstOrDefault(p => p.Player.ObjectId == _monster.TargetPlayerId);
 			if(targetPlayer == null || !targetPlayer.Player.IsAlive)
 			{
 				// 타겟을 처음 잃어버린 경우 시간 기록
@@ -172,7 +172,7 @@ namespace Server.Game.Monsters
 				{
 					_targetLostTime = DateTime.MinValue;
 					_monster.ClearTarget();
-					_monster.UpdateState( MonsterState.MonsterReturn );
+					_monster.SetState( State.Return );
 				}
 				return;
 			}
@@ -180,12 +180,12 @@ namespace Server.Game.Monsters
 			// 타겟을 찾았으면 유예 시간 초기화
 			_targetLostTime = DateTime.MinValue;
 
-			float distanceToTarget = Position3DValidator.CalculateDistance3D(_monster.Position, targetPlayer.Player.Position);
+			float distanceToTarget = Position3DValidator.CalculateDistance3D(_monster.PosInfo, targetPlayer.Player.PosInfo);
 
 			// 공격 범위 이탈
 			if(_attackRange < distanceToTarget)
 			{
-				_monster.UpdateState( MonsterState.MonsterChase );
+				_monster.SetState( State.Chase );
 				return;
 			}
 
@@ -194,7 +194,7 @@ namespace Server.Game.Monsters
 			if(_returnRange < distanceToSpawn)
 			{
 				_monster.ClearTarget();
-				_monster.UpdateState( MonsterState.MonsterReturn );
+				_monster.SetState( State.Return );
 				return;
 			}
 
@@ -214,9 +214,9 @@ namespace Server.Game.Monsters
 			{
 				_monster.UpdatePosition( _monster.SpawnPosition );
 				_monster.Restore();
-				_monster.UpdateState( MonsterState.MonsterIdle );
+				_monster.SetState( State.Idle );
 				_lastIdleTime = DateTime.UtcNow;
-				_logger.LogDebug( "Monster {MonsterId} retuned to spawn position", _monster.MonsterId );
+				_logger.LogDebug( "Monster {MonsterId} retuned to spawn position", _monster.ObjectId );
 				return;
 			}
 
@@ -226,7 +226,7 @@ namespace Server.Game.Monsters
 		public void UpdateChaseState()
 		{
 			// 타겟 플레이어 찾기
-			var targetPlayer = _room.Players.FirstOrDefault(p => p.Player.PlayerId == _monster.TargetPlayerId);
+			var targetPlayer = _room.Players.FirstOrDefault(p => p.Player.ObjectId == _monster.TargetPlayerId);
 			if(targetPlayer == null || !targetPlayer.Player.IsAlive)
 			{
 				// 타겟을 처음 잃어버린 경우 시간 기록
@@ -241,7 +241,7 @@ namespace Server.Game.Monsters
 				{
 					_targetLostTime = DateTime.MinValue;
 					_monster.ClearTarget();
-					_monster.UpdateState( MonsterState.MonsterReturn );
+					_monster.SetState( State.Return );
 				}
 				return;
 			}
@@ -249,12 +249,12 @@ namespace Server.Game.Monsters
 			// 타겟을 찾았으면 유예 시간 초기화
 			_targetLostTime = DateTime.MinValue;
 
-			float distanceToTarget = Position3DValidator.CalculateDistance3D(_monster.Position, targetPlayer.Player.Position);
+			float distanceToTarget = Position3DValidator.CalculateDistance3D(_monster.PosInfo, targetPlayer.Player.PosInfo);
 
 			// 공격 범위 진입
 			if(distanceToTarget <= _attackRange)
 			{
-				_monster.UpdateState( MonsterState.MonsterAttack );
+				_monster.SetState( State.InCombat );
 				return;
 			}
 
@@ -263,13 +263,13 @@ namespace Server.Game.Monsters
 			if(_returnRange < distanceToSpawn)
 			{
 				_monster.ClearTarget();
-				_monster.UpdateState( MonsterState.MonsterReturn );
-				_logger.LogDebug( "Monster {MonsterId} too far from spawn, returning", _monster.MonsterId );
+				_monster.SetState( State.Return );
+				_logger.LogDebug( "Monster {MonsterId} too far from spawn, returning", _monster.ObjectId );
 				return;
 			}
 
 			// 이동
-			MoveTowards( targetPlayer.Player.Position, _monster.StaticData.MoveSpeed );
+			MoveTowards( targetPlayer.Player.PosInfo, _monster.StaticData.MoveSpeed );
 		}
 
 		// 공격 수행
@@ -279,11 +279,11 @@ namespace Server.Game.Monsters
 			int damage = CalculateDamage(targetPlayer);
 
 			// 플레이어에게 데미지 적용
-			bool damaged = targetPlayer.Player.TakeDamage( damage );
+			bool damaged = targetPlayer.Player.TakeDamage( damage, 0 );
 			if( damaged )
 			{
 				_logger.LogInformation( "Monster {MonsterId} attacked Player {PlayerId} for {Damage} damage",
-					_monster.MonsterId, targetPlayer.Player.PlayerId, damage);
+					_monster.ObjectId, targetPlayer.Player.ObjectId, damage);
 
 				// TODO: S_Damage 패킷 브로드캐스트
 				S_Damage damagePacket = new S_Damage
@@ -292,7 +292,7 @@ namespace Server.Game.Monsters
 					Targets = { targetPlayer.Player.ToObjectDamageInfo(damage, false) }
 				};
 
-				_room.BroadcastInRange( damagePacket, _monster.Position );
+				_room.BroadcastInRange( damagePacket, _monster.PosInfo );
 			}
 		}
 
@@ -313,17 +313,17 @@ namespace Server.Game.Monsters
 			Player nearestPlayer = null;
 			float minDistance = float.MaxValue;
 
-			var Players = _room.RoomMap.GetNearByPlayers(_monster.Position.PosX, _monster.Position.PosZ, (int)_detectionRange);
+			var Players = _room.RoomMap.GetNearByPlayers(_monster.PosInfo.PosX, _monster.PosInfo.PosZ, (int)_detectionRange);
 
-			foreach(var session in Players)
+			foreach(var player in Players)
 			{
-				if(!session.Player.IsAlive) continue;
+				if(!player.IsAlive) continue;
 
-				float distance = Position3DValidator.CalculateDistance3D(_monster.Position, session.Player.Position);
+				float distance = Position3DValidator.CalculateDistance3D(_monster.PosInfo, player.PosInfo);
 				if( distance < minDistance )
 				{
 					minDistance = distance;
-					nearestPlayer = session.Player;
+					nearestPlayer = player;
 				}
 			}
 
@@ -359,9 +359,9 @@ namespace Server.Game.Monsters
 			// 전부 실패 시 현재 위치 유지
 			return new PosInfo
 			{
-				PosX = _monster.Position.PosX,
-				PosY = _monster.Position.PosY,
-				PosZ = _monster.Position.PosZ,
+				PosX = _monster.PosInfo.PosX,
+				PosY = _monster.PosInfo.PosY,
+				PosZ = _monster.PosInfo.PosZ,
 			};
 		}
 
@@ -369,7 +369,7 @@ namespace Server.Game.Monsters
 		{
 			if(target == null ) return;
 
-			PosInfo current = _monster.Position;
+			PosInfo current = _monster.PosInfo;
 
 			//방향 벡터 계산
 			float dx = target.PosX - current.PosX;
@@ -394,7 +394,7 @@ namespace Server.Game.Monsters
 				if(!_room.RoomMap.IsWalkableWorld(target.PosX, target.PosZ))
 				{
 					_logger.LogWarning( "Monster {MonsterId} Move Position Is Not Walkable. newPosition: {X}, {Z}",
-						_monster.MonsterId, target.PosX, target.PosZ );
+						_monster.ObjectId, target.PosX, target.PosZ );
 					return;
 				}
 
@@ -410,7 +410,7 @@ namespace Server.Game.Monsters
 				if(!_room.RoomMap.IsWalkableWorld(posX, posZ))
 				{
 					_logger.LogWarning( "Monster {MonsterId} Move Position Is Not Walkable. newPosition: {X}, {Z}",
-						_monster.MonsterId, posX, posZ );
+						_monster.ObjectId, posX, posZ );
 					return;
 				}
 
@@ -433,7 +433,7 @@ namespace Server.Game.Monsters
 			{
 				Objects = { _monster.ToObjectInfo() }
 			};
-			_room.BroadcastInRange( movePacket, _monster.Position );
+			_room.BroadcastInRange( movePacket, _monster.PosInfo );
 		}
 	}
 }

@@ -245,14 +245,15 @@ enum ObjectType {
 
 message ObjectInfo {
 	int64 objectId = 1;
-	string name = 2;
-	PosInfo posInfo = 3;
-	StatInfo statInfo = 4;
-	State state = 5;
+	ObjectType type = 2;
+	string name = 3;
+	PosInfo posInfo = 4;
+	StatInfo statInfo = 5;
+	State state = 6;
 	// 2개의 정보 중 1개만 사용된다. - playerInfo에 데이터가 있으면 monsterInfo는 null처리된다.
 	oneof info {
-		PlayerDetailInfo playerDetailInfo = 6;
-		MonsterDetailInfo monsterDetailInfo = 7;
+		PlayerDetailInfo playerDetailInfo = 7;
+		MonsterDetailInfo monsterDetailInfo = 8;
 	}
 }
 
@@ -289,15 +290,16 @@ message PosInfo {
 
 enum State {
 	IDLE = 0;					// 대기
-	PATROL = 1;					// 탐색 
-	WALKING = 2;				// 걷기
-	RUNNING = 3;				// 달리기
-	JUMPING = 4;				// 점프
-	CHASE = 5;					// 추적
-	FLYING = 6;					// 날기
-	FALLING = 7;				// 추락
-	IN_COMBAT = 8;				// 전투
-	DEAD = 9;					// 사망
+	PATROL = 1;					// 탐색
+	RETURN = 2;					// 귀환
+	WALKING = 3;				// 걷기
+	RUNNING = 4;				// 달리기
+	JUMPING = 5;				// 점프
+	CHASE = 6;					// 추적
+	FLYING = 7;					// 날기
+	FALLING = 8;				// 추락
+	IN_COMBAT = 9;				// 전투
+	DEAD = 10;					// 사망
 }
 
 message PlayerDetailInfo {

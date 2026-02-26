@@ -60,36 +60,6 @@ namespace Server.Extensions
 
 		#endregion
 
-		#region Stats 변환
-
-		/// <summary>
-		/// Player의 현재 스탯을 Protocol PlayerStats로 변환
-		/// </summary>
-		public static PlayerStats ToPlayerStats(this Player player)
-		{
-			if(player == null) 
-				ArgumentNullException.ThrowIfNull( player );
-
-			return new PlayerStats
-			{
-				Attack = player.GetTotalAttack(),   // 기본 공격력 + 장비 공격력
-				Defense = player.GetTotalDefense(), // 기본 방어력 + 장비 방어력
-				MaxHP = player.MaxHP,               // 최대 HP
-				MaxMP = player.MaxMP,               // 최대 MP
-				CurrentHP = player.CurrentHP,       // 현재 HP
-				CurrentMP = player.CurrentMP,       // 현재 MP
-			};
-		}
-
-		/// <summary>
-		/// Player의 현재 스탯을 Protocol PlayerStats로 변환 (Null-Safe)
-		/// </summary>
-		public static PlayerStats ToPlayerStatsOrEmpty(this Player player)
-		{
-			return player == null ? new PlayerStats() : player.ToPlayerStats();
-		}
-		#endregion
-
 		#region Utility 메서드
 		
 		/// <summary>
@@ -132,36 +102,5 @@ namespace Server.Extensions
 			return !player.Equipment.IsSlotEquipped( slot );
 		}
 		#endregion
-
-		/// <summary>
-		/// Player의 Info를 Protocol ObjectInfo로 변환
-		/// </summary>
-		public static ObjectInfo ToObjectInfo (this Player player)
-		{
-			if(player == null)
-				ArgumentNullException.ThrowIfNull( player );
-
-			return new ObjectInfo
-			{
-				ObjectId = player.PlayerId,
-				Type = ObjectType.ObjectPlayer,
-				PlayerInfo = player.Info.Clone()
-			};
-		}
-
-		public static ObjectDamageInfo ToObjectDamageInfo(this Player player, int damage, bool isCritical )
-		{
-			if(player == null)
-				ArgumentNullException.ThrowIfNull( player );
-
-			return new ObjectDamageInfo
-			{
-				ObjectId = player.PlayerId,
-				Damage = damage,
-				IsCritical = isCritical,
-				CurrentHP = player.CurrentHP,
-				Type = ObjectType.ObjectPlayer,
-			};
-		}
 	}
 }

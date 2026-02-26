@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Server.Game;
 using Server.Game.Monsters;
 using Server.Services.DTOs;
@@ -44,12 +44,12 @@ namespace Server.Services.Reward
 
 				_logger.LogDebug(
 					  "Item {ItemId} dropped from Monster {MonsterId}",
-					  itemId, monster.MonsterId );
+					  itemId, monster.ObjectId );
 			}
 
 			_logger.LogInformation(
 				  "Calculated reward for Monster {MonsterId}: Exp={Exp}, Gold={Gold}, Items={ItemCount}",
-				  monster.MonsterId, reward.Experience, reward.Gold, reward.DroppedItem.Count
+				  monster.ObjectId, reward.Experience, reward.Gold, reward.DroppedItem.Count
 			  );
 
 			return await Task.FromResult( reward );
@@ -67,7 +67,7 @@ namespace Server.Services.Reward
 				reward.NewMaxMP = player.MaxMP;
 				reward.NewMaxHP = player.MaxHP;
 
-				_logger.LogInformation( "Player {PlayerId} leveled up to {Level}", player.PlayerId, player.Level );
+				_logger.LogInformation( "Player {PlayerId} leveled up to {Level}", player.ObjectId, player.Level );
 			}
 
 			// 골드 지급
@@ -80,12 +80,12 @@ namespace Server.Services.Reward
 				if(!added)
 				{
 					_logger.LogWarning( "Failed to add item {ItemId} to player {PlayerId} inventory( full )",
-						item.ItemId, player.PlayerId );
+						item.ItemId, player.ObjectId );
 				}
 			}
 
 			_logger.LogInformation( "Gave reward to Player {PlayerId}: Exp={Exp}, Gold={Gold}, LevelUp={LevelUp}",
-				 player.PlayerId, reward.Experience, reward.Gold, leveledUp );
+				 player.ObjectId, reward.Experience, reward.Gold, leveledUp );
 
 			return Task.CompletedTask;
 		}

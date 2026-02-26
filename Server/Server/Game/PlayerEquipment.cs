@@ -1,4 +1,4 @@
-﻿using Protocol;
+using Protocol;
 using Server.Database.Entities;
 using System;
 using System.Collections.Generic;
@@ -17,7 +17,7 @@ namespace Server.Game
 	/// </summary>
 	public class PlayerEquipment
 	{
-		private readonly long _playerId;
+		private readonly long _playerRawId;
 		private readonly Dictionary<EquipSlot, InventoryItem> _equippedItems;   // 착용 중인 장비
 		private readonly Dictionary<StatType, int> _equipmentStats; // 장비로 얻은 스탯
 		private bool _isDirty = false;
@@ -55,9 +55,9 @@ namespace Server.Game
 		public event Action<PlayerEquipment, Dictionary<StatType, int>> OnStatsChanged;			// 스탯 변경
 		public event Action<PlayerEquipment> OnEquipmentChanged;								// 전체 변경
 
-		public PlayerEquipment(long playerId)
+		public PlayerEquipment(long playerRawId)
 		{
-			_playerId = playerId;
+			_playerRawId = playerRawId;
 			_equippedItems = new Dictionary<EquipSlot, InventoryItem>();
 			_equipmentStats = new Dictionary<StatType, int>();
 
@@ -69,7 +69,7 @@ namespace Server.Game
 		}
 
 		// 기본 속성
-		public long PlayerId => _playerId;
+		public long PlayerRawId => _playerRawId;
 		public bool IsDirty => _isDirty;
 		public Dictionary<StatType, int> EquipmentStats => new Dictionary<StatType, int>( _equipmentStats );
 		public int EquippedItemCount => _equippedItems.Count;
@@ -379,7 +379,7 @@ namespace Server.Game
 
 		public override string ToString()
 		{
-			return $"Equipment[Player:{_playerId}] Items:{EquippedItemCount} " +
+			return $"Equipment[Player:{_playerRawId}] Items:{EquippedItemCount} " +
 				$"ATK:{GetTotalAttack()} DEF:{GetTotalDefense()} HP:{GetTotalHP()} Dirty:{IsDirty}";
 		  }
 

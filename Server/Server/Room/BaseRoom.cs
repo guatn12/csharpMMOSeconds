@@ -19,8 +19,8 @@ using Server.Game.Monsters;
 using Server.Services;
 using Server.Packet.Handlers;
 using Server.Game.Map;
-using Server.Extensions;
 using Server.Utils;
+using Server.Game.Objects;
 
 namespace Server.Room
 {
@@ -29,6 +29,7 @@ namespace Server.Room
 		protected readonly ILogger _logger;
 		protected readonly ILoggerFactory _loggerFactory;
 		protected readonly ConcurrentDictionary<long, IClientSession> _players;
+		public ObjectManager ObjectManager { get; private set; }
 		public GameMap RoomMap { get; protected set; }
 		protected readonly object _lock = new object();
 		private static int _nextRoomId = 1;
@@ -42,17 +43,17 @@ namespace Server.Room
 		public abstract RoomType RoomType { get; }
 		public RoomState State { get; protected set; } = RoomState.Created;
 
-		public IReadOnlyList<IClientSession> Players => _players.Values.ToList();
-		public bool IsEmpty => _players.IsEmpty;
-		public bool IsFull => MaxPlayers <= _players.Count;
-
 		// 몬스터
-		private readonly Func<IRoom, DataManager, ILogger, MonsterSpawnPolicy, IMonsterManager> _monsterManagerFactory;
+		private readonly Func<IRoom, DataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> _monsterManagerFactory;
 		public IMonsterManager MonsterManager { get; private set; }
 		protected readonly DataManager _dataManager;
 		private System.Threading.Timer _monsterUpdateTimer;
 
 		private bool _isMonsterUpdateScheduled = false; // Timer 누적 방지
+
+		public IReadOnlyList<IClientSession> Players => _players.Values.ToList();
+		public bool IsEmpty => _players.IsEmpty;
+		public bool IsFull => MaxPlayers <= _players.Count;
 
 		// Service
 		protected readonly ICombatService _combatService;
@@ -75,7 +76,7 @@ namespace Server.Room
 		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, string roomName, int maxPlayers, DataManager dataManager,
 			IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
 			PlayerPositionService playerPositionService,
-			Func<IRoom, DataManager, ILogger, MonsterSpawnPolicy, IMonsterManager> monsterManagerFactory = null,
+			Func<IRoom, DataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> monsterManagerFactory = null,
 			int mapId = 1 )
 			: base( jobQueueManager )
 		{
@@ -102,11 +103,12 @@ namespace Server.Room
 			RoomMap = new GameMap( mapData );
 
 			_players = new ConcurrentDictionary<long, IClientSession>();
+			ObjectManager = new ObjectManager( _loggerFactory.CreateLogger<ObjectManager>() );
 
 			InitializePacketHandlers( _loggerFactory, combatService, rewardService, playerPositionService );
 
-			_monsterManagerFactory = monsterManagerFactory ?? ( ( room, dataMgr, logger, policy ) =>
-				new MonsterManager( room, dataMgr, logger, policy ) );
+			_monsterManagerFactory = monsterManagerFactory ?? ( ( room, dataMgr, objMgr, logger, policy ) =>
+				new MonsterManager( room, dataMgr, objMgr, logger, policy ) );
 
 			_logger.LogInformation( "Room created: {RoomId} '{RoomName}' (Type: {RoomType}, Max: {MaxPlayers})",
 				RoomId, RoomName, RoomType, MaxPlayers );
@@ -245,7 +247,7 @@ namespace Server.Room
 				}
 
 				// 플레이어 위치 정보도 제거
-				RoomMap.RemovePlayer( session );
+				RoomMap.Remove( session.Player );
 
 				_logger.LogError( e, "Failed to enter player {SessionId} to room {RoomId}", session.SessionId, RoomId );
 				return RoomEnterResult.UnknownError;
@@ -286,10 +288,17 @@ namespace Server.Room
 
 			foreach(var player in currentPlayers)
 			{
-				if(excludeSession != null && player == excludeSession)
+				IClientSession session = FindPlayerToPlayerId(player.ObjectId);
+				if(session == null)
+				{
+					_logger.LogWarning("Session Not Found From ObjectId {ObjectId}", player.ObjectId);
+					continue;
+				}
+
+				if(excludeSession != null && session == excludeSession)
 					continue;
 
-				SendToPlayer( player, packet );
+				SendToPlayer( session, packet );
 			}
 		}
 
@@ -313,8 +322,11 @@ namespace Server.Room
 		protected virtual Task OnCleanupAsync() => Task.CompletedTask;
 		protected virtual async Task OnPlayerEnterAsync( IClientSession session )
 		{
+			// 오브젝트 매니저에 플레이어 등록.
+			ObjectManager.Register( session.Player );
+
 			// 현재 스폰된 몬스터 중 플레이어 근처 몬스터 정보 전송
-			var monsters = RoomMap.GetNearByMonster(session.Player.Position.PosX, session.Player.Position.PosZ,
+			var monsters = RoomMap.GetNearByMonster(session.Player.PosInfo.PosX, session.Player.PosInfo.PosZ,
 					_dataManager.GameConfig.ViewDistance );
 
 			var spawnPacket = new S_Spawn();
@@ -324,27 +336,29 @@ namespace Server.Room
 			}
 
 			// 근처 플레이어 정보 전송
-			var players = RoomMap.GetNearByPlayers( session.Player.Position.PosX, session.Player.Position.PosZ,
+			var players = RoomMap.GetNearByPlayers( session.Player.PosInfo.PosX, session.Player.PosInfo.PosZ,
 				_dataManager.GameConfig.ViewDistance );
 
 			foreach(var player in players)
 			{
-				spawnPacket.Objects.Add( player.Player.ToObjectInfo() );
+				if(player.ObjectId == session.PlayerId)
+					continue;
+
+				spawnPacket.Objects.Add( player.ToObjectInfo() );
 			}
 
 			SendToPlayer( session, spawnPacket );
 
-
 			// 근처 플레이어 들에게 들어온 플레이어 전송
 			var playerSpawnPacket = new S_Spawn();
 			playerSpawnPacket.Objects.Add( session.Player.ToObjectInfo() );
-			BroadcastInRange( playerSpawnPacket, session.Player.Position );
+			BroadcastInRange( playerSpawnPacket, session.Player.PosInfo, excludeSession: session );
 		}
 		protected virtual async Task OnPlayerLeaveAsync( IClientSession session )
 		{
 			// 룸 퇴장 패킷 전달
 			var leavePacket = new S_LeaveGame();
-			leavePacket.PlayerId = session.PlayerId;
+			leavePacket.ObjectId = session.PlayerId;
 			SendToPlayer( session, leavePacket );
 		}
 		public virtual Task OnPlayerMoveAsync( IClientSession session, Protocol.C_Move packet ) => Task.CompletedTask;
@@ -375,7 +389,7 @@ namespace Server.Room
 			var policy = GetMonsterSpawnPolicy();
 
 			// MonsterManager 생성
-			MonsterManager = _monsterManagerFactory( this, _dataManager, _loggerFactory.CreateLogger<MonsterManager>(), policy );
+			MonsterManager = _monsterManagerFactory( this, _dataManager, ObjectManager, _loggerFactory.CreateLogger<MonsterManager>(), policy );
 
 			// MonsterManager 초기화
 			await MonsterManager.InitializeAsync();
@@ -420,7 +434,7 @@ namespace Server.Room
 				// gameMap에서 몬스터 위치 정보 제거
 				if(monster != null)
 				{
-					RoomMap.RemoveMonster( monster );
+					RoomMap.Remove( monster );
 				}
 
 				// S_MonsterDespawn 브로드캐스트
@@ -428,7 +442,7 @@ namespace Server.Room
 				despawnPacket.Objects.Add( monster.ToObjectInfo() );
 
 				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
-				BroadcastInRange( despawnPacket, monster.Position );
+				BroadcastInRange( despawnPacket, monster.PosInfo );
 
 				_logger.LogInformation( "Broadcasted S_MonsterDespawn for Monster {MonsterId} in Room {RoomId}",
 					monsterId, RoomId );
@@ -451,7 +465,7 @@ namespace Server.Room
 				// gameMap에 몬스터 위치 정보 추가
 				if(monster != null)
 				{
-					RoomMap.AddMonster( monster, monster.Position.PosX, monster.Position.PosZ );
+					RoomMap.Add( monster, monster.PosInfo.PosX, monster.PosInfo.PosZ );
 				}
 
 				// S_MonsterSpawn 브로드 캐스트
@@ -459,15 +473,15 @@ namespace Server.Room
 				spawnPacket.Objects.Add( monster.ToObjectInfo() );
 
 				// async 메서드를 동기적으로 실행 (JobQueue 안에서)
-				BroadcastInRange( spawnPacket, monster.Position );
+				BroadcastInRange( spawnPacket, monster.PosInfo );
 
 				_logger.LogInformation( "Broadcasted S_MonsterSpawn for Monster {MonsterId} ({Name}) in Room {RoomId}",
-					monster.MonsterId, monster.Name, RoomId );
+					monster.ObjectId, monster.Name, RoomId );
 			}
 			catch(Exception ex)
 			{
 				_logger.LogError( ex, "Failed to broadcast spawn for Monster {MonsterId} in Room {RoomId}",
-					monster.MonsterId, RoomId );
+					monster.ObjectId, RoomId );
 			}
 		}
 
@@ -535,11 +549,14 @@ namespace Server.Room
 
 		private async Task<bool> InternalLeaveAsync( IClientSession session, bool isForced )
 		{
+			// 오브젝트 매니저에서 플레이어 제거
+			ObjectManager.Unregister( session.PlayerId );
+
 			if(!_players.TryRemove( session.SessionId, out var removedSession ))
 				return false;
 
 			// 퇴장 시 room의 맵에서 플레이어 위치 정보 제거
-			RoomMap.RemovePlayer( session );
+			RoomMap.Remove( session.Player );
 
 			// 퇴장 시 session의 currentRoom 초기화
 			session.SetCurrentRoom( null );

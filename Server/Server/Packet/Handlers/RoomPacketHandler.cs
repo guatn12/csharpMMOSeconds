@@ -50,7 +50,7 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning("Move range validation failed: {Error}", rangeValidation.ErrorMessage );
 
 				// 현재 위치를 클라이언트에 재전송 (동기화)
-				var currentPos = session.Player.Info.PosInfo;
+				var currentPos = session.Player.PosInfo;
 
 				if(currentPos != null)
 				{
@@ -71,7 +71,7 @@ namespace Server.Packet.Handlers
 			session.Player.UpdatePosition(packet.PosInfo);
 
 			// GameMap 내 플레이어 위치 업데이트
-			_room.RoomMap.UpdatePlayer( session, packet.PosInfo.PosX, packet.PosInfo.PosZ );
+			_room.RoomMap.Update( session.Player, packet.PosInfo.PosX, packet.PosInfo.PosZ );
 
 			// 4. Redis 캐시 업데이트 (근처 플레이어 검색 최적화용)
 			await _playerPositionService.UpdatePositionAsync(session.PlayerId, packet.PosInfo);
@@ -81,7 +81,7 @@ namespace Server.Packet.Handlers
 			{
 				Objects = { session.Player.ToObjectInfo() }
 			};
-			_room.BroadcastInRange( response, session.Player.Position, excludeSession: session );
+			_room.BroadcastInRange( response, session.Player.PosInfo, excludeSession: session );
 
 			// 6. 룸별 이동 후처리
 			await _room.OnPlayerMoveAsync( session, packet );
@@ -146,7 +146,7 @@ namespace Server.Packet.Handlers
 			// 2. 응답 생성
 			var response = new S_PlayerStat
 			{
-				Player = session.Player.Info
+				Player = session.Player.ToObjectInfo(),
 			};
 
 			// 3. 요청자에게만 전송

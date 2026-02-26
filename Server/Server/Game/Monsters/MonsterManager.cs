@@ -1,12 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Data;
+using Server.Game.Objects;
 using Server.Room;
-using Server.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 
@@ -20,6 +19,7 @@ namespace Server.Game.Monsters
 		private readonly IRoom _room;
 		private readonly DataManager _dataManager;
 		private readonly ILogger _logger;
+		private readonly ObjectManager _objectManager;
 		private MonsterSpawner _monsterSpawner;
 		private MonsterSpawnPolicy _monsterSpawnPolicy;
 		private bool _isAIPaused = false;
@@ -28,11 +28,12 @@ namespace Server.Game.Monsters
 		public event Action<long, Monster> OnMonsterDespawned;
 		public event Action<Monster> OnMonsterSpawned;
 
-		public MonsterManager(IRoom room, DataManager dataManager, ILogger logger, 
+		public MonsterManager(IRoom room, DataManager dataManager, ObjectManager objectManager, ILogger logger, 
 			MonsterSpawnPolicy monsterSpawnPolicy = null )
 		{
 			_room=room;
 			_dataManager=dataManager;
+			_objectManager=objectManager;
 			_logger=logger;
 			_monsterSpawnPolicy=monsterSpawnPolicy ?? MonsterSpawnPolicy.Default;
 
@@ -51,7 +52,7 @@ namespace Server.Game.Monsters
 			}
 
 			// MonsterSpawner 생성
-			_monsterSpawner = new MonsterSpawner( _room, _dataManager, _logger );
+			_monsterSpawner = new MonsterSpawner( _room, _dataManager, _objectManager, _logger );
 
 			_monsterSpawner.OnMonsterDespawned += HandleMonsterDespawned;
 			_monsterSpawner.OnMonsterSpawned += HandleMonsterSpawned;
@@ -120,7 +121,7 @@ namespace Server.Game.Monsters
 			if(monster != null)
 			{
 				_logger.LogInformation( "Monster {MonsterId} (Template: {TemplateId} spawned at ({X}, {Y}, {Z}) in Room {RoomId}",
-					monster.MonsterId, templateId, position.PosX, position.PosY, position.PosZ, _room.RoomId );
+					monster.ObjectId, templateId, position.PosX, position.PosY, position.PosZ, _room.RoomId );
 			}
 
 			return monster;

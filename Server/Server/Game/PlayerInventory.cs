@@ -1,4 +1,4 @@
-﻿using Server.Database.Entities;
+using Server.Database.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,7 +15,7 @@ namespace Server.Game
 	/// </summary>
 	public class PlayerInventory
 	{
-		private readonly long _playerId;
+		private readonly long _playerRawId;
 		private readonly Dictionary<int, InventoryItem> _items;	// Slot -> Item 매핑
 		private readonly HashSet<int> _dirtySlots;  // 변경된 슬롯 추적
 		private long _gold = 0;
@@ -30,16 +30,16 @@ namespace Server.Game
 		public event Action<PlayerInventory, long, long> OnGoldChanged;
 		public event Action<PlayerInventory> OnInventoryChanged;
 
-		public PlayerInventory(long playerId, int maxSlots=50)
+		public PlayerInventory(long playerRawId, int maxSlots=50)
 		{
-			_playerId = playerId;
+			_playerRawId = playerRawId;
 			_maxSlots = maxSlots;
 			_items = new Dictionary<int, InventoryItem>();
 			_dirtySlots = new HashSet<int>();
 		}
 
 		// 기본 속성
-		public long PlayerId => _playerId;
+		public long PlayerRawId => _playerRawId;
 		public long Gold => _gold;
 		public int MaxSlots => _maxSlots;
 		public int UsedSlots => _items.Count;
@@ -291,7 +291,7 @@ namespace Server.Game
 				ExtensionData = new Dictionary<string, object>
 				{
 					[ "maxSlots" ] = _maxSlots,
-					[ "playerId" ] = _playerId
+					[ "playerRawId" ] = _playerRawId
 				}
 			};
 		}
@@ -390,14 +390,14 @@ namespace Server.Game
 
 		public override string ToString()
 		{
-			return $"Inventory[Player:{_playerId}], Items:{UsedSlots}/{_maxSlots}, Gold: { _gold}, Dirty: { IsDirty}";			
+			return $"Inventory[Player:{_playerRawId}], Items:{UsedSlots}/{_maxSlots}, Gold: { _gold}, Dirty: { IsDirty}";			
 		}
 
 		public Dictionary<string, object> GetStatistics()
 		{
 			var stats = new Dictionary<string, object>
 			{
-				["playerId"] = _playerId,
+				["playerRawId"] = _playerRawId,
 				["usedSlots"] = UsedSlots,
 				["maxSlots"] = _maxSlots,
 				["freeSlots"] = FreeSlots,

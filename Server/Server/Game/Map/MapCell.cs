@@ -1,10 +1,7 @@
-using Server.Core.Session;
 using Server.Game.Monsters;
-using System;
+using Server.Game.Objects;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Server.Game.Map
 {
@@ -18,7 +15,7 @@ namespace Server.Game.Map
 	public class MapCell
 	{
 		/// <summary> 이 셀에 위치한 플레이어 목록 </summary>
-		public HashSet<IClientSession> Players { get; } = new HashSet<IClientSession>();
+		public HashSet<Player> Players { get; } = new HashSet<Player>();
 		/// <summary> 이 셀에 위치한 몬스터 목록 </summary>
 		public HashSet<Monster> Monsters { get; } = new HashSet<Monster>();
 
@@ -27,5 +24,7 @@ namespace Server.Game.Map
 
 		/// <summary> 이 셀의 총 엔티티 수 </summary>
 		public int TotalCount => Players.Count + Monsters.Count;
+
+		//public IEnumerable<GameObject> Objects => Players.Cast<GameObject>().Concat( Monsters.Cast<GameObject>() );
 	}
 }

@@ -21,29 +21,19 @@ namespace DummyClient.Packet
 		{
 			_logger.LogInformation( "[Client] S_EnterGame - PlayerId: {PlayerId}, " +
 				"PlayerName: {PlayerName}, Level: {Level}, HP: {HP}/{MaxHP}",
-				packet.Player.PlayerId, packet.Player.Name,
-				packet.Player.Level, packet.Player.CurrentHP, packet.Player.MaxHP );
+				packet.Player.ObjectId, packet.Player.Name,
+				packet.Player.StatInfo.Level, packet.Player.StatInfo.CurrentHP, packet.Player.StatInfo.MaxHP );
 
 			// 플레이어 초기화.
-			Program.MyPlayer.PlayerId = packet.Player.PlayerId;
+			Program.MyPlayer.PlayerId = packet.Player.ObjectId;
 			Program.MyPlayer.PlayerName = packet.Player.Name;
-			Program.MyPlayer.Level = packet.Player.Level;
-			Program.MyPlayer.Stats.CurrentHP = packet.Player.CurrentHP;
-			Program.MyPlayer.Stats.CurrentMP = packet.Player.CurrentMP;
-			Program.MyPlayer.Stats.MaxHP = packet.Player.MaxHP;
-			Program.MyPlayer.Stats.MaxMP = packet.Player.MaxMP;
-			Program.MyPlayer.CurrentExp = packet.Player.Experience;
 			Program.MyPlayer.CurrentMapId = packet.MapId;
+			Program.MyPlayer.Stats = packet.Player.StatInfo.Clone();
 
 			// 위치 정보 초기화
 			if(packet.Player.PosInfo != null)
 			{
-				Program.MyPlayer.Position.PosX = packet.Player.PosInfo.PosX;
-				Program.MyPlayer.Position.PosY = packet.Player.PosInfo.PosY;
-				Program.MyPlayer.Position.PosZ = packet.Player.PosInfo.PosZ;
-				Program.MyPlayer.Position.RotationX = packet.Player.PosInfo.RotationX;
-				Program.MyPlayer.Position.RotationY = packet.Player.PosInfo.RotationY;
-				Program.MyPlayer.Position.RotationZ = packet.Player.PosInfo.RotationZ;
+				Program.MyPlayer.Position = packet.Player.PosInfo.Clone();
 			}
 
 			// 맵 데이터 로드
@@ -69,12 +59,11 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_LeaveGame( NetworkSession session, S_LeaveGame packet )
 		{
-			_logger.LogInformation( "[Client] Received S_LeaveGame. PlayerId: {PlayerId}", packet.PlayerId );
+			_logger.LogInformation( "[Client] Received S_LeaveGame. PlayerId: {ObjectId}", packet.ObjectId );
 
 			Program.MyPlayer.Clear();
 			Program.CurrentMapData = null;
-			Program.NearbyMonsters.Clear();
-			Program.Players.Clear();
+			Program.NearbyObjects.Clear();
 			
 			return ValueTask.CompletedTask;
 		}
@@ -86,20 +75,19 @@ namespace DummyClient.Packet
 			{
 				switch(objectInfo.Type)
 				{
+				// 오브젝트 타입 추가시 여기도 추가 필요.
 				case ObjectType.ObjectPlayer:
-					var player = objectInfo.PlayerInfo;
-					Program.Players.TryAdd( objectInfo.ObjectId, objectInfo.ToClientPlayerInfo() );
-					_logger.LogInformation( "Player Spawned: ID {PlayerId}, Name: {PlayerName}, Level: {Level}",
-						player.PlayerId, player.Name, player.Level );
-					break;
-				
 				case ObjectType.ObjectMonster:
-					var monster = objectInfo.MonsterInfo;
-					Program.NearbyMonsters[monster.MonsterId] = monster;
-					_logger.LogInformation( "Monster Spawned: ID {MonsterId}, Name: {Name}, Level: {Level}",
-						monster.MonsterId, monster.Name, monster.Level );
+					if(Program.NearbyObjects.TryAdd( objectInfo.ObjectId, objectInfo ) == false )
+					{
+						_logger.LogWarning( "Object Add Fail From On_S_Spawn, ObjectId : {ObjectId}", objectInfo.ObjectId );
+					}
+					else
+					{
+						_logger.LogInformation( "Object Spawned: ID {ObjectId}, Name: {Name}, Level: {Level}",
+							objectInfo.ObjectId, objectInfo.Name, objectInfo.StatInfo.Level );
+					}
 					break;
-				
 				case ObjectType.ObjectNone:
 					_logger.LogWarning( "Unknown Object Type: ObjectNone" );
 					break;
@@ -120,29 +108,16 @@ namespace DummyClient.Packet
 				switch(objectInfo.Type)
 				{
 					case ObjectType.ObjectPlayer:
-						var player = objectInfo.PlayerInfo;
-						if(Program.Players.Remove( objectInfo.ObjectId ))
-						{
-							_logger.LogInformation( "Player Despawned: ID {PlayerId}, Name: {PlayerName}",
-								player.PlayerId, player.Name );
-						}
-						else
-						{
-							_logger.LogWarning( "Player Despawn Failed: ID {PlayerId} Not Found",
-								player.PlayerId );
-						}
-					break;
 					case ObjectType.ObjectMonster:
-						var monster = objectInfo.MonsterInfo;
-						if(Program.NearbyMonsters.Remove( monster.MonsterId ))
+						if(Program.NearbyObjects.Remove( objectInfo.ObjectId ))
 						{
-							_logger.LogInformation( "Monster Despawned: ID {MonsterId}, Name: {Name}",
-								monster.MonsterId, monster.Name );
+							_logger.LogInformation( "Object Despawned: ID {ObjectId}, Name: {Name}",
+								objectInfo.ObjectId, objectInfo.Name );
 						}
 						else
 						{
-							_logger.LogWarning( "Monster Despawn Failed: ID {MonsterId} Not Found",
-								monster.MonsterId );
+							_logger.LogWarning( "Object Despawn Failed: ID {ObjectId} Not Found",
+								objectInfo.ObjectId );
 						}
 					break;
 					case ObjectType.ObjectNone:
@@ -164,45 +139,23 @@ namespace DummyClient.Packet
 				switch(obj.Type)
 				{
 					case ObjectType.ObjectPlayer:
+					case ObjectType.ObjectMonster:
 						if(obj.ObjectId == Program.MyPlayer.PlayerId)
 						{
 							// 내 위치 정보 업데이트
-							Program.MyPlayer.Position.PosX = obj.PlayerInfo.PosInfo.PosX;
-							Program.MyPlayer.Position.PosY = obj.PlayerInfo.PosInfo.PosY;
-							Program.MyPlayer.Position.PosZ = obj.PlayerInfo.PosInfo.PosZ;
-							Program.MyPlayer.Position.RotationX = obj.PlayerInfo.PosInfo.RotationX;
-							Program.MyPlayer.Position.RotationY = obj.PlayerInfo.PosInfo.RotationY;
-							Program.MyPlayer.Position.RotationZ = obj.PlayerInfo.PosInfo.RotationZ;
+							Program.MyPlayer.Position = obj.PosInfo.Clone();
 							_logger.LogInformation( "[Client] S_Move - MyPlayer moved to ({PosX:F1}, {PosY:F1}, {PosZ:F1})",
-								obj.PlayerInfo.PosInfo.PosX, obj.PlayerInfo.PosInfo.PosY, obj.PlayerInfo.PosInfo.PosZ );
+								obj.PosInfo.PosX, obj.PosInfo.PosY, obj.PosInfo.PosZ );
 							break;
 						}
 						else
 						{
-							if(Program.Players.TryGetValue( obj.ObjectId, out var player ))
+							if(Program.NearbyObjects.TryGetValue( obj.ObjectId, out var objectInfo))
 							{
-								player.Position.PosX = obj.PlayerInfo.PosInfo.PosX;
-								player.Position.PosY = obj.PlayerInfo.PosInfo.PosY;
-								player.Position.PosZ = obj.PlayerInfo.PosInfo.PosZ;
-								player.Position.RotationX = obj.PlayerInfo.PosInfo.RotationX;
-								player.Position.RotationY = obj.PlayerInfo.PosInfo.RotationY;
-								player.Position.RotationZ = obj.PlayerInfo.PosInfo.RotationZ;
-								_logger.LogInformation( "[Client] S_Move - Player {PlayerId} moved to ({PosX:F1}, {PosY:F1}, {PosZ:F1})",
-									obj.ObjectId, obj.PlayerInfo.PosInfo.PosX, obj.PlayerInfo.PosInfo.PosY, obj.PlayerInfo.PosInfo.PosZ );
+								objectInfo.PosInfo = obj.PosInfo.Clone();
+								_logger.LogInformation( "[Client] S_Move - Object({Type}) {ObjectId} ({Name}) moved to ({PosX:F1}, {PosY:F1}, {PosZ:F1})",
+									obj.Type, obj.ObjectId, objectInfo.Name, objectInfo.PosInfo.PosX, objectInfo.PosInfo.PosY, objectInfo.PosInfo.PosZ );
 							}
-						}
-						break;
-					case ObjectType.ObjectMonster:
-						if(Program.NearbyMonsters.TryGetValue( obj.ObjectId, out var monster ))
-						{
-							monster.PosInfo.PosX = obj.MonsterInfo.PosInfo.PosX;
-							monster.PosInfo.PosY = obj.MonsterInfo.PosInfo.PosY;
-							monster.PosInfo.PosZ = obj.MonsterInfo.PosInfo.PosZ;
-							monster.PosInfo.RotationX = obj.MonsterInfo.PosInfo.RotationX;
-							monster.PosInfo.RotationY = obj.MonsterInfo.PosInfo.RotationY;
-							monster.PosInfo.RotationZ = obj.MonsterInfo.PosInfo.RotationZ;
-							_logger.LogInformation( "[Client] S_Move - Monster {MonsterId} ({Name}) moved to ({PosX:F1}, {PosY:F1}, {PosZ:F1})",
-								obj.ObjectId, monster.Name, obj.MonsterInfo.PosInfo.PosX, obj.MonsterInfo.PosInfo.PosY, obj.MonsterInfo.PosInfo.PosZ );
 						}
 						break;
 				}
@@ -213,45 +166,46 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_Chat( NetworkSession session, S_Chat packet )
 		{
-			_logger.LogInformation( "[Client] Received S_Chat. PlayerId: {PlayerId}, Message: {Message}", packet.PlayerId, packet.Message );
+			_logger.LogInformation( "[Client] Received S_Chat. PlayerId: {PlayerId}, Message: {Message}", 
+				packet.PlayerId, packet.Message );
 			return ValueTask.CompletedTask;
 		}
 
 		public override ValueTask On_S_PlayerUpdate( NetworkSession session, S_PlayerUpdate packet )
 		{
 			// 내 플레이어 정보만 업데이트
-			if(packet.Player.PlayerId == Program.MyPlayer.PlayerId)
+			if(packet.Player.ObjectId == Program.MyPlayer.PlayerId)
 			{
 				int oldHP = Program.MyPlayer.Stats.CurrentHP;
 				int oldMP = Program.MyPlayer.Stats.CurrentMP;
 
-				Program.MyPlayer.Stats.CurrentMP = packet.Player.CurrentMP;
-				Program.MyPlayer.Stats.CurrentHP = packet.Player.CurrentHP;
+				Program.MyPlayer.Stats.CurrentMP = packet.Player.StatInfo.CurrentMP;
+				Program.MyPlayer.Stats.CurrentHP = packet.Player.StatInfo.CurrentHP;
 
 				// HP 변화 로그
-				if(oldHP != packet.Player.CurrentHP)
+				if(oldHP != packet.Player.StatInfo.CurrentHP)
 				{
-					int hpChange = packet.Player.CurrentHP - oldHP;
+					int hpChange = packet.Player.StatInfo.CurrentHP - oldHP;
 					string changeStr = 0 < hpChange ? $"+{hpChange}" : hpChange.ToString();
 
 					_logger.LogInformation( "HP : {OldHP} -> {NewHP} ({Change}) [{Percent:F1}%]",
-						oldHP, packet.Player.CurrentHP, changeStr, Program.MyPlayer.HPPercent );
+						oldHP, packet.Player.StatInfo.CurrentHP, changeStr, Program.MyPlayer.HPPercent );
 
 					// HP 위험 경고 (30% 이하)
-					if(Program.MyPlayer.HPPercent < 30f && 30f <= ((float)oldHP / packet.Player.MaxHP * 100))
+					if(Program.MyPlayer.HPPercent < 30f && 30f <= ((float)oldHP / packet.Player.StatInfo.MaxHP * 100))
 					{
 						_logger.LogWarning( "HP 위험! 포션 사용 권장" );
 					}
 				}
 
 				// MP 변화 로그
-				if(oldMP != packet.Player.CurrentMP)
+				if(oldMP != packet.Player.StatInfo.CurrentMP)
 				{
-					int mpChange = packet.Player.CurrentMP - oldMP;
+					int mpChange = packet.Player.StatInfo.CurrentMP - oldMP;
 					string changeStr = 0 < mpChange ? $"+{mpChange}" : mpChange.ToString();
 
 					_logger.LogDebug( "MP: {OldMP} -> {NewMP} ({Change})",
-						oldMP, packet.Player.CurrentMP, changeStr );
+						oldMP, packet.Player.StatInfo.CurrentMP, changeStr );
 				}
 			}
 
@@ -259,14 +213,9 @@ namespace DummyClient.Packet
 		}
 		public override ValueTask On_S_PlayerStat( NetworkSession session, S_PlayerStat packet )
 		{
-			if(packet.Player.PlayerId == Program.MyPlayer.PlayerId)
+			if(packet.Player.ObjectId == Program.MyPlayer.PlayerId)
 			{
-				Program.MyPlayer.Level = packet.Player.Level;
-				Program.MyPlayer.Stats.CurrentHP = packet.Player.CurrentHP;
-				Program.MyPlayer.Stats.MaxHP = packet.Player.MaxHP;
-				Program.MyPlayer.Stats.CurrentMP = packet.Player.CurrentMP;
-				Program.MyPlayer.Stats.MaxMP = packet.Player.MaxMP;
-				Program.MyPlayer.CurrentExp = packet.Player.Experience;
+				Program.MyPlayer.Stats = packet.Player.StatInfo.Clone();
 
 				// 전체 출력
 				Program.MyPlayer.LogStatus( _logger );
@@ -279,7 +228,7 @@ namespace DummyClient.Packet
 			// 공격자와 피해자 정보 파악
 			string attackerName = packet.Attacker.Type == ObjectType.ObjectPlayer
 				? $"Player {packet.Attacker.ObjectId}"
-				: (Program.NearbyMonsters.TryGetValue(packet.Attacker.ObjectId, out var attacker)
+				: (Program.NearbyObjects.TryGetValue(packet.Attacker.ObjectId, out var attacker)
 					? attacker.Name
 					: $"Monster {packet.Attacker.ObjectId}");
 
@@ -291,7 +240,8 @@ namespace DummyClient.Packet
 				case ObjectType.ObjectNone:
 					_logger.LogWarning( "[Client] Target Type is ObjectNone. Skipping..." );
 					continue;
-					case ObjectType.ObjectPlayer:
+				case ObjectType.ObjectPlayer:
+				case ObjectType.ObjectMonster:
 					// 타겟이 나인 경우
 					if(target.ObjectId == Program.MyPlayer.PlayerId)
 					{
@@ -305,17 +255,18 @@ namespace DummyClient.Packet
 							_logger.LogError( "HP 위험! 포션 사용 또는 도망 필요!" );
 						}
 					}
-					break;
-				case ObjectType.ObjectMonster:
-					if(!Program.NearbyMonsters.TryGetValue( target.ObjectId, out var monster ))
+					else
 					{
-						_logger.LogWarning( "[Client] Target Monster {TargetId} Not Found From NearByMonsters", target.ObjectId );
-						continue;
+						if(!Program.NearbyObjects.TryGetValue( target.ObjectId, out var objectInfo ))
+						{
+							_logger.LogWarning( "[Client] Target Object {TargetId} Not Found From NearbyObjects", target.ObjectId );
+							continue;
+						}
+						objectInfo.StatInfo.CurrentHP = target.CurrentHP;
+						string criticalStr = target.IsCritical ? " [CRITICAL!]" : "";
+						_logger.LogInformation( "[Client] Damage: {Attacker} -> {Target} | Damage: {Damage}{Critical} | Remaining HP: {CurrentHP}",
+							attackerName, objectInfo.Name, target.Damage, criticalStr, target.CurrentHP );
 					}
-					monster.CurrentHP = target.CurrentHP;
-					string criticalStr = target.IsCritical ? " [CRITICAL!]" : "";
-					_logger.LogInformation( "[Client] Damage: {Attacker} -> {Target} | Damage: {Damage}{Critical} | Remaining HP: {CurrentHP}",
-						attackerName, monster.Name, target.Damage, criticalStr, target.CurrentHP );
 					break;
 				default:
 					_logger.LogWarning( "[Client] Target Type is Unknown{Type}. Skipping...", target.Type );
@@ -349,10 +300,10 @@ namespace DummyClient.Packet
 				}
 
 				// 다른 플레이어 힐
-				if(Program.Players.TryGetValue( target.ObjectId, out var player ))
+				if(Program.NearbyObjects.TryGetValue( target.ObjectId, out var targetInfo ))
 				{
-					int oldHP = Program.MyPlayer.Stats.CurrentHP;
-					player.Stats.CurrentHP = target.CurrentHP;
+					int oldHP = targetInfo.StatInfo.CurrentHP;
+					targetInfo.StatInfo.CurrentHP = target.CurrentHP;
 					_logger.LogInformation( "[Client] Heal!!! healerId: {healerId} -> TargetId: {TargetId}", packet.Healer.ObjectId, target.ObjectId );
 					_logger.LogInformation( "HealAmount: {healAmount} | oldHP: {oldHP} -> CurrentHP: {CurrentHP} (ChangeValue: {Change}) ",
 					packet.Healer.Damage, oldHP, target.CurrentHP, target.CurrentHP - oldHP );
@@ -370,12 +321,12 @@ namespace DummyClient.Packet
 
 			if(packet.PlayerId == Program.MyPlayer.PlayerId)
 			{
-				Program.MyPlayer.Level = packet.NewLevel;
+				Program.MyPlayer.Stats.Level = packet.NewLevel;
 				Program.MyPlayer.Stats.MaxHP = packet.NewMaxHP;
 				Program.MyPlayer.Stats.MaxMP = packet.NewMaxMP;
 				Program.MyPlayer.Stats.CurrentHP = packet.NewMaxHP;
 				Program.MyPlayer.Stats.CurrentMP = packet.NewMaxMP;
-				Program.MyPlayer.CurrentExp = 0;
+				Program.MyPlayer.Stats.Experience = 0;
 			}
 
 			return ValueTask.CompletedTask;
@@ -481,12 +432,7 @@ namespace DummyClient.Packet
 				_logger.LogInformation( "  MP: {CurrentMP}/{MaxMP}", packet.UpdatedStats.CurrentMP, packet.UpdatedStats.MaxMP );
 
 				// 내 플레이어 정보 업데이트
-				Program.MyPlayer.Stats.Attack = packet.UpdatedStats.Attack;
-				Program.MyPlayer.Stats.Defense = packet.UpdatedStats.Defense;
-				Program.MyPlayer.Stats.MaxHP = packet.UpdatedStats.MaxHP;
-				Program.MyPlayer.Stats.MaxMP = packet.UpdatedStats.MaxMP;
-				Program.MyPlayer.Stats.CurrentHP = packet.UpdatedStats.CurrentHP;
-				Program.MyPlayer.Stats.CurrentMP = packet.UpdatedStats.CurrentMP;
+				Program.MyPlayer.Stats = packet.UpdatedStats.Clone();
 			}
 			else
 			{
@@ -589,11 +535,11 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_MonsterDie( NetworkSession session, S_MonsterDie packet )
 		{
-			string monsterName = Program.NearbyMonsters.TryGetValue(packet.MonsterId, out var monster)
+			string objectName = Program.NearbyObjects.TryGetValue(packet.MonsterId, out var monster)
 				? monster.Name : $"Monster {packet.MonsterId}";
 
 			_logger.LogInformation( "[Client] Monster Killed! {Name} (ID:{MonsterId})",
-	monsterName, packet.MonsterId );
+	objectName, packet.MonsterId );
 			_logger.LogInformation( "  ├─ Killer: Player {KillerId}", packet.KillPlayerId );
 			_logger.LogInformation( "  ├─ Exp Gained: +{Exp}", packet.ExpGained );
 			_logger.LogInformation( "  ├─ Gold Gained: +{Gold}", packet.GoldGained );
@@ -608,10 +554,10 @@ namespace DummyClient.Packet
 			}
 
 			// 몬스터 상태를 Dead로 변경 (제거하지 않음!)
-			if(Program.NearbyMonsters.TryGetValue(packet.MonsterId, out var targetMonster))
+			if(Program.NearbyObjects.TryGetValue(packet.MonsterId, out var targetMonster))
 			{
-				targetMonster.State = MonsterState.MonsterDie;	// 사망 상태로 변경
-				Program.NearbyMonsters[packet.MonsterId] = targetMonster;
+				targetMonster.State = State.Dead;	// 사망 상태로 변경
+				//Program.NearbyObjects[packet.MonsterId] = targetMonster;
 				_logger.LogInformation( "[Client] Monster {MonsterId} state changed to DEAD (Waiting for despawn...)",
 					packet.MonsterId );
 			}
@@ -633,28 +579,28 @@ namespace DummyClient.Packet
 			foreach(var monster in packet.Monsters)
 			{
 				// 기존 몬스터 정보 업데이트
-				if(Program.NearbyMonsters.ContainsKey(monster.MonsterId))
+				if(Program.NearbyObjects.ContainsKey(monster.ObjectId))
 				{
-					var oldMonster = Program.NearbyMonsters[monster.MonsterId];
+					var oldMonster = Program.NearbyObjects[monster.ObjectId];
 
 					// HP 변화 로그
-					if(oldMonster.CurrentHP != monster.CurrentHP)
+					if(oldMonster.StatInfo.CurrentHP != monster.StatInfo.CurrentHP)
 					{
-						int hpChange = monster.CurrentHP - oldMonster.CurrentHP;
+						int hpChange = monster.StatInfo.CurrentHP - oldMonster.StatInfo.CurrentHP;
 						string changeStr = 0 < hpChange ? $"+{hpChange}" : hpChange.ToString();
 
 						_logger.LogInformation( "[Client] S_MonsterUpdate - Monster {MonsterId} HP: {OldHP} -> {NewHP} ({Change})",
-							monster.MonsterId, oldMonster.CurrentHP, monster.CurrentHP, changeStr );
+							monster.ObjectId, oldMonster.StatInfo.CurrentHP, monster.StatInfo.CurrentHP, changeStr );
 					}
 
 					// 상태 변경 로그
 					if (oldMonster.State != monster.State)
 					{
 						_logger.LogInformation( "[Client] S_MonsterUpdate - Monster {MonsterId} State: {OldState} -> {NewState}",
-							monster.MonsterId, oldMonster.State, monster.State );
+							monster.ObjectId, oldMonster.State, monster.State );
 					}
 
-					Program.NearbyMonsters[ monster.MonsterId ] = monster;
+					Program.NearbyObjects[ monster.ObjectId ] = monster;
 				}
 			}
 
@@ -664,11 +610,12 @@ namespace DummyClient.Packet
 		// 헬퍼 메서드 : 새 타겟 찾기
 		private long FindNewTarget()
 		{
-			if(Program.NearbyMonsters.Count == 0)
+			if(Program.NearbyObjects.Any(m => m.Value.Type == ObjectType.ObjectMonster) == false)
 				return 0;
 
 			// 살아 있는 몬스터 중 첫 번째 선택
-			var aliveMonster = Program.NearbyMonsters.FirstOrDefault(m => m.Value.State != MonsterState.MonsterDie);
+			var aliveMonster = Program.NearbyObjects.FirstOrDefault(m => m.Value.Type == ObjectType.ObjectMonster 
+			&& m.Value.State != State.Dead);
 			return aliveMonster.Value != null ? aliveMonster.Key : 0;
 		}
 	}
