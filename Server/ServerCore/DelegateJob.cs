@@ -6,11 +6,11 @@ using System.Threading.Tasks;
 
 namespace ServerCore
 {
-	public class Job : IJob
+	public class DelegateJob : IJob
 	{
 		private Action _action;
 
-		public Job(Action action)
+		public void Initialize( Action action )
 		{
 			_action = action;
 		}

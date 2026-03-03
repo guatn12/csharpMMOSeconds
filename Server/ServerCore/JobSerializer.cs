@@ -8,6 +8,7 @@ namespace ServerCore
 	{
 		protected readonly IJobQueueManager _jobQueueManager;
 		private ConcurrentQueue<IJob> _jobQueue = new ConcurrentQueue<IJob>();
+		private readonly JobTimer _jobTimer = new JobTimer();
 		private int _isProcessing = 0;
 
 		public JobSerializer( IJobQueueManager jobQueueManager )
@@ -29,6 +30,16 @@ namespace ServerCore
 			// 작업이 이미 진행중이라면 작업 리스트에 추가만 하고 넘어감.
 		}
 
+		protected void ScheduleTimer(IJob job, int tickAfter)
+		{
+			_jobTimer.Push( job, tickAfter );
+		}
+
+		protected void ScheduleTimer(IJob job, int tickAfter, out JobTimerToken token)
+		{
+			_jobTimer.Push( job, tickAfter, out token );
+		}
+
 		/// <summary>
 		/// 빈메서드 - 파생 클래스에서 오버라이드하여 작업 처리 시작시 동작 구현 가능.
 		/// 현재는 디버깅용으로 처리.
@@ -46,6 +57,8 @@ namespace ServerCore
 			// 작업 처리중 상태로 변경.
 			Interlocked.Exchange( ref _isProcessing, 1 );
 			OnProcessJobsStart();
+
+			_jobTimer.Flush( _jobQueue );
 
 			while(true)
 			{

@@ -12,7 +12,6 @@ using System.Threading.Tasks;
 using Server.Game;
 using Server.Data;
 using Server.Data.Models;
-using Server.Core.Jobs;
 using Server.Services.Combat;
 using Server.Services.Reward;
 using Server.Game.Monsters;
@@ -47,9 +46,6 @@ namespace Server.Room
 		private readonly Func<IRoom, DataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> _monsterManagerFactory;
 		public IMonsterManager MonsterManager { get; private set; }
 		protected readonly DataManager _dataManager;
-		private System.Threading.Timer _monsterUpdateTimer;
-
-		private bool _isMonsterUpdateScheduled = false; // Timer 누적 방지
 
 		public IReadOnlyList<IClientSession> Players => _players.Values.ToList();
 		public bool IsEmpty => _players.IsEmpty;
@@ -148,10 +144,6 @@ namespace Server.Room
 				State = RoomState.Closing;
 			}
 
-			// 몬스터 업데이트 타이머 정지
-			_monsterUpdateTimer?.Dispose();
-			_monsterUpdateTimer = null;
-
 			// 이벤트 구독 해제
 			if(MonsterManager != null)
 			{
@@ -159,7 +151,7 @@ namespace Server.Room
 				MonsterManager.OnMonsterSpawned -= OnMonsterSpawned;
 			}
 
-			MonsterManager?.Dispose();
+			MonsterManager.Dispose();
 			MonsterManager = null;
 
 			// 모든 플레이어 강제 퇴장
@@ -318,6 +310,13 @@ namespace Server.Room
 			}
 		}
 
+		public void ScheduleJob(Action action, int delayMs)
+		{
+			DelegateJob job = _jobQueueManager.JobPool.Get<DelegateJob>();
+			job.Initialize( action );
+			ScheduleTimer( job, delayMs );
+		}
+
 		protected virtual Task OnInitializeAsync() => Task.CompletedTask;
 		protected virtual Task OnCleanupAsync() => Task.CompletedTask;
 		protected virtual async Task OnPlayerEnterAsync( IClientSession session )
@@ -408,12 +407,8 @@ namespace Server.Room
 			// Note: MonsterSpawner는 MonsterManager 내부에 있으므로 직접 접근 불가
 			// 대신 MonsterManager가 이벤트를 중계해야 함 (추후 개선 필요)
 
-			// 주기적 업데이트 타이머 시작 (100ms마다)
-			_monsterUpdateTimer = new System.Threading.Timer(
-				callback: _ => UpdateMonsters(),
-				state: null,
-				dueTime: TimeSpan.FromMilliseconds( 100 ),
-				period: TimeSpan.FromMilliseconds( 100 ) );
+			// 주기적 업데이트 타이머 예약
+			UpdateMonsters();
 
 			_logger.LogInformation( "Monster spawner initialized for room {RoomId}", RoomId );
 		}
@@ -500,42 +495,29 @@ namespace Server.Room
 		// 몬스터 업데이트 메서드
 		protected virtual void UpdateMonsters()
 		{
-			// Timer 누적 호출 방지
-			if(_isMonsterUpdateScheduled)
-			{
-				_logger.LogDebug( "Monster update already scheduled for room {RoomId}, skipping", RoomId );
-				return;
-			}
-
-			if(MonsterManager == null)
-			{
-				_logger.LogWarning( "MonsterManager is null for room {RoomId}", RoomId );
-				return;
-			}
-
-			_isMonsterUpdateScheduled = true;
-
+			if(MonsterManager == null) return;
 			// MonsterUpdateJob 생성 및 초기화
-			MonsterUpdateJob job = _jobQueueManager.JobPool.Get<MonsterUpdateJob>();
-			job.Initialize( MonsterManager, RoomId, _logger );
+			DelegateJob job = _jobQueueManager.JobPool.Get<DelegateJob>();
+			job.Initialize( () =>
+			{
+				if(MonsterManager == null) return;
 
-			// JobQueue에 비동기 추가
-			try
-			{
-				Push( job );
-			}
-			catch(Exception ex)
-			{
-				_logger.LogError( ex, "Failed to push MonsterUpdateJob to queue for room {RoomId}", RoomId );
-			}
-			finally
-			{
-				// 큐잉 시도 완료 후 플래그 해제(즉시 완료됨)
-				_isMonsterUpdateScheduled = false;
-			}
+				try
+				{
+					MonsterManager.Update();
+				}
+				catch(Exception ex)
+				{
+					_logger.LogError( ex, "Error updating monsters in Room {RoomId}", RoomId );
+				}
+				finally
+				{
+					UpdateMonsters();
+				}
+			} );
+
+			ScheduleTimer( job, 100 );
 		}
-
-
 
 		private static int GenerateNextRoomId()
 		{
@@ -657,7 +639,6 @@ namespace Server.Room
 		{
 			if(!_dispose && disposing)
 			{
-				_monsterUpdateTimer?.Dispose();
 				CleanupAsync().GetAwaiter().GetResult();
 				_dispose = true;
 			}

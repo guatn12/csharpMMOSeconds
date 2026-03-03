@@ -1,9 +1,7 @@
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Protocol;
-using Server.Core.Jobs;
 using Server.Database.Entities;
-using Server.Extensions;
 using Server.Game;
 using Server.Game.Objects;
 using Server.Packet;
@@ -12,7 +10,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Numerics;
 
 namespace Server.Core.Session
 {
@@ -361,12 +358,34 @@ namespace Server.Core.Session
 				}
 			}
 
-			// 사망 후 리스폰 처리 (임시: 바로 룸 재입장)
-			if(reEnterRoom != null && reEnterRoom is BaseRoom baseRoom)
+			// 사망 후 리스폰 처리 (3초 딜레이)
+			if(reEnterRoom != null)
 			{
-				var respawnJob = new RespawnJob();
-				respawnJob.Initialize( baseRoom, this, _logger );
-				baseRoom.Push( respawnJob );
+				const int respawnDelayMs = 3000;
+				reEnterRoom.ScheduleJob( () =>
+				{
+					try
+					{
+						Player.Revive();
+
+						var result = reEnterRoom.TryEnterAsync(this).GetAwaiter().GetResult();
+						if(RoomEnterResult.Success != result)
+						{
+							_logger.LogWarning( "Respawn Failed to Re-Enter Room. PlayerId={PlayerId}", PlayerId );
+							return;
+						}
+
+						reEnterRoom.SendToPlayer( this, new S_EnterGame
+						{
+							Player = Player.ToObjectInfo(),
+							MapId = reEnterRoom.RoomMap.MapId,
+						} );
+					}
+					catch(Exception ex)
+					{
+						_logger.LogError( ex, "Respawn Error for PlayerId: {PlayerId}", PlayerId );
+					}
+				}, respawnDelayMs );
 			}
 
 			_logger.LogWarning( "[Event] Player Death: PlayerId={PlayerId}", obj.ObjectId );

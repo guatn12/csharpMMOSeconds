@@ -60,19 +60,6 @@ namespace Server.Game.Monsters
 		private int _maxMonsters = 50;
 		private readonly TimeSpan _defaultRespawnInterval = TimeSpan.FromSeconds(5);
 
-		// 업데이트 관련
-		private DateTime _lastUpdateTime;
-		private readonly TimeSpan _updateInterval = TimeSpan.FromMilliseconds(100);
-
-		private class DelayedDespawn
-		{
-			public long MonsterId { get; set; }
-			public DateTime DespawnTime { get; set; }
-		}
-
-		private readonly List<DelayedDespawn> _delayedDespawns = new List<DelayedDespawn>();
-		private readonly object _despawnLock = new object();
-
 		// 이벤트 : Room에서 Despawn 알림
 		public event Action<long, Monster> OnMonsterDespawned;
 		public event Action<Monster> OnMonsterSpawned;
@@ -86,8 +73,6 @@ namespace Server.Game.Monsters
 			_dataManager = dataManager;
 			_objectManager = objectManager;
 			_logger = logger;
-
-			_lastUpdateTime = DateTime.UtcNow;
 		}
 
 		/// <summary>
@@ -255,55 +240,30 @@ namespace Server.Game.Monsters
 		/// </summary>
 		public void ScheduleDespawn(long monsterId, TimeSpan delay)
 		{
-			lock(_despawnLock)
-			{
-				// 이미 예약된 경우 패스
-				if(_delayedDespawns.FirstOrDefault( d => d.MonsterId == monsterId ) != null)
-				{
-					_logger.LogWarning( "Schedule Despawn already Monster {MonsterId} ", monsterId );
-					return;
-				}
+			// 지금 시점에 SpawnPoint 캡처 (람다에서 클로저로 사용)
+			var spawnPoint = _spawnPoints.FirstOrDefault(sp => sp.CurrentMonsterId == monsterId);
 
-				_delayedDespawns.Add( new DelayedDespawn
+			// 딜레이된 디스폰 작업 예약
+			_room.ScheduleJob( () =>
+			{
+				bool success = DespawnMonster( monsterId, raiseEvent: true );
+
+				if(success && spawnPoint != null)
 				{
-					MonsterId = monsterId,
-					DespawnTime = DateTime.UtcNow + delay
-				} );
-			}
+					int respawnMs = (int)spawnPoint.RespawnInterval.TotalMilliseconds;
+					// 디스폰 후 리스폰 작업 예약
+					_room.ScheduleJob( () =>
+					{
+						Monster respawnedMonster = SpawnMonster(spawnPoint);
+						if((respawnedMonster != null))
+						{
+							OnMonsterSpawned.Invoke( respawnedMonster );
+						}
+					}, respawnMs );
+				}
+			}, (int)delay.TotalMilliseconds );
 
 			_logger.LogInformation( "Scheduled despawn for Monster {MonsterId} after {Delay}s", monsterId, delay.TotalSeconds );
-		}
-
-		private void ProcessDelayedDespawns(DateTime now)
-		{
-			List<DelayedDespawn> toRemove = null;
-
-			lock( _despawnLock )
-			{
-				if(_delayedDespawns.Count == 0) return;
-
-				// 시간이 된 Despawn들 찾기
-				toRemove = _delayedDespawns.Where( d => d.DespawnTime <= now ).ToList();
-
-				if(toRemove.Count == 0) return;
-
-				// 리스트에서 제거
-				foreach(var delayed in toRemove)
-				{
-					_delayedDespawns.Remove( delayed );
-				}
-			}
-
-			// lock 밖에서 실제 Despawn 처리
-			foreach(var delayed in toRemove)
-			{
-				bool success = DespawnMonster(delayed.MonsterId, true);
-
-				if(success)
-				{
-					_logger.LogInformation( "Monster {MonsterId} despawned (delayed)", delayed.MonsterId );
-				}
-			}
 		}
 
 		/// <summary>
@@ -311,12 +271,6 @@ namespace Server.Game.Monsters
 		/// </summary>
 		public void Update()
 		{
-			DateTime now = DateTime.UtcNow;
-
-			// 업데이트 주기 체크
-			if(now - _lastUpdateTime < _updateInterval) return;
-			_lastUpdateTime = now;
-
 			// 모든 몬스터 AI 업데이트
 			foreach(var kvp in _monsterAis)
 			{
@@ -327,33 +281,6 @@ namespace Server.Game.Monsters
 				catch(Exception ex)
 				{
 					_logger.LogError(ex, "Error updating monster AI for monster {MonsterId}", kvp.Key);
-				}
-			}
-
-			// 딜레이된 Despawn 처리 (JobQueue 안에서 안전하게 실행됨)
-			ProcessDelayedDespawns( now );
-
-			// 리스폰 체크(CanSpawn()이 RespawnInterval로 자동 필터링)
-			CheckRespawns();
-		}
-
-		///<summary>
-		/// 리스폰 체크
-		/// </summary>
-		private void CheckRespawns()
-		{
-			foreach(var spawnPoint in _spawnPoints)
-			{
-				if(_maxMonsters <= _monsterIds.Count) break;
-
-				if(spawnPoint.CanSpawn())
-				{
-					Monster respawnedMonster = SpawnMonster( spawnPoint );
-
-					if(respawnedMonster != null)
-					{
-						OnMonsterSpawned?.Invoke( respawnedMonster );
-					}
 				}
 			}
 		}

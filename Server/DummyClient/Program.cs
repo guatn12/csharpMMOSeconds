@@ -560,6 +560,11 @@ namespace DummyClient
 			{
 				try
 				{
+					if(CurrentMapData == null)
+					{
+						Thread.Sleep( messageInterval );
+						continue;
+					}
 
 					// ===== 인벤토리 자동 조회 =====
 					// 1. 초기 조회 (5초 후 1회)

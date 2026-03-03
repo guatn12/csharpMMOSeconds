@@ -48,6 +48,8 @@ namespace Server.Room
 		void BroadcastInRange( IMessage packet, PosInfo position, IClientSession excludeSession = null );
 		// 룸 내 특정 플레이어에게 전달
 		void SendToPlayer( IClientSession session, IMessage packet );
+		// Worker 컨텍스트에서 action을 delayMs 후에 실행하도록 예약
+		void ScheduleJob(Action action, int delayMs );
 		//룸 초기화
 		Task InitializeAsync();
 		// 룸 정리 및 종료
