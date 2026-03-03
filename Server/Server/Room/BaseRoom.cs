@@ -317,6 +317,14 @@ namespace Server.Room
 			ScheduleTimer( job, delayMs );
 		}
 
+		// 룸의 주기적 하트비트 - 빈작업 사용
+		public void Tick()
+		{
+			DelegateJob job = _jobQueueManager.JobPool.Get<DelegateJob>();
+			job.Initialize( () => { } );
+			Push( job );
+		}
+
 		protected virtual Task OnInitializeAsync() => Task.CompletedTask;
 		protected virtual Task OnCleanupAsync() => Task.CompletedTask;
 		protected virtual async Task OnPlayerEnterAsync( IClientSession session )

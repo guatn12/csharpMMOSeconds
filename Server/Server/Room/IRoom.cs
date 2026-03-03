@@ -50,6 +50,8 @@ namespace Server.Room
 		void SendToPlayer( IClientSession session, IMessage packet );
 		// Worker 컨텍스트에서 action을 delayMs 후에 실행하도록 예약
 		void ScheduleJob(Action action, int delayMs );
+		// 룸의 주기적 업데이트 - 활성화 상태 유지를 위한 tick
+		void Tick();    
 		//룸 초기화
 		Task InitializeAsync();
 		// 룸 정리 및 종료

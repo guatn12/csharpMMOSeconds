@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.IO;
@@ -97,6 +97,9 @@ namespace Server.Config
 
 		[Range( 5, 1440 )]
 		public int EmptyRoomCleanupIntervalMinutes { get; set; } = 30;
+
+		[Range( 16, 1000 )]
+		public int TickIntervalMs { get; set; } = 100;
 
 		public LobbyConfig Lobby { get; set; } = new();
 		public BattleConfig Battle { get; set; } = new();

@@ -29,6 +29,7 @@ namespace Server.Room
 		private readonly DataManager _dataManager;
 
 		private Timer _cleanupTimer;
+		private Timer _tickTimer;
 		private bool _disposed = false;
 		private int _nextRoomId = 1;
 		private IRoom _defaultLobby;
@@ -68,6 +69,11 @@ namespace Server.Room
 			TimeSpan cleanupInterval = TimeSpan.FromMinutes(_serverSettings.CurrentValue.Room.EmptyRoomCleanupIntervalMinutes);
 			_cleanupTimer = new Timer( async _ => await PerformCleanupAsync(), null, cleanupInterval, cleanupInterval );
 
+			// tick 타이머 시작 (예: 1초마다)
+			int tickIntervalMs = _serverSettings.CurrentValue.Room.TickIntervalMs;
+			_tickTimer = new Timer( _ => PerformTick(), null, tickIntervalMs, tickIntervalMs );
+
+
 			_logger.LogInformation( "RoomManager started successfully with {RoomCount} rooms", _rooms.Count );
 		}
 
@@ -77,8 +83,11 @@ namespace Server.Room
 
 			await ShutdownAsync();
 
-			_cleanupTimer?.Dispose();
+			_cleanupTimer.Dispose();
 			_cleanupTimer = null;
+
+			_tickTimer.Dispose();
+			_tickTimer = null;
 
 			_logger.LogInformation( "RoomManager stopped" );
 		}
@@ -494,6 +503,14 @@ namespace Server.Room
 			}
 		}
 
+		private void PerformTick()
+		{
+			foreach(IRoom room in _rooms.Values)
+			{
+				room.Tick();
+			}
+		}
+
 		private long EstimateMemoryUsage()
 		{
 			// 대략적인 메모리 사용량 계산 (바이트 단위)
@@ -505,7 +522,8 @@ namespace Server.Room
 		{
 			if(!_disposed)
 			{
-				_cleanupTimer?.Dispose();
+				_cleanupTimer.Dispose();
+				_tickTimer.Dispose();
 				ShutdownAsync().GetAwaiter().GetResult();
 				_disposed = true;
 			}

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -106,6 +106,9 @@ namespace Server.Config
 
 			if(string.IsNullOrWhiteSpace( room.Lobby?.DefaultName ))
 				failures.Add( "Room Lobby DefaultName is required" );
+
+			if(room.TickIntervalMs < 16 || 1000 < room.TickIntervalMs)
+				failures.Add( $"Room TickIntervalMs must be between 16 and 1000, got: {room.TickIntervalMs}" );
 		}
 
 		private void ValidateRedis(RedisConfig redis, List<string> failures)
