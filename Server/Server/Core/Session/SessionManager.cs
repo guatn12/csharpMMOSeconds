@@ -24,6 +24,9 @@ namespace Server.Core.Session
 		private readonly RedisService _redisService;
 		private readonly PlayerPositionService _playerPositionService;
 		private long _nextSessionId = 1;
+		private Timer _heartbeatTimer;
+		private const int HeartbeatIntervalMs = 30000; // 30초마다 세션 상태 체크
+		private const long SessionTimeoutMs = 60000; // 60초 동안 응답 없는 세션은 타임아웃 처리
 		private readonly object _lock = new object();
 
 		private readonly ConcurrentDictionary<long, IClientSession> _sessionById;
@@ -230,14 +233,21 @@ namespace Server.Core.Session
 		{
 			_logger.LogInformation( "SessionManager starting up..." );
 
+			_heartbeatTimer = new Timer( _ => CheckTimeouts(), null, HeartbeatIntervalMs, HeartbeatIntervalMs );
+
+
 			// 초기화 작업... 현재는 생성자에서 딕셔너리가 초기화됨
-			_logger.LogInformation( "SessionManager started successfully. Ready to manage sessions." );
+			_logger.LogInformation( "SessionManager started successfully. Heartbeat interval: {Interval}ms Ready to manage sessions.",
+				HeartbeatIntervalMs);
 			return Task.CompletedTask;
 		}
 
 		public Task StopAsync( CancellationToken cancellationToken )
 		{
 			_logger.LogInformation( "SessionManager shutting down..." );
+
+			_heartbeatTimer.Dispose();
+			_heartbeatTimer = null;
 
 			int totalSessions = GetTotalSessionCount();
 			if(totalSessions > 0 )
@@ -254,6 +264,21 @@ namespace Server.Core.Session
 
 			_logger.LogInformation( "SessionManager stopped successfully" );
 			return Task.CompletedTask;
+		}
+
+		private void CheckTimeouts()
+		{
+			long now = Environment.TickCount64;
+			foreach(IClientSession session in _sessionById.Values)
+			{
+				long elapsed = now - session.LastActiveTime;
+				if( SessionTimeoutMs < elapsed)
+				{
+					_logger.LogWarning( "Session timeout. SessionId={SessionId}, PlayerId={PlayerId}, Elapsed={Elapsed}ms",
+						session.SessionId, session.PlayerId, elapsed );
+					session.Disconnect();
+				}
+			}
 		}
 
 		#endregion

@@ -607,6 +607,12 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
+		public override ValueTask On_S_Pong( NetworkSession session, S_Pong packet )
+		{
+			_logger.LogDebug( "[Client] Received S_Pong. Timestamp: {Timestamp}", packet.Timestamp );
+			return ValueTask.CompletedTask;
+		}
+
 		// 헬퍼 메서드 : 새 타겟 찾기
 		private long FindNewTarget()
 		{

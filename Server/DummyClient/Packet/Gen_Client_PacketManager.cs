@@ -32,6 +32,7 @@ namespace DummyClient.Packet
         public virtual ValueTask On_S_InventoryUpdate(NetworkSession session, S_InventoryUpdate packet) { Console.WriteLine("Received but not handled: S_InventoryUpdate"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_MonsterDie(NetworkSession session, S_MonsterDie packet) { Console.WriteLine("Received but not handled: S_MonsterDie"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_MonsterUpdate(NetworkSession session, S_MonsterUpdate packet) { Console.WriteLine("Received but not handled: S_MonsterUpdate"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_Pong(NetworkSession session, S_Pong packet) { Console.WriteLine("Received but not handled: S_Pong"); return ValueTask.CompletedTask; }
     }
 
     public class PacketManager
@@ -80,6 +81,8 @@ namespace DummyClient.Packet
             _onRecv.Add((ushort)PacketID.S_InventoryUpdate, HandlePacket<S_InventoryUpdate>(_handler.On_S_InventoryUpdate));
             _onRecv.Add((ushort)PacketID.S_MonsterDie, HandlePacket<S_MonsterDie>(_handler.On_S_MonsterDie));
             _onRecv.Add((ushort)PacketID.S_MonsterUpdate, HandlePacket<S_MonsterUpdate>(_handler.On_S_MonsterUpdate));
+            _packetTypeToId.Add(typeof(Protocol.C_Ping), PacketID.C_Ping);
+            _onRecv.Add((ushort)PacketID.S_Pong, HandlePacket<S_Pong>(_handler.On_S_Pong));
         }
 
         public async ValueTask HandlePacket(NetworkSession session, ArraySegment<byte> buffer)

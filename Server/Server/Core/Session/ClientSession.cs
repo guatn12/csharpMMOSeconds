@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
 
 namespace Server.Core.Session
 {
@@ -20,6 +21,7 @@ namespace Server.Core.Session
         private readonly ISessionManager _sessionManager;
         private IRoom _currentRoom;
         private readonly object _roomLock = new object();
+		private long _lastActiveTime = Environment.TickCount64;
 
         public IRoom CurrentRoom
         {
@@ -36,7 +38,8 @@ namespace Server.Core.Session
 		public bool IsInRoom => _currentRoom != null;
 
 		public long SessionId { get; private set; }
-        public Player Player { get; private set; }
+		public long LastActiveTime => _lastActiveTime;
+		public Player Player { get; private set; }
         public string PlayerName => Player.Name ?? $"Player_{Player.ObjectId}";
         public long PlayerId => Player.ObjectId;
 
@@ -53,6 +56,10 @@ namespace Server.Core.Session
 			ArraySegment<byte> segment = _packetManager.MakeSendPacket(packet);
 			base.Send( segment );
 		}
+		public void Disconnect()
+		{
+			base.Close();
+		}
 
 		public override void OnRecvPacket( ArraySegment<byte> buffer )
         {
@@ -64,6 +71,7 @@ namespace Server.Core.Session
 
             if(_packetManager != null)
             {
+				Interlocked.Exchange( ref _lastActiveTime, Environment.TickCount64 );
 				_ = _packetManager.HandlePacket( this, buffer );
 			}
 			else

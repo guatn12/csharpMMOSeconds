@@ -27,6 +27,8 @@ namespace Server.Packet.Handlers
 
 			Handlers.Add(typeof(C_EnterGame), async (s, p) => await HandleC_EnterGameAsync( s, (C_EnterGame)p));
 			_onRecv.Add((ushort)PacketID.C_EnterGame, HandleC_EnterGameAsync);
+			Handlers.Add(typeof(C_Ping), async (s, p) => await HandleC_PingAsync( s, (C_Ping)p));
+			_onRecv.Add((ushort)PacketID.C_Ping, HandleC_PingAsync);
 		}
 
 		public async ValueTask HandleAsync(IClientSession session, ushort id, ArraySegment<byte> buffer)
@@ -45,6 +47,12 @@ namespace Server.Packet.Handlers
 			var packet = new C_EnterGame();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_EnterGameAsync(session, packet);
+		}
+		private async ValueTask HandleC_PingAsync(IClientSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_Ping();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_PingAsync(session, packet);
 		}
 	}
 }

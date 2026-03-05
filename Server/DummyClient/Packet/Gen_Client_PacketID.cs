@@ -31,4 +31,6 @@ public enum PacketID
 	S_InventoryUpdate = 25,
 	S_MonsterDie = 26,
 	S_MonsterUpdate = 27,
+	C_Ping = 10000,
+	S_Pong = 10001,
 }

@@ -54,5 +54,18 @@ namespace Server.Packet.Handlers
 
 			await Task.CompletedTask;
 		}
+
+		private Task HandleC_PingAsync(IClientSession session, C_Ping packet)
+		{
+			// 클라이언트로 부터 PING을 받았을 때 처리하는 패킷
+			session.Send( new S_Pong
+			{
+				Timestamp = Environment.TickCount64
+			} );
+			_logger.LogInformation( "Received PING from Player {PlayerId} (Session {SessionId}). Responded with PONG.",
+				session.Player.ObjectId, session.SessionId );
+
+			return Task.CompletedTask;
+		}
 	}
 }

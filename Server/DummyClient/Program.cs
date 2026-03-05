@@ -175,6 +175,10 @@ namespace DummyClient
 		public static bool InventoryRequested = false;
 		public static DateTime LastInventoryRequestTime = DateTime.MinValue;
 
+		// ping 전송
+		public static DateTime LastPingTime = DateTime.MinValue;
+		private const int PingIntervalSeconds = 20;
+
 		static void Main( string[] args )
 		{
 			var environmentName = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
@@ -588,6 +592,15 @@ namespace DummyClient
 						logger.LogInformation( "[Client {ClientId}] [Send] C_InventoryRequest - 주기적 조회 (30초)", clientId );
 					}
 					// ===== 인벤토리 자동 조회 끝 =====
+
+					// ===== Ping 자동 전송 =====
+					if(PingIntervalSeconds <= (DateTime.UtcNow - LastPingTime).TotalSeconds)
+					{
+						session.Send( new C_Ping { Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() } );
+						LastPingTime = DateTime.UtcNow;
+						logger.LogInformation( "[Client {ClientId}] [Send] C_Ping - 서버에 Ping 전송", clientId );
+					}
+					// ===== Ping 자동 전송 끝 =====
 
 					// ===== 포션 자동 사용 =====
 					if(AutoPotionEnabled && 0 <= HealthPotionSlot)
