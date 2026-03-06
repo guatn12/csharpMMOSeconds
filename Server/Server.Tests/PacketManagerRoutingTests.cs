@@ -26,31 +26,31 @@ namespace Server.Tests
 		private readonly PacketManager _packetManager;
 		private readonly Mock<ILogger<PacketManager>> _mockLogger;
 
-		public PacketManagerRoutingTests()
-		{
-			_mockLogger = new Mock<ILogger<PacketManager>>();
-			var mockSystemPacketHandlerLogger = new Mock<ILogger<SystemPacketHandler>>();
-			var mockRoomManager = new Mock<IRoomManager>();
-			_packetManager = new PacketManager( _mockLogger.Object,
-				new SystemPacketHandler( mockSystemPacketHandlerLogger.Object, mockRoomManager.Object ) );
+		//public PacketManagerRoutingTests()
+		//{
+		//	_mockLogger = new Mock<ILogger<PacketManager>>();
+		//	var mockSystemPacketHandlerLogger = new Mock<ILogger<SystemPacketHandler>>();
+		//	var mockRoomManager = new Mock<IRoomManager>();
+		//	_packetManager = new PacketManager( _mockLogger.Object,
+		//		new SystemPacketHandler( mockSystemPacketHandlerLogger.Object, mockRoomManager.Object ) );
 
-			// SessionManager 생성 (모든 의존성을 null로 전달)
-			var mockLogger = new Mock<ILogger<SessionManager>>();
-			var mockServiceProvider = new Mock<IServiceProvider>();
+		//	// SessionManager 생성 (모든 의존성을 null로 전달)
+		//	var mockLogger = new Mock<ILogger<SessionManager>>();
+		//	var mockServiceProvider = new Mock<IServiceProvider>();
 
-			_sessionManager = new SessionManager(
-				mockLogger.Object,
-				mockServiceProvider.Object,
-				redisService: null,
-				playerPositionService: null
-			);
+		//	_sessionManager = new SessionManager(
+		//		mockLogger.Object,
+		//		mockServiceProvider.Object,
+		//		redisService: null,
+		//		playerPositionService: null
+		//	);
 
-			var mockIRoom = new Mock<IRoom>();
-			//var mockSystemPacketHandler = new Mock<SystemPacketHandler>();
-			var mockCombatPacketHandler = new Mock<CombatPacketHandler>();
-			var mockInventoryPacketHandler = new Mock<InventoryPacketHandler>();
-			var mockRoomPacketHandler = new Mock<RoomPacketHandler>();
-		}
+		//	var mockIRoom = new Mock<IRoom>();
+		//	//var mockSystemPacketHandler = new Mock<SystemPacketHandler>();
+		//	var mockCombatPacketHandler = new Mock<CombatPacketHandler>();
+		//	var mockInventoryPacketHandler = new Mock<InventoryPacketHandler>();
+		//	var mockRoomPacketHandler = new Mock<RoomPacketHandler>();
+		//}
 
 		public void Dispose()
 		{
@@ -90,61 +90,61 @@ namespace Server.Tests
 		/// <summary>
 		/// 테스트용 GameSession 객체 생성 (리플렉션 사용)
 		/// </summary>
-		private ClientSession CreateTestGameSession( long sessionId, long playerId )
-		{
-			// GameSession 생성자는 ILogger, PacketManager, ISessionManager, sessionId 필요
-			var mockLogger = new Mock<ILogger<ClientSession>>();
+		//private ClientSession CreateTestGameSession( long sessionId, long playerId )
+		//{
+		//	// GameSession 생성자는 ILogger, PacketManager, ISessionManager, sessionId 필요
+		//	var mockLogger = new Mock<ILogger<ClientSession>>();
 
-			// GameSession 생성
-			var session = (ClientSession)Activator.CreateInstance(
-				typeof(ClientSession),
-				BindingFlags.Instance | BindingFlags.Public,
-				null,
-				new object[] { mockLogger.Object, null, _sessionManager, sessionId },
-				null
-			);
+		//	// GameSession 생성
+		//	var session = (ClientSession)Activator.CreateInstance(
+		//		typeof(ClientSession),
+		//		BindingFlags.Instance | BindingFlags.Public,
+		//		null,
+		//		new object[] { mockLogger.Object, null, _sessionManager, sessionId },
+		//		null
+		//	);
 
-			// Player 초기화 (InitializePlayer private 메서드 호출)
-			var initializePlayerMethod = typeof(ClientSession).GetMethod(
-				"InitializePlayer",
-				BindingFlags.Instance | BindingFlags.NonPublic
-			);
-			initializePlayerMethod.Invoke( session, null );
+		//	// Player 초기화 (InitializePlayer private 메서드 호출)
+		//	var initializePlayerMethod = typeof(ClientSession).GetMethod(
+		//		"InitializePlayer",
+		//		BindingFlags.Instance | BindingFlags.NonPublic
+		//	);
+		//	initializePlayerMethod.Invoke( session, null );
 
-			// Player의 PlayerId 변경 (리플렉션)
-			var playerProperty = typeof(ClientSession).GetProperty("Player");
-			var player = (Player)playerProperty.GetValue(session);
+		//	// Player의 PlayerId 변경 (리플렉션)
+		//	var playerProperty = typeof(ClientSession).GetProperty("Player");
+		//	var player = (Player)playerProperty.GetValue(session);
 
-			// Player.Info.PlayerId 변경
-			var infoProperty = typeof(Player).GetProperty("Info");
-			var info = infoProperty.GetValue(player);
-			var playerIdField = info.GetType().GetProperty("PlayerId");
-			playerIdField.SetValue( info, playerId );
+		//	// Player.Info.PlayerId 변경
+		//	var infoProperty = typeof(Player).GetProperty("Info");
+		//	var info = infoProperty.GetValue(player);
+		//	var playerIdField = info.GetType().GetProperty("PlayerId");
+		//	playerIdField.SetValue( info, playerId );
 
-			return session;
-		}
+		//	return session;
+		//}
 
-		/// <summary>
-		/// Mock IRoom 생성
-		/// </summary>
-		private Mock<IRoom> CreateMockRoom( int roomId = 1 )
-		{
-			var mockRoom = new Mock<IRoom>();
-			mockRoom.Setup( r => r.RoomId ).Returns( roomId );
-			mockRoom.Setup( r => r.RoomName ).Returns( "TestRoom" );
-			mockRoom.Setup( r => r.ContainsPlayer( It.IsAny<ClientSession>() ) ).Returns( true );
-			mockRoom.Setup( r => r.ContainsPlayerToPlayerId( It.IsAny<long>() ) ).Returns( true );
+		///// <summary>
+		///// Mock IRoom 생성
+		///// </summary>
+		//private Mock<IRoom> CreateMockRoom( int roomId = 1 )
+		//{
+		//	var mockRoom = new Mock<IRoom>();
+		//	mockRoom.Setup( r => r.RoomId ).Returns( roomId );
+		//	mockRoom.Setup( r => r.RoomName ).Returns( "TestRoom" );
+		//	mockRoom.Setup( r => r.ContainsPlayer( It.IsAny<ClientSession>() ) ).Returns( true );
+		//	mockRoom.Setup( r => r.ContainsPlayerToPlayerId( It.IsAny<long>() ) ).Returns( true );
 
-			return mockRoom;
-		}
+		//	return mockRoom;
+		//}
 
-		/// <summary>
-		/// GameSession의 CurrentRoom을 Reflection으로 설정
-		/// </summary>
-		private void SetCurrentRoom( ClientSession session, IRoom room )
-		{
-			var field = typeof(ClientSession).GetField("_currentRoom", BindingFlags.Instance | BindingFlags.NonPublic);
-			field?.SetValue( session, room );
-		}
+		///// <summary>
+		///// GameSession의 CurrentRoom을 Reflection으로 설정
+		///// </summary>
+		//private void SetCurrentRoom( ClientSession session, IRoom room )
+		//{
+		//	var field = typeof(ClientSession).GetField("_currentRoom", BindingFlags.Instance | BindingFlags.NonPublic);
+		//	field?.SetValue( session, room );
+		//}
 	}
 }

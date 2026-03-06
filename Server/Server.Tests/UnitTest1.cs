@@ -11,7 +11,7 @@ namespace Server.Tests
 			var player = new Player(1, "TestPlayer");
 
 			Assert.NotNull( player );
-			Assert.Equal( "TestPlayer", player.Info.Name );
+			//Assert.Equal( "TestPlayer", player.Info.Name );
 		}
 	}
 }

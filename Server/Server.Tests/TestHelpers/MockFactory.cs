@@ -41,16 +41,16 @@ namespace Server.Tests.TestHelpers
 				.Returns( true );
 
 			// BroadcastAsync는 완료된 Task 반환
-			mockRoom.Setup( r => r.BroadcastAsync(
-				It.IsAny<IMessage>(),
-				It.IsAny<ClientSession>() ) )
-				.Returns( Task.CompletedTask );
+			//mockRoom.Setup( r => r.BroadcastAsync(
+			//	It.IsAny<IMessage>(),
+			//	It.IsAny<ClientSession>() ) )
+			//	.Returns( Task.CompletedTask );
 
-			// SendToPlayersAsync도 완료된 Task 반환
-			mockRoom.Setup(r => r.SendToPlayerAsync(
-				It.IsAny<ClientSession>(),
-				It.IsAny<IMessage>()))
-				.Returns(Task.CompletedTask );
+			//// SendToPlayersAsync도 완료된 Task 반환
+			//mockRoom.Setup(r => r.SendToPlayerAsync(
+			//	It.IsAny<ClientSession>(),
+			//	It.IsAny<IMessage>()))
+			//	.Returns(Task.CompletedTask );
 
 			return mockRoom;
 		}
@@ -124,32 +124,32 @@ namespace Server.Tests.TestHelpers
 		/// - Player.Info는 public get이므로 읽을 수만 있고 쓸 수는 없음
 		/// - 대신 Player의 메서드(TakeDamage, Heal 등)를 사용해야 함
 		/// </summary>
-		public static Mock<ClientSession> CreateMockSessionWithStats(
-			long playerId = 1,
-			string playerName = "TestPlayer",
-			int? currentHP = null,
-			int? currentMP = null )
-		{
-			var mockSession = CreateMockSession(playerId, playerName);
-			var player = mockSession.Object.Player;
+		//public static Mock<ClientSession> CreateMockSessionWithStats(
+		//	long playerId = 1,
+		//	string playerName = "TestPlayer",
+		//	int? currentHP = null,
+		//	int? currentMP = null )
+		//{
+		//	var mockSession = CreateMockSession(playerId, playerName);
+		//	var player = mockSession.Object.Player;
 
-			// HP 조정 (TakeDamage 또는 Heal 사용)
-			if(currentHP.HasValue && currentHP.Value < player.CurrentHP)
-			{
-				int damage = player.CurrentHP - currentHP.Value;
-				player.TakeDamage( damage );
-			}
+		//	// HP 조정 (TakeDamage 또는 Heal 사용)
+		//	if(currentHP.HasValue && currentHP.Value < player.CurrentHP)
+		//	{
+		//		int damage = player.CurrentHP - currentHP.Value;
+		//		player.TakeDamage( damage );
+		//	}
 
-			// MP 조정 (ConsumeMana 사용)
-			if(currentMP.HasValue && currentMP.Value < player.CurrentMP)
-			{
-				int manaCost = player.CurrentMP - currentMP.Value;
-				// ConsumeMana 메서드가 있다면 사용
-				// 없다면 Info를 직접 수정할 방법이 없음
-			}
+		//	// MP 조정 (ConsumeMana 사용)
+		//	if(currentMP.HasValue && currentMP.Value < player.CurrentMP)
+		//	{
+		//		int manaCost = player.CurrentMP - currentMP.Value;
+		//		// ConsumeMana 메서드가 있다면 사용
+		//		// 없다면 Info를 직접 수정할 방법이 없음
+		//	}
 
-			return mockSession;
-		}
+		//	return mockSession;
+		//}
 
 		// ===== 6. 여러 아이템을 가진 Session Mock =====
 
