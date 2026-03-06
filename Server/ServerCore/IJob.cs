@@ -1,8 +1,10 @@
+using System.Threading.Tasks;
+
 namespace ServerCore
 {
 	public interface IJob
 	{
-		void Execute();
+		ValueTask ExecuteAsync();
 		void Clear();
 	}
 }

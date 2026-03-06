@@ -1,7 +1,9 @@
+using System.Threading.Tasks;
+
 namespace ServerCore
 {
 	public interface IJobOwner
 	{
-		void ProcessJobs( );
+		ValueTask ProcessJobsAsync();
 	}
 }

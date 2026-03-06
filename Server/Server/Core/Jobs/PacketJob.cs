@@ -29,10 +29,10 @@ namespace Server.Core.Jobs
 			Array.Copy( buffer.Array, buffer.Offset, _packetData, 0, buffer.Count );
 		}
 
-		public void Execute()
+		public async ValueTask ExecuteAsync()
 		{
 			var packetData = new ArraySegment<byte>( _packetData );
-			_ = _handler.HandleAsync( _session, _packetId, packetData );
+			await _handler.HandleAsync( _session, _packetId, packetData );
 		}
 
 		public void Clear()

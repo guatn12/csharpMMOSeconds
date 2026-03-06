@@ -48,9 +48,12 @@ namespace ServerCore
 
 			for(int i = 0; i < workerCount; i++)
 			{
-				var task = Task.Factory.StartNew(() => WorkerLoopAsync(_cancellationTokenSource.Token),
-					_cancellationTokenSource.Token, TaskCreationOptions.LongRunning,
-					TaskScheduler.Default);
+				// 워커 스레드를 Task로 실행. TaskCreationOptions.LongRunning은 스레드 풀 대신 별도의 스레드를 생성하도록 힌트를 줍니다.
+				// 워커 스레드를 ThreadPool에서 실행하도록 변경하여 리소스 활용도를 높임.
+				var task = Task.Run( () => WorkerLoopAsync(_cancellationTokenSource.Token) );
+				//var task = Task.Factory.StartNew(() => WorkerLoopAsync(_cancellationTokenSource.Token),
+				//	_cancellationTokenSource.Token, TaskCreationOptions.LongRunning,
+				//	TaskScheduler.Default);
 				_workerTasks.Add( task );
 			}
 
@@ -118,7 +121,7 @@ namespace ServerCore
 				{
 					try
 					{
-						owner.ProcessJobs();
+						await owner.ProcessJobsAsync();
 					}
 					catch(Exception ex)
 					{

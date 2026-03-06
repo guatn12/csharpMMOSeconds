@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Tasks;
 
 
 namespace ServerCore
@@ -52,7 +53,7 @@ namespace ServerCore
 		/// </summary>
 		protected virtual void OnProcessJobsEnd() { }
 
-		void IJobOwner.ProcessJobs()
+		async ValueTask IJobOwner.ProcessJobsAsync()
 		{
 			// 작업 처리중 상태로 변경.
 			Interlocked.Exchange( ref _isProcessing, 1 );
@@ -84,7 +85,7 @@ namespace ServerCore
 					continue;
 				}
 
-				job.Execute();
+				await job.ExecuteAsync();
 				job.Clear();
 				_jobQueueManager.JobPool.Return( job );
 			}

@@ -358,7 +358,7 @@ namespace Server.Core.Session
             {
 				// 룸 내 다른 플레이어에게 사망 패킷 브로드캐스트
 				CurrentRoom.BroadcastInRange ( packet, obj.PosInfo, this );
-				bool result = CurrentRoom.TryLeaveAsync( this ).GetAwaiter().GetResult();
+				bool result = CurrentRoom.TryLeave( this );
 				if( result == false)
 				{
 					_logger.LogError( "Player failed to leave room after death. PlayerId={PlayerId}, RoomId={RoomId}",
@@ -370,13 +370,13 @@ namespace Server.Core.Session
 			if(reEnterRoom != null)
 			{
 				const int respawnDelayMs = 3000;
-				reEnterRoom.ScheduleJob( () =>
+				reEnterRoom.ScheduleJob( async () =>
 				{
 					try
 					{
 						Player.Revive();
 
-						var result = reEnterRoom.TryEnterAsync(this).GetAwaiter().GetResult();
+						var result = await reEnterRoom.TryEnterAsync(this);
 						if(RoomEnterResult.Success != result)
 						{
 							_logger.LogWarning( "Respawn Failed to Re-Enter Room. PlayerId={PlayerId}", PlayerId );

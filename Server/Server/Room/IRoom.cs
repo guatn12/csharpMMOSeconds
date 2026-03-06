@@ -38,6 +38,8 @@ namespace Server.Room
 		Task<RoomEnterResult> TryEnterAsync(IClientSession session);
 		// 플레이어 룸 퇴장 시도
 		Task<bool> TryLeaveAsync(IClientSession session);
+		// 플레이어 룸 퇴장 시도 (동기 버전)
+		bool TryLeave( IClientSession session );
 		// sessionId를 통해 플레이어 확인
 		IClientSession FindPlayer( int sessionId );
 		// playerId를 통한 플레이어 확인
@@ -50,6 +52,8 @@ namespace Server.Room
 		void SendToPlayer( IClientSession session, IMessage packet );
 		// Worker 컨텍스트에서 action을 delayMs 후에 실행하도록 예약
 		void ScheduleJob(Action action, int delayMs );
+		// Worker 컨텍스트에서 asyncAction을 delayMs 후에 실행하도록 예약
+		void ScheduleJob(Func<Task> asyncAction, int delayMs);
 		// 룸의 주기적 업데이트 - 활성화 상태 유지를 위한 tick
 		void Tick();    
 		//룸 초기화

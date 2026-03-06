@@ -254,6 +254,14 @@ namespace Server.Room
 			return await InternalLeaveAsync( session, false );
 		}
 
+		public virtual bool TryLeave( IClientSession session )
+		{
+			if(session == null || !_players.ContainsKey( session.SessionId ))
+				return false;
+
+			return InternalLeave( session, false );
+		}
+
 		public virtual void Broadcast( IMessage packet, IClientSession excludeSession = null )
 		{
 			if(packet == null)
@@ -317,6 +325,13 @@ namespace Server.Room
 			ScheduleTimer( job, delayMs );
 		}
 
+		public void ScheduleJob(Func<Task> actionAsync, int delayMs)
+		{
+			DelegateJob job = _jobQueueManager.JobPool.Get<DelegateJob>();
+			job.Initialize( actionAsync );
+			ScheduleTimer( job, delayMs );
+		}
+
 		// 룸의 주기적 하트비트 - 빈작업 사용
 		public void Tick()
 		{
@@ -362,6 +377,13 @@ namespace Server.Room
 			BroadcastInRange( playerSpawnPacket, session.Player.PosInfo, excludeSession: session );
 		}
 		protected virtual async Task OnPlayerLeaveAsync( IClientSession session )
+		{
+			// 룸 퇴장 패킷 전달
+			var leavePacket = new S_LeaveGame();
+			leavePacket.ObjectId = session.PlayerId;
+			SendToPlayer( session, leavePacket );
+		}
+		protected virtual void OnPlayerLeave(IClientSession session)
 		{
 			// 룸 퇴장 패킷 전달
 			var leavePacket = new S_LeaveGame();
@@ -539,6 +561,12 @@ namespace Server.Room
 
 		private async Task<bool> InternalLeaveAsync( IClientSession session, bool isForced )
 		{
+			InternalLeave( session, isForced );
+			return true;
+		}
+
+		private bool InternalLeave(IClientSession session, bool isForced )
+		{
 			// 오브젝트 매니저에서 플레이어 제거
 			ObjectManager.Unregister( session.PlayerId );
 
@@ -554,7 +582,7 @@ namespace Server.Room
 			try
 			{
 				// 룸 별 퇴장 로직 실행
-				await OnPlayerLeaveAsync( session );
+				OnPlayerLeave( session );
 
 				// 상태 업데이트
 				lock(_lock)
