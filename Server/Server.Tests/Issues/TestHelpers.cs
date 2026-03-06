@@ -29,6 +29,6 @@ namespace Server.Tests.Issues
 		{
 		}
 
-		public void ProcessJobsForTest() => ((IJobOwner)this).ProcessJobs();
+		public async ValueTask ProcessJobsForTest() => await ((IJobOwner)this).ProcessJobsAsync();
 	}
 }
