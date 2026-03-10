@@ -258,8 +258,8 @@ namespace Server.Data.Models
 		/// <returns>해당 셀 중앙의 월드 좌표 (x, z)</returns>
 		public (float x, float z) CellToWorld(int cellX, int cellZ)
 		{
-			float worldX = (cellX + CellSize/2) * CellSize;
-			float worldZ = (cellZ + CellSize/2) * CellSize;
+			float worldX = (cellX + 0.5f) * CellSize;
+			float worldZ = (cellZ + 0.5f) * CellSize;
 			return (worldX, worldZ);
 		}
 
