@@ -27,8 +27,11 @@ namespace Server.Utils
 			float maxZ = mapData.Depth * mapData.CellSize;
 			var cellPos = room.RoomMap.WorldToCell( position.PosX, position.PosZ );
 
+			// 해당 셀의 실제 지형 높이 기준으로 Y 하한 계산 (경사면/음수 지형 대응)
+			float terrainY = mapData.GetHeightAt( cellPos.x, cellPos.z );
+
 			return	position.PosX >= 0 && position.PosX <= maxX &&
-					position.PosY >= mapData.GroundY && position.PosY <= mapData.MaxHeight &&
+					position.PosY >= (terrainY - 1.0f) && position.PosY <= mapData.MaxHeight &&
 					position.PosZ >= 0 && position.PosZ <= maxZ &&
 					room.RoomMap.IsValidCell( cellPos.x, cellPos.z ) &&
 					room.RoomMap.IsWalkable( cellPos.x, cellPos.z );

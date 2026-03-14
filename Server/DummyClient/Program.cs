@@ -559,6 +559,7 @@ namespace DummyClient
 
 			// 로그 카운터
 			int logCounter = 0;
+			bool isDungeon = false;
 
 			while(session.IsConnected() && !cancellationToken.IsCancellationRequested)
 			{
@@ -568,6 +569,23 @@ namespace DummyClient
 					{
 						Thread.Sleep( messageInterval );
 						continue;
+					}
+
+					if(!isDungeon && 10 <= moveCount)
+					{
+						logger.LogInformation( "[Client {ClientId}] 3초 후 던전으로 이동합니다...", clientId );
+						Thread.Sleep( 3000 );
+						isDungeon = true;
+						session.Send( new C_ChangeRoom { RoomType = (int)RoomType.Dungeon, TargetId = 0 } );
+
+						while(true)
+						{
+							if(MyPlayer.CurrentMapId == 3)
+								break;
+							Thread.Sleep( 100 );
+						}
+
+						logger.LogInformation( "[Client {ClientId}] 던전 입장 완료. (mapId=3)", clientId );
 					}
 
 					// ===== 인벤토리 자동 조회 =====

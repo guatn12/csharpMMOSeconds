@@ -1,11 +1,16 @@
 using Castle.Core.Logging;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Protocol;
+using Server.Config;
 using Server.Core.Session;
+using Server.Data.Models;
 using Server.Database.Entities;
 using Server.Game;
+using Server.Game.Map;
+using Server.Packet.Handlers;
 using Server.Room;
 using System;
 using System.Collections.Generic;
@@ -25,34 +30,45 @@ namespace Server.Tests.TestHelpers
 		/// <summary>
 		/// 기본 설정이 된 BaseRoom Mock 생성
 		/// </summary>
-		public static Mock<BaseRoom> CreateMockRoom(int roomId = 1)
+		public static Mock<IRoom> CreateMockRoom(RoomType roomType, int roomId, int mapId)
 		{
-			var mockRoom = new Mock<BaseRoom>();
+			Mock<IRoom> mockRoom = new Mock<IRoom>();
 
-			// RoomId 속성 설정
-			mockRoom.Setup( r => r.RoomId ).Returns( roomId );
+			MapData mapData = MapData.CreateEmpty(10, 10);
+			mapData.Id = roomId;
+			GameMap gameMap = new GameMap(mapData);
 
-			// ContainsPlayer는 기본적으로 true 반환
-			mockRoom.Setup( r => r.ContainsPlayer( It.IsAny<ClientSession>() ) )
-				.Returns( true );
-
-			// ContainsPlayerToPlayerId도 기본적으로 true
-			mockRoom.Setup(r => r.ContainsPlayerToPlayerId(It.IsAny<long>()))
-				.Returns( true );
-
-			// BroadcastAsync는 완료된 Task 반환
-			//mockRoom.Setup( r => r.BroadcastAsync(
-			//	It.IsAny<IMessage>(),
-			//	It.IsAny<ClientSession>() ) )
-			//	.Returns( Task.CompletedTask );
-
-			//// SendToPlayersAsync도 완료된 Task 반환
-			//mockRoom.Setup(r => r.SendToPlayerAsync(
-			//	It.IsAny<ClientSession>(),
-			//	It.IsAny<IMessage>()))
-			//	.Returns(Task.CompletedTask );
+			mockRoom.Setup(r => r.RoomType).Returns(roomType);
+			mockRoom.Setup(r => r.RoomId).Returns(roomId);
+			mockRoom.Setup( r => r.RoomMap ).Returns( gameMap );
 
 			return mockRoom;
+		}
+
+		public static SystemPacketHandler CreateSystemPacketHandler(Mock<IRoomManager> roomManager, int maxPlayers = 4)
+		{
+			Mock<ILogger<SystemPacketHandler>> mockLogger = new Mock<ILogger<SystemPacketHandler>>();
+			var settings = Options.Create( new ServerSettings
+			{
+				Room = new RoomConfig
+				{
+					Dungeon = new DungeonConfig
+					{
+						DefaultName = "default",
+						MaxPlayers = maxPlayers
+					},
+					Lobby = new LobbyConfig { DefaultName = "default", MaxPlayers = maxPlayers },
+					Battle = new BattleConfig { DefaultName = "default", MaxPlayers= maxPlayers },
+					Guild = new GuildConfig { DefaultName = "default", MaxPlayers = maxPlayers },
+					Private = new PrivateConfig { DefaultName = "default", MaxPlayers = maxPlayers },
+					EmptyRoomCleanupIntervalMinutes = 0,
+					MaxRoomNameLength = 255,
+					MaxRooms = 100,
+					TickIntervalMs = 100
+				}
+			} );
+
+			return new SystemPacketHandler( mockLogger.Object, roomManager.Object, settings );
 		}
 
 		// 2. GameSession Mock

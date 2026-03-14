@@ -68,6 +68,42 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 
+		public override ValueTask On_S_ChangeRoom( NetworkSession session, S_ChangeRoom packet )
+		{
+			if(packet.Success)
+			{
+				_logger.LogInformation( $"[Client] 방 이동 성공 - mapId={packet.MapId}" );
+				
+				// 플레이어 정보 초기화.
+				Program.MyPlayer = packet.Player.ToClientPlayerInfo();
+				Program.MyPlayer.CurrentMapId = packet.MapId;
+
+				// 맵 데이터 로드
+				Program.CurrentMapData = Program.DataManagerInstance.GetMap( packet.MapId );
+				if(Program.CurrentMapData != null)
+				{
+					_logger.LogInformation( "현재 맵: {MapName} (ID: {MapId})",
+						Program.CurrentMapData.Name, Program.CurrentMapData.Id );
+				}
+				else
+				{
+					_logger.LogWarning( "맵 데이터 없음. MapId: {MapId}", packet.MapId );
+				}
+
+				// 데이터 초기화 - 타겟 몬스터 초기화
+				Program.TargetMonsterId = 0;
+
+				// 전체 출력
+				Program.MyPlayer.LogStatus( _logger );
+			}
+			else
+			{
+				_logger.LogWarning($"[Client] 방 이동 실패. Reason: {packet.FailReason}");
+			}
+
+			return ValueTask.CompletedTask;
+		}
+
 		public override ValueTask On_S_Spawn( NetworkSession session, S_Spawn packet )
 		{
 			_logger.LogInformation( "[Client] S_Spawn - {ObjectCount} Object spawned", packet.Objects.Count );

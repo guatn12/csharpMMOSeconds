@@ -71,14 +71,14 @@ namespace Server.Room
 	}
 
 	#region 열거형 및 결과 클래스
-	public enum RoomType
-	{
-		Lobby = 0,		// 로비 룸
-		Battle = 1,		// 전투 룸
-		Dungeon = 2,	// 던전 룸
-		Guild = 3,		// 길드 룸
-		Private	= 4,	// 개인 룸
-	}
+	//public enum RoomType
+	//{
+	//	Lobby = 0,		// 로비 룸
+	//	Battle = 1,		// 전투 룸
+	//	Dungeon = 2,	// 던전 룸
+	//	Guild = 3,		// 길드 룸
+	//	Private	= 4,	// 개인 룸
+	//}
 
 	public enum RoomState
 	{

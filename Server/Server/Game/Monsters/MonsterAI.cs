@@ -3,6 +3,7 @@ using Protocol;
 using Server.Core.Session;
 using Server.Data.Models;
 using Server.Extensions;
+using Server.Game.Map;
 using Server.Room;
 using Server.Utils;
 using System;
@@ -21,8 +22,8 @@ namespace Server.Game.Monsters
 
 		// AI 셋팅
 		private readonly float _detectionRange;		// 플레이어 감지 범위
-		private readonly float _attackRange;			// 공격 범위
-		private readonly float _returnRange;        // 귀환 시작 거리
+		private readonly float _attackRange;		// 공격 범위
+		private readonly float _returnRange;        // 귀환 시작 거리 
 		private readonly float _patrolRadius;       // 배회 반경
 
 		// AI 업데이트 주기
@@ -44,6 +45,11 @@ namespace Server.Game.Monsters
 		// 타겟 손실 유예 (플레이어를 찾지 못했을 때 바로 귀환하지 않음)
 		private DateTime _targetLostTime = DateTime.MinValue;
 		private readonly TimeSpan _targetLostGracePeriod = TimeSpan.FromSeconds(3);
+
+		// A* 경로 탐색을 위한 필드
+		private List<(int x, int z)> _currentPath = new();
+		private int _pathIndex = 0;
+		private (int x, int z) _lastTargetCell;	// 경로 재계산 판단용
 
 		public MonsterAI( Monster monster, IRoom room, ILogger logger )
 		{
@@ -104,6 +110,7 @@ namespace Server.Game.Monsters
 				if(distance <= _detectionRange)
 				{
 					_monster.SetTarget( nearestPlayer.ObjectId );
+					ClearPath();
 					_monster.SetState( State.Chase );
 					_logger.LogDebug( "Monster {MonsterId} detected player {PlayerId}", _monster.ObjectId,
 						nearestPlayer.ObjectId );
@@ -114,6 +121,7 @@ namespace Server.Game.Monsters
 			// 일정 시간 후 배회
 			if(TimeSpan.FromSeconds( 2 ) < DateTime.UtcNow - _lastIdleTime)
 			{
+				ClearPath();
 				_monster.SetState( State.Patrol );
 			}
 		}
@@ -128,6 +136,7 @@ namespace Server.Game.Monsters
 				if(distance <= _detectionRange)
 				{
 					_monster.SetTarget( nearestPlayer.ObjectId );
+					ClearPath();
 					_monster.SetState( State.Chase );
 					_logger.LogDebug( "Monster {MonsterId} detected player {PlayerId}", _monster.ObjectId,
 						nearestPlayer.ObjectId );
@@ -143,12 +152,18 @@ namespace Server.Game.Monsters
 			}
 
 			// 배회 위치로 이동
-			MoveTowards( _currentPatrolTarget, _monster.StaticData.MoveSpeed * 0.5f );
+			if(!MoveAlongPath(_currentPatrolTarget, _monster.StaticData.MoveSpeed * 0.5f))
+			{
+				// 경로 없으면 새 배회 위치 선택
+				_currentPatrolTarget = GetRandomPatrolPosition();
+				_lastPatrolChange = DateTime.UtcNow;
+			}
 
 			// 목표 위치 도달 확인
 			float distanceToTarget = Position3DValidator.CalculateDistance3D(_monster.PosInfo, _currentPatrolTarget);
 			if(distanceToTarget < 0.5f)
 			{
+				ClearPath();
 				_monster.SetState( State.Idle );
 				_lastIdleTime = DateTime.UtcNow;
 			}
@@ -173,6 +188,7 @@ namespace Server.Game.Monsters
 					_targetLostTime = DateTime.MinValue;
 					_monster.ClearTarget();
 					_monster.SetState( State.Return );
+					ClearPath();
 				}
 				return;
 			}
@@ -185,6 +201,7 @@ namespace Server.Game.Monsters
 			// 공격 범위 이탈
 			if(_attackRange < distanceToTarget)
 			{
+				ClearPath();
 				_monster.SetState( State.Chase );
 				return;
 			}
@@ -193,6 +210,7 @@ namespace Server.Game.Monsters
 			float distanceToSpawn = _monster.GetDistanceToSpawn();
 			if(_returnRange < distanceToSpawn)
 			{
+				ClearPath();
 				_monster.ClearTarget();
 				_monster.SetState( State.Return );
 				return;
@@ -215,12 +233,16 @@ namespace Server.Game.Monsters
 				_monster.UpdatePosition( _monster.SpawnPosition );
 				_monster.Restore();
 				_monster.SetState( State.Idle );
+				ClearPath();
 				_lastIdleTime = DateTime.UtcNow;
 				_logger.LogDebug( "Monster {MonsterId} retuned to spawn position", _monster.ObjectId );
 				return;
 			}
 
-			MoveTowards( _monster.SpawnPosition, _monster.StaticData.MoveSpeed *1.5f );
+			if(!MoveAlongPath(_monster.SpawnPosition, _monster.StaticData.MoveSpeed * 1.5f))
+			{
+				MoveTowards( _monster.SpawnPosition, _monster.StaticData.MoveSpeed *1.5f );
+			}
 		}
 
 		public void UpdateChaseState()
@@ -242,6 +264,7 @@ namespace Server.Game.Monsters
 					_targetLostTime = DateTime.MinValue;
 					_monster.ClearTarget();
 					_monster.SetState( State.Return );
+					ClearPath();
 				}
 				return;
 			}
@@ -255,6 +278,7 @@ namespace Server.Game.Monsters
 			if(distanceToTarget <= _attackRange)
 			{
 				_monster.SetState( State.InCombat );
+				ClearPath();
 				return;
 			}
 
@@ -264,12 +288,18 @@ namespace Server.Game.Monsters
 			{
 				_monster.ClearTarget();
 				_monster.SetState( State.Return );
+				ClearPath();
 				_logger.LogDebug( "Monster {MonsterId} too far from spawn, returning", _monster.ObjectId );
 				return;
 			}
 
 			// 이동
-			MoveTowards( targetPlayer.Player.PosInfo, _monster.StaticData.MoveSpeed );
+			if(!MoveAlongPath(targetPlayer.Player.PosInfo, _monster.StaticData.MoveSpeed))
+			{
+				// 경로를 찾지 못함 - 직선 이동 시도(풀백)
+				MoveTowards( targetPlayer.Player.PosInfo, _monster.StaticData.MoveSpeed );
+			}
+			
 		}
 
 		// 공격 수행
@@ -434,6 +464,93 @@ namespace Server.Game.Monsters
 				Objects = { _monster.ToObjectInfo() }
 			};
 			_room.BroadcastInRange( movePacket, _monster.PosInfo );
+		}
+
+		/// <summary>
+		/// A* 경로를 따라 다음 웨이포인트로 이동합니다.
+		/// </summary>
+		/// <param name="targetPos">최종 목표 위치 (경로 재계산 판단용)</param>
+		/// <param name="speed">이동 속도</param>
+		/// <returns>true: 이동 중, false: 경로 완료 또는 실패</returns>
+		private bool MoveAlongPath(PosInfo targetPos, float speed)
+		{
+			var startCell = _room.RoomMap.WorldToCell(_monster.PosInfo.PosX, _monster.PosInfo.PosZ);
+			var goalCell = _room.RoomMap.WorldToCell(targetPos.PosX, targetPos.PosZ);
+
+			// 맨해튼 거리 3셀 이내 + 직선 경로에 장애물 없음 -> 직선 이동
+			int manhattan = Math.Abs(startCell.x - goalCell.x) + Math.Abs(startCell.z - goalCell.z);
+			if(manhattan <= 3)
+			{
+				MoveTowards( targetPos, speed );
+				return true;
+			}
+
+			// 경로가 없거나 완료됨 -> 재계산 필요.
+			if(_currentPath.Count == 0 ||  _currentPath.Count <= _pathIndex)
+			{
+				if(!RecalculatePath( targetPos ))
+					return false;
+			}
+
+			// 타겟 위치 변화 감지 - 재계산
+			var targetCell = _room.RoomMap.WorldToCell(targetPos.PosX, targetPos.PosZ);
+			int dx = Math.Abs(targetCell.x - _lastTargetCell.x);
+			int dz = Math.Abs(targetCell.z - _lastTargetCell.z);
+			if(3 <= dx + dz)		// 3Cell 이상 이동하면 경로 재계산
+			{
+				if(!RecalculatePath( targetPos ))
+					return false;
+			}
+
+			// 현재 웨이포인트로 이동
+			var (wpX, wpZ) = _currentPath[ _pathIndex];
+			var (worldX, worldZ) = _room.RoomMap.CellToWorld(wpX, wpZ);
+			float height = _room.RoomMap.MapData.GetHeightAt(wpX, wpZ);
+
+			var waypointPos = new PosInfo
+			{
+				PosX = worldX,
+				PosY = height,
+				PosZ = worldZ
+			};
+
+			MoveTowards( waypointPos, speed );
+
+			// 웨이포인트 도달 확인
+			float dist = Position3DValidator.CalculateDistance3D(_monster.PosInfo, waypointPos);
+			if(dist < 0.5f)
+			{
+				_pathIndex++;
+			}
+
+			return true;
+		}
+
+		/// <summary>
+		/// A* 경로 재계산
+		/// </summary>
+		/// <param name="targetPos">타겟 위치</param>
+		/// <returns></returns>
+		private bool RecalculatePath(PosInfo targetPos)
+		{
+			var startCell = _room.RoomMap.WorldToCell(_monster.PosInfo.PosX, _monster.PosInfo.PosZ);
+			var goalCell = _room.RoomMap.WorldToCell(targetPos.PosX, targetPos.PosZ);
+
+			_currentPath = PathFinder.FindPath( _room.RoomMap.MapData, startCell.x, startCell.z, goalCell.x, goalCell.z );
+
+			_pathIndex = 0;
+			_lastTargetCell = goalCell;
+
+			return 0 < _currentPath.Count;
+		}
+
+		/// <summary>
+		/// 현재 경로 초기화
+		/// </summary>
+		private void ClearPath()
+		{
+			_currentPath.Clear();
+			_pathIndex = 0;
 		}
 	}
 }

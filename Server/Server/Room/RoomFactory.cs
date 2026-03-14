@@ -8,10 +8,7 @@ using Server.Services.Combat;
 using Server.Services.Reward;
 using ServerCore;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Protocol;
 
 namespace Server.Room
 {
@@ -41,14 +38,15 @@ namespace Server.Room
 
 			return roomType switch
 			{
-				RoomType.Lobby => new LobbyRoom( _loggerFactory.CreateLogger<LobbyRoom>(), _loggerFactory, _serverSettings, _dataManager, 
-				_jobQueueManager, combatService, rewardService, playerPositionService, roomName, 
+				RoomType.Lobby => new LobbyRoom( _loggerFactory.CreateLogger<LobbyRoom>(), _loggerFactory, _serverSettings, _dataManager,
+				_jobQueueManager, combatService, rewardService, playerPositionService, roomName,
 				isDefaultLobby: false ),
 
-				RoomType.Battle => throw new NotImplementedException( "BattleRoom not implemented yet"),
-				RoomType.Dungeon => throw new NotImplementedException( "DungeonRoom not implemented yet"),
-				RoomType.Guild => throw new NotImplementedException( "GuildRoom not implemented yet"),
-				RoomType.Private => throw new NotImplementedException( "PrivateRoom not implemented yet"),
+				RoomType.Battle => throw new NotImplementedException( "BattleRoom not implemented yet" ),
+				RoomType.Dungeon => new DungeonRoom( _loggerFactory.CreateLogger<DungeonRoom>(), _loggerFactory, _serverSettings, _dataManager,
+				_jobQueueManager, combatService, rewardService, playerPositionService, roomName, maxPlayers ),
+				RoomType.Guild => throw new NotImplementedException( "GuildRoom not implemented yet" ),
+				RoomType.Private => throw new NotImplementedException( "PrivateRoom not implemented yet" ),
 				_ => throw new ArgumentException( $"Unknown room type: {roomType}" )
 			};
 		}

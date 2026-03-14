@@ -4,14 +4,13 @@ using Microsoft.Extensions.Options;
 using Server.Config;
 using Server.Core.Session;
 using Server.Data;
-using ServerCore;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Protocol;
 
 namespace Server.Room
 {
@@ -119,7 +118,7 @@ namespace Server.Room
 				{
 					RoomType.Lobby => _serverSettings.CurrentValue.Room.Lobby.MaxPlayers,
 					RoomType.Battle => _serverSettings.CurrentValue.Room.Battle.MaxPlayers,
-					RoomType.Dungeon => _serverSettings.CurrentValue.Room.Dungeon.MaxPlayers, // 아직 미구현
+					RoomType.Dungeon => _serverSettings.CurrentValue.Room.Dungeon.MaxPlayers,
 					RoomType.Guild => _serverSettings.CurrentValue.Room.Guild.MaxPlayers,   // 아직 미구현
 					RoomType.Private => _serverSettings.CurrentValue.Room.Private.MaxPlayers, // 아직 미구현
 					_ => _serverSettings.CurrentValue.Room.Lobby.MaxPlayers
@@ -458,6 +457,14 @@ namespace Server.Room
 				{
 					throw new InvalidOperationException( "Failed to create default lobby" );
 				}
+
+				DungeonConfig dungeonConfig = _serverSettings.CurrentValue.Room.Dungeon;
+				IRoom dungeonRoom = await CreateRoomAsync(RoomType.Dungeon, dungeonConfig.DefaultName, dungeonConfig.MaxPlayers);
+
+				if(dungeonRoom == null)
+					_logger.LogWarning( "Failed to create default dungeon room" );
+				else
+					_logger.LogInformation( "Default dungeon created: ID {RoomId}", dungeonRoom.RoomId );
 
 				_logger.LogInformation( "RoomManager Initialized successfully" );
 			}

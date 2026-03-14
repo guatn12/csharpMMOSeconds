@@ -51,9 +51,11 @@ namespace Server.Packet
             _packetTypeToId.Add(typeof(S_InventoryUpdate), PacketID.S_InventoryUpdate);
             _packetTypeToId.Add(typeof(S_MonsterDie), PacketID.S_MonsterDie);
             _packetTypeToId.Add(typeof(S_MonsterUpdate), PacketID.S_MonsterUpdate);
+            _packetTypeToId.Add(typeof(S_ChangeRoom), PacketID.S_ChangeRoom);
             _packetTypeToId.Add(typeof(S_Pong), PacketID.S_Pong);
             // System 카테고리
             _packetCategoryCache.Add(PacketID.C_EnterGame, PacketCategory.System);
+            _packetCategoryCache.Add(PacketID.C_ChangeRoom, PacketCategory.System);
             _packetCategoryCache.Add(PacketID.C_Ping, PacketCategory.System);
             // Room 카테고리
             _packetCategoryCache.Add(PacketID.C_Move, PacketCategory.Room);

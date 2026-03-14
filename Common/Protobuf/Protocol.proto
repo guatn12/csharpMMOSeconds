@@ -49,6 +49,10 @@ enum MsgId {
 	S_MONSTER_DIE = 26;			// 몬스터 사망 알림
 	S_MONSTER_UPDATE = 27;		// 몬스터 상태 업데이트
 
+	// ROOM 변경
+	C_CHANGE_ROOM = 28;			// 룸 변경 요청, 클라 -> 서버
+	S_CHANGE_ROOM = 29;			// 룸 변경 결과, 서버 -> 클라
+
 	// 핑퐁
 	C_PING = 10000;				// 클라이언트 → 서버
 	S_PONG = 10001;				// 서버 → 클라이언트
@@ -71,6 +75,20 @@ message S_EnterGame {
 message S_LeaveGame {
 	option (category) = SYSTEM;
 	int64 objectId = 1;
+}
+
+message C_ChangeRoom {
+	option (category) = SYSTEM;
+	int32 roomType = 1;			// roomType enum
+	int32 targetId = 2;			// 세부 식별자 (MapID, 던전ID 등)
+}
+
+message S_ChangeRoom {
+	option (category) = SYSTEM;
+	bool success = 1;
+	string failReason = 2;		// 실패 시 사유	
+	ObjectInfo player = 3;		// 성공 시 업데이트된 플레이어 정보
+	int32 mapId = 4;			// 성공 시 입장한 맵 ID
 }
 
 // 서버 -> 클라이언트
@@ -250,6 +268,15 @@ message S_Pong {
 
 
 // --------- 공용 데이터 구조 --------- 
+
+enum RoomType
+{
+	Lobby = 0;		// 로비 룸
+	Battle = 1;		// 전투 룸
+	Dungeon = 2;	// 던전 룸
+	Guild = 3;		// 길드 룸
+	Private	= 4;	// 개인 룸
+}
 
 enum ObjectType {
 	OBJECT_NONE = 0;

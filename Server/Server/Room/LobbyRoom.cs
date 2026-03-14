@@ -20,7 +20,6 @@ namespace Server.Room
 	public class LobbyRoom : BaseRoom
 	{
 		private readonly ServerSettings _serverSettings;
-		private readonly ILogger<LobbyRoom> _lobbyLogger;
 		private DateTime _createdAt;
 		private int _totalVisitors = 0;
 
@@ -38,12 +37,11 @@ namespace Server.Room
 			: base( logger, loggerFactory, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
 				  jobQueueManager, combatService, rewardService, playerPositionService)
 		{
-			_lobbyLogger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_serverSettings = ServerSettings.Value ?? throw new ArgumentNullException(nameof( ServerSettings ) );
 			IsDefaultLobby = isDefaultLobby;
 			_createdAt = DateTime.UtcNow;
 
-			_lobbyLogger.LogInformation( "LobbyRoom Created: '{RoomName}' (ID: {RoomId}, Default: {IsDefault}, MaxPlayers: {MaxPlayers})",
+			_logger.LogInformation( "LobbyRoom Created: '{RoomName}' (ID: {RoomId}, Default: {IsDefault}, MaxPlayers: {MaxPlayers})",
 				RoomName, RoomId, IsDefaultLobby, MaxPlayers );
 		}
 
@@ -51,7 +49,7 @@ namespace Server.Room
 		{
 			await base.OnInitializeAsync();
 
-			_lobbyLogger.LogInformation( "LobbyRoom '{RoomName}' (ID: {RoomId}) initialized successfully",
+			_logger.LogInformation( "LobbyRoom '{RoomName}' (ID: {RoomId}) initialized successfully",
 				RoomName, RoomId);
 
 			// 로비 특화 초기화 로직 (필요시)
@@ -63,7 +61,7 @@ namespace Server.Room
 			// 방문자 수 증가
 			Interlocked.Increment( ref _totalVisitors );
 
-			_lobbyLogger.LogInformation( "Player {SessionId} entered lobby '{RoomName}' (Total visitors: {TotalVisitors})",
+			_logger.LogInformation( "Player {SessionId} entered lobby '{RoomName}' (Total visitors: {TotalVisitors})",
 				 session.SessionId, RoomName, _totalVisitors );
 
 			// 로비 스폰 위치로 플레이어 이동
@@ -83,7 +81,7 @@ namespace Server.Room
 
 		protected override async Task OnPlayerLeaveAsync(IClientSession session)
 		{
-			_lobbyLogger.LogInformation( "Player {SessionId} left lobby '{RoomName}' ({CurrentCount}/{MaxPlayers})",
+			_logger.LogInformation( "Player {SessionId} left lobby '{RoomName}' ({CurrentCount}/{MaxPlayers})",
 				  session.SessionId, RoomName, CurrentPlayerCount, MaxPlayers );
 
 			// 다른 플레이어에게 퇴장 알림
@@ -95,7 +93,7 @@ namespace Server.Room
 		public override async Task OnPlayerMoveAsync(IClientSession session, Protocol.C_Move packet)
 		{
 			// 로비에서는 기본 이동만 허용 (특별한 제약 없음)
-			_lobbyLogger.LogDebug( "Player {SessionId} moved in lobby '{RoomName}' to ({X}, {Y}, {Z})",
+			_logger.LogDebug( "Player {SessionId} moved in lobby '{RoomName}' to ({X}, {Y}, {Z})",
 				 session.SessionId, RoomName, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ );
 
 			await base.OnPlayerMoveAsync( session, packet );
@@ -104,7 +102,7 @@ namespace Server.Room
 		public override async Task OnPlayerChatAsync(IClientSession session, Protocol.C_Chat packet)
 		{
 			// 로비 채팅 로그
-			_lobbyLogger.LogInformation( "Lobby chat from Player {SessionId} in '{RoomName}': '{Message}'",
+			_logger.LogInformation( "Lobby chat from Player {SessionId} in '{RoomName}': '{Message}'",
 				session.SessionId, RoomName, packet.Message );
 
 			await base.OnPlayerChatAsync( session, packet );
@@ -115,7 +113,7 @@ namespace Server.Room
 			// 로비에서는 모든 이동 허용 (기본 검증만)
 			if (packet?.PosInfo == null)
 			{
-				_lobbyLogger.LogWarning( "Invalid move packet from Player {SessionId} in lobby '{RoomName}'",
+				_logger.LogWarning( "Invalid move packet from Player {SessionId} in lobby '{RoomName}'",
 					  session.SessionId, RoomName );
 				return false;
 			}
@@ -124,7 +122,7 @@ namespace Server.Room
 			PosInfo pos = packet.PosInfo;
 			if(1000 < Math.Abs(pos.PosX) || 1000 < Math.Abs(pos.PosY) || 1000 < Math.Abs(pos.PosZ))
 			{
-				_lobbyLogger.LogWarning( "Player {SessionId} attempted to move out of bounds in lobby '{RoomName}': ({X}, {Y}, {Z})",
+				_logger.LogWarning( "Player {SessionId} attempted to move out of bounds in lobby '{RoomName}': ({X}, {Y}, {Z})",
 					  session.SessionId, RoomName, pos.PosX, pos.PosY, pos.PosZ );
 				return false;
 			}
@@ -141,7 +139,7 @@ namespace Server.Room
 			// 메시지 길이 제한
 			if(200 < packet.Message.Length)
 			{
-				_lobbyLogger.LogWarning( "Player {SessionId} attempted to send too long message in lobby '{RoomName}' (Length: {Length})",
+				_logger.LogWarning( "Player {SessionId} attempted to send too long message in lobby '{RoomName}' (Length: {Length})",
 					  session.SessionId, RoomName, packet.Message.Length );
 				return false;
 			}
@@ -149,7 +147,7 @@ namespace Server.Room
 			// 스팸 방지 - 샘플
 			if(packet.Message.Contains("spam") || packet.Message.Contains("SPAM"))
 			{
-				_lobbyLogger.LogWarning( "Player {SessionId} attempted to send spam message in lobby '{RoomName}': '{Message}'",
+				_logger.LogWarning( "Player {SessionId} attempted to send spam message in lobby '{RoomName}': '{Message}'",
 					  session.SessionId, RoomName, packet.Message );
 				return false;
 			}
@@ -159,7 +157,7 @@ namespace Server.Room
 
 		protected override Task OnCleanupAsync()
 		{
-			_lobbyLogger.LogInformation( "LobbyRoom '{RoomName}' (ID: {RoomId}) cleanup started. Total visitors: {TotalVisitors}",
+			_logger.LogInformation( "LobbyRoom '{RoomName}' (ID: {RoomId}) cleanup started. Total visitors: {TotalVisitors}",
 				 RoomName, RoomId, _totalVisitors );
 
 			return base.OnCleanupAsync();
@@ -207,7 +205,7 @@ namespace Server.Room
 			}
 			catch ( Exception ex )
 			{
-				_lobbyLogger.LogError( ex, "Failed to send welcome message to Player {SessionId} in lobby '{RoomName}'",
+				_logger.LogError( ex, "Failed to send welcome message to Player {SessionId} in lobby '{RoomName}'",
 					  session.SessionId, RoomName );
 			}
 
@@ -229,7 +227,7 @@ namespace Server.Room
 			}
 			catch (Exception ex)
 			{
-				_lobbyLogger.LogError( ex, "Failed to notify player join for Player {SessionId} in lobby '{RoomName}'",
+				_logger.LogError( ex, "Failed to notify player join for Player {SessionId} in lobby '{RoomName}'",
 					 session.SessionId, RoomName );
 			}
 
@@ -251,7 +249,7 @@ namespace Server.Room
 			}
 			catch(Exception ex)
 			{
-				_lobbyLogger.LogError( ex, "Failed to notify player leave for Player {SessionId} in lobby '{RoomName}'",
+				_logger.LogError( ex, "Failed to notify player leave for Player {SessionId} in lobby '{RoomName}'",
 					  session.SessionId, RoomName );
 			}
 
@@ -273,7 +271,7 @@ namespace Server.Room
 			}
 			catch(Exception ex)
 			{
-				_lobbyLogger.LogError( ex, "Failed to send lobby status to Player {SessionId} in lobby '{RoomName}'",
+				_logger.LogError( ex, "Failed to send lobby status to Player {SessionId} in lobby '{RoomName}'",
 					  session.SessionId, RoomName );
 			}
 
@@ -293,12 +291,12 @@ namespace Server.Room
 				// GameSession을 통해 Redis에 위치 업데이트
 				await _playerPositionService.UpdatePositionAsync(session.PlayerId, spawnPosition );
 
-				_lobbyLogger.LogInformation( "Player {SessionId} 로비 스폰 위치 설정: ({X}, {Y}, {Z})",
+				_logger.LogInformation( "Player {SessionId} 로비 스폰 위치 설정: ({X}, {Y}, {Z})",
 					session.SessionId, spawnPosition.PosX, spawnPosition.PosY, spawnPosition.PosZ );
 			}
 			catch (Exception ex)
 			{
-				_lobbyLogger.LogError( ex, "Player {SessionId} 스폰 위치 설정 중 오류", session.SessionId );
+				_logger.LogError( ex, "Player {SessionId} 스폰 위치 설정 중 오류", session.SessionId );
 			}
 		}
 
