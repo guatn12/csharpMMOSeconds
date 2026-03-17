@@ -538,6 +538,13 @@ namespace Server.Game.Monsters
 
 			_currentPath = PathFinder.FindPath( _room.RoomMap.MapData, startCell.x, startCell.z, goalCell.x, goalCell.z );
 
+			_logger.LogDebug( "RecalculatePath: ({Sx},{Sz})→({Gx},{Gz}) | PathLength:{Len}",
+					  startCell.x, startCell.z, goalCell.x, goalCell.z, _currentPath.Count );
+
+			if(_currentPath.Count == 0)
+				_logger.LogWarning( "A* Fallback: ({Sx},{Sz})→({Gx},{Gz}) 경로 없음",
+					startCell.x, startCell.z, goalCell.x, goalCell.z );
+
 			_pathIndex = 0;
 			_lastTargetCell = goalCell;
 

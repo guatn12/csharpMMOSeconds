@@ -24,7 +24,7 @@ namespace Server.Tests.TestHelpers
 	/// 테스트에서 사용할 Mock 객체를 생성하는 팩토리 클래스
 	/// 재사용 가능한 Mock 생성 로직을 중앙화.
 	/// </summary>
-	public class MockFactory
+	public class MockFactoryHelper
 	{
 		// 1. BaseRoom Mock
 		/// <summary>
@@ -35,7 +35,7 @@ namespace Server.Tests.TestHelpers
 			Mock<IRoom> mockRoom = new Mock<IRoom>();
 
 			MapData mapData = MapData.CreateEmpty(10, 10);
-			mapData.Id = roomId;
+			mapData.Id = mapId;
 			GameMap gameMap = new GameMap(mapData);
 
 			mockRoom.Setup(r => r.RoomType).Returns(roomType);
@@ -71,23 +71,24 @@ namespace Server.Tests.TestHelpers
 			return new SystemPacketHandler( mockLogger.Object, roomManager.Object, settings );
 		}
 
-		// 2. GameSession Mock
-		///<summary>
-		/// 플레이어 정보가 포함된 GameSession Mock 생성
+		/// <summary>
+		/// IClientSession mock 생성 + Send 캡처 헬퍼
 		/// </summary>
-		public static Mock<ClientSession> CreateMockSession(long playerId = 1, string playerName = "TestPlayer")
+		public static (Mock<IClientSession> mockSession, List<IMessage> sentPackets) CreateSessionMock( long playerId, IRoom initialRoom )
 		{
-			var mockSession = new Mock<ClientSession>();
+			var sentPackets = new List<IMessage>();
+			IRoom currentRoom = initialRoom;
+			var player = new Player(playerId, $"TestPlayer{playerId}");
 
-			var player = new Player(playerId, playerName);
-
-			// Session.Player 속성 설정
+			var mockSession = new Mock<IClientSession>();
 			mockSession.Setup( s => s.Player ).Returns( player );
-
-			// SessionId 설정
+			mockSession.Setup( s => s.PlayerId ).Returns( playerId );
 			mockSession.Setup( s => s.SessionId ).Returns( playerId );
+			mockSession.Setup( s => s.CurrentRoom ).Returns( () => currentRoom );
+			mockSession.Setup( s => s.SetCurrentRoom( It.IsAny<IRoom>() ) ).Callback<IRoom>( r => currentRoom = r );
+			mockSession.Setup( s => s.Send( It.IsAny<IMessage>() ) ).Callback<IMessage>( p => sentPackets.Add( p ) );
 
-			return mockSession;
+			return (mockSession, sentPackets);
 		}
 
 		// 3. ILogger Mock
