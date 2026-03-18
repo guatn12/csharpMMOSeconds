@@ -1,4 +1,4 @@
-﻿using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Attributes;
 using Google.Protobuf;
 using Protocol;
 using System;
@@ -24,9 +24,6 @@ namespace Server.Benchmarks
 
 		private C_Chat? _chatPacket;
 		private byte[]? _serializedChat;
-
-		private C_AttackMonster? _attackPacket;
-		private byte[]? _serializedAttack;
 
 		private C_InventoryRequest? _inventoryPacket;
 		private byte[]? _serializedInventory;
@@ -57,13 +54,6 @@ namespace Server.Benchmarks
 				Message = "Benchmark test message for performance testing"
 			};
 
-			_attackPacket = new C_AttackMonster
-			{
-				MonsterId = 1001,
-				SkillId = 0 // 기본 공격
-
-			};
-
 			_inventoryPacket = new C_InventoryRequest();
 
 			// TODO: 역직렬화용 데이터 준비
@@ -77,12 +67,6 @@ namespace Server.Benchmarks
 			{
 				_chatPacket.WriteTo(ms);
 				_serializedChat = ms.ToArray();
-			}
-
-			using (var ms = new MemoryStream())
-			{
-				_attackPacket.WriteTo(ms);
-				_serializedAttack = ms.ToArray();
 			}
 
 			using (var ms = new MemoryStream())
@@ -109,15 +93,6 @@ namespace Server.Benchmarks
 			// TODO: C_Chat 패킷을 byte[]로 직렬화
 			using var ms = new MemoryStream();
 			_chatPacket!.WriteTo( ms );
-			return ms.ToArray();
-		}
-
-		[Benchmark]
-		public byte[] SerializeAttackPacket()
-		{
-			// TODO: C_AttackMonster 패킷을 byte[]로 직렬화
-			using var ms = new MemoryStream();
-			_attackPacket!.WriteTo( ms );
 			return ms.ToArray();
 		}
 

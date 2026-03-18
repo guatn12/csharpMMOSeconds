@@ -1,4 +1,4 @@
-﻿// See https://aka.ms/new-console-template for more information
+// See https://aka.ms/new-console-template for more information
 using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Jobs;
@@ -20,7 +20,10 @@ namespace Server.Benchmarks
 			var config = DefaultConfig.Instance
 				.AddJob(Job.Default
 					.WithToolchain(InProcessEmitToolchain.Instance)); // In-process 실행
-			var summary = BenchmarkRunner.Run<PacketSerializationBenchmark>(config);
+
+			BenchmarkSwitcher
+				.FromAssembly( typeof( Program ).Assembly )
+				.Run( args, config );
 
 			// 결과는 BenchmarkDotNet.Artifacts/results 폴더에 저장됩니다.
 		}
