@@ -33,6 +33,7 @@ namespace DummyClient.Packet
         public virtual ValueTask On_S_MonsterDie(NetworkSession session, S_MonsterDie packet) { Console.WriteLine("Received but not handled: S_MonsterDie"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_MonsterUpdate(NetworkSession session, S_MonsterUpdate packet) { Console.WriteLine("Received but not handled: S_MonsterUpdate"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_ChangeRoom(NetworkSession session, S_ChangeRoom packet) { Console.WriteLine("Received but not handled: S_ChangeRoom"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_PathInfo(NetworkSession session, S_PathInfo packet) { Console.WriteLine("Received but not handled: S_PathInfo"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_Pong(NetworkSession session, S_Pong packet) { Console.WriteLine("Received but not handled: S_Pong"); return ValueTask.CompletedTask; }
     }
 
@@ -84,6 +85,8 @@ namespace DummyClient.Packet
             _onRecv.Add((ushort)PacketID.S_MonsterUpdate, HandlePacket<S_MonsterUpdate>(_handler.On_S_MonsterUpdate));
             _packetTypeToId.Add(typeof(Protocol.C_ChangeRoom), PacketID.C_ChangeRoom);
             _onRecv.Add((ushort)PacketID.S_ChangeRoom, HandlePacket<S_ChangeRoom>(_handler.On_S_ChangeRoom));
+            _packetTypeToId.Add(typeof(Protocol.C_AutoMove), PacketID.C_AutoMove);
+            _onRecv.Add((ushort)PacketID.S_PathInfo, HandlePacket<S_PathInfo>(_handler.On_S_PathInfo));
             _packetTypeToId.Add(typeof(Protocol.C_Ping), PacketID.C_Ping);
             _onRecv.Add((ushort)PacketID.S_Pong, HandlePacket<S_Pong>(_handler.On_S_Pong));
         }

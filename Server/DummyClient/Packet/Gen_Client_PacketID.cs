@@ -33,6 +33,8 @@ public enum PacketID
 	S_MonsterUpdate = 27,
 	C_ChangeRoom = 28,
 	S_ChangeRoom = 29,
+	C_AutoMove = 30,
+	S_PathInfo = 31,
 	C_Ping = 10000,
 	S_Pong = 10001,
 }

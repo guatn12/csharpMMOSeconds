@@ -1,9 +1,12 @@
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
+using Server.Game.Map;
 using Server.Room;
 using Server.Services;
 using Server.Utils;
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Server.Packet.Handlers
@@ -152,6 +155,74 @@ namespace Server.Packet.Handlers
 			_room.SendToPlayer( session, response );
 
 			_logger.LogDebug( "Player {PlayerId} requested player info", session.PlayerId );
+		}
+
+		private async ValueTask HandleC_AutoMoveAsync( IClientSession session, C_AutoMove packet )
+		{
+			var validation = PacketValidators.ValidateBasic(session, _room);
+			if (!validation.IsValid)
+			{
+				_logger.LogWarning("AutoMove ValidateBasic Failed: {Error}", validation.ErrorMessage );
+				return;
+			}
+
+			// 목적지가 이동할 수 없는 지역이라면 로그 출력 후 A* 실행 - 이동 가능한 근처까지 목적지 설정.
+			validation = PacketValidators.ValidateRange( packet.Destination, _room );
+			if(!validation.IsValid)
+			{
+				_logger.LogWarning( "AutoMove Destination ValidateRange Failed: {Error}", validation.ErrorMessage );
+			}
+
+			PosInfo currentPos = session.Player.PosInfo;
+			GameMap currentMap = session.CurrentRoom.RoomMap;
+
+			var (startX, startZ) = currentMap.WorldToCell( currentPos.PosX, currentPos.PosZ );
+			var (goalX, goalZ) = currentMap.WorldToCell( packet.Destination.PosX, packet.Destination.PosZ );
+
+			List<(int x, int z)> path;
+			if(PathFinder.HasClearLine( currentMap.MapData, startX, startZ, goalX, goalZ ))
+			{
+				path = new List<(int x, int z)> { (goalX, goalZ) }; // 직선 -> 목적지 단일 웨이포인트
+				_logger.LogInformation( "Player {PlayerId} AutoMove: CLearLine ({Sx},{Sz} -> {Gx},{Gz})",
+					session.PlayerId, startX, startZ, goalX, goalZ );
+			}
+			else
+			{
+				path = PathFinder.FindPath( currentMap.MapData, startX, startZ, goalX, goalZ );
+				_logger.LogInformation( "Player {PlayerId} AutoMove: A* ({Sx}, {Sz} -> {Gx}, {Gz}) PathLength:{Len}",
+					session.PlayerId, startX, startZ, goalX, goalZ, path.Count );
+			}
+
+			var wayPoints = new List<PosInfo>();
+			foreach(var (cellX, cellZ) in path)
+			{
+				var (worldX, worldZ) = currentMap.CellToWorld(cellX, cellZ);
+				float height = currentMap.MapData.GetHeightAt(cellX, cellZ);
+				wayPoints.Add( new PosInfo { PosX = worldX, PosZ = worldZ, PosY = height } );
+			}
+
+			bool reachable = (0 < path.Count && path[path.Count - 1] == (goalX, goalZ));
+
+			S_PathInfo response = new S_PathInfo
+			{
+				Reachable = reachable,
+			};
+			response.Waypoints.AddRange( wayPoints );
+
+			session.Send( response );
+			if(0 < response.Waypoints.Count)
+			{
+				var lastWayPoint = response.Waypoints[path.Count - 1];
+
+				_logger.LogInformation( "Player {PlayerId} Automove Reachable: {reachable}, PathExitPoint: ({X}, {Y}, {Z})",
+					session.PlayerId, response.Reachable, lastWayPoint.PosX, lastWayPoint.PosY, lastWayPoint.PosZ );
+			}
+			else
+			{
+				_logger.LogWarning( "Player {PlayerId} AutoMove Reachable: {reachable}, Path Not Found, PathCount: {Count}",
+					session.PlayerId, response.Reachable, response.Waypoints.Count );
+			}
+			
 		}
 	}
 }

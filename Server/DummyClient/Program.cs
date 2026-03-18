@@ -175,6 +175,11 @@ namespace DummyClient
 		public static bool InventoryRequested = false;
 		public static DateTime LastInventoryRequestTime = DateTime.MinValue;
 
+		// 자동 이동
+		public static List<PosInfo> AutoMoveWaypoints = new List<PosInfo>();
+		public static PosInfo LastAutoMoveDestination = null;
+		public static int AutoMoveIndex = 0;
+
 		// ping 전송
 		public static DateTime LastPingTime = DateTime.MinValue;
 		private const int PingIntervalSeconds = 20;
@@ -311,7 +316,7 @@ namespace DummyClient
 				Thread.Sleep( 200 );
 			}
 
-			_logger.LogInformation( "모든 클라이언트 시작 완료. 15초 후 자동 종료됩니다..." );
+			_logger.LogInformation( "모든 클라이언트 시작 완료. 45초 후 자동 종료됩니다..." );
 
 			// 45초 대기 (테스트를 위해)
 			Thread.Sleep( 45000 );
@@ -660,6 +665,14 @@ namespace DummyClient
 								var nearestMonster = aliveMonsters.First();
 								TargetMonsterId = nearestMonster.ObjectId;
 
+								var packet = new C_AutoMove
+								{
+									Destination = nearestMonster.PosInfo
+								};
+
+								session.Send( packet );
+								LastAutoMoveDestination = nearestMonster.PosInfo;
+
 								logger.LogInformation( "[Client {ClientId}] [타겟 변경] 새 타겟: {Name} (ID:{MonsterId})",
 								clientId, nearestMonster.Name, TargetMonsterId );
 							}
@@ -682,6 +695,20 @@ namespace DummyClient
 					// 2. 타겟이 있으면 이동 및 공격 처리.
 					if(0 < TargetMonsterId && NearbyObjects.TryGetValue( TargetMonsterId, out var targetMonster ))
 					{
+						// 몬스터가 일정 거리 이상 이동하면 C_AutoMove 재전송
+						if(LastAutoMoveDestination != null)
+						{
+							float movedDist = CalculateDistance3D(targetMonster.PosInfo, LastAutoMoveDestination);
+							if(1.0f < movedDist)
+							{
+								LastAutoMoveDestination = targetMonster.PosInfo.Clone();
+								session.Send( new C_AutoMove { Destination = targetMonster.PosInfo } );
+								logger.LogInformation( "[Client {ClientId}] [AutoMove 재전송] 몬스터 이동 감지 ({Dist:F1}m)",
+									clientId, movedDist );
+							}
+						}
+
+						// 타겟과의 거리가 얼마나 되는지 확인. 짧은 거리(CellSize 이하 거리)는 직선 이동.
 						float targetX = targetMonster.PosInfo.PosX;
 						float targetZ = targetMonster.PosInfo.PosZ;
 
@@ -693,80 +720,75 @@ namespace DummyClient
 						// 공격 범위 밖 -> 타겟을 향해 이동.
 						if(AttackRange < distanceToTarget)
 						{
-							float dx = targetX - MyPlayer.Position.PosX;
-							float dz = targetZ - MyPlayer.Position.PosZ;
-							float distance2D = (float)Math.Sqrt(dz * dz + dx * dx);
-
-							// 방향 벡터 정규화
-							float dirX = dx / distanceToTarget;
-							float dirZ = dz / distanceToTarget;
-
-							// 이동 거리 계산 (초당 MoveSpeed)
-							float moveDistance = MoveSpeed * (messageInterval / 1000.0f);
-
-							// 목표 위치보다 가까우면 목표 위치로, 아니면 moveDistance만큼 이동.
-							if(distanceToTarget <= moveDistance)
+							if( 0 < AutoMoveWaypoints.Count && AutoMoveIndex < AutoMoveWaypoints.Count)
 							{
-								if(CurrentMapData.IsWalkableWorld(targetX, targetZ))
+								var waypoint = AutoMoveWaypoints[AutoMoveIndex];
+
+								float dx = waypoint.PosX - MyPlayer.Position.PosX;
+								float dz = waypoint.PosZ - MyPlayer.Position.PosZ;
+								float wayDist = CalculateDistance3D(waypoint, MyPlayer.Position);
+
+								// 웨이포인트 도착
+								if(wayDist < 0.5f)
 								{
-									MyPlayer.Position.PosX = targetX;
-									MyPlayer.Position.PosZ = targetZ;
+									AutoMoveIndex++;
+									logger.LogInformation( "[Client {ClientId}] [웨이포인트 도달] {Index}/{Total}",
+										clientId, AutoMoveIndex, AutoMoveWaypoints.Count );
 								}
+								// 웨이포인트
 								else
 								{
-									logger.LogWarning( "[Client {ClientId}] 목표 위치가 이동 불가 지역임: ({X:F1}, {Z:F1})",
-										clientId, targetX, targetZ );
-								}
-							}
-							else
-							{
-								float newPosX = MyPlayer.Position.PosX + dirX * moveDistance;
-								float newPosZ = MyPlayer.Position.PosZ + dirZ * moveDistance;
+									float dirX = dx / wayDist;
+									float dirZ = dz / wayDist;
 
-								// 이동 가능 여부 확인
-								if(CurrentMapData.IsWalkableWorld(newPosX, newPosZ))
-								{
+									// 이동 거리 계산 (초당 MoveSpeed)
+									float moveDistance = MoveSpeed * (messageInterval / 1000.0f);
+									moveDistance = Math.Min( moveDistance, wayDist );
+
+									float newPosX = MyPlayer.Position.PosX + dirX * moveDistance;
+									float newPosZ = MyPlayer.Position.PosZ + dirZ * moveDistance;
+
+									// 회전 방향 계산 (타겟을 바라보도록)
+									MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
+
+									// 높이 계산
+									float newHeight = CurrentMapData.GetWorldHeight(newPosX, newPosZ);
+
 									MyPlayer.Position.PosX = newPosX;
 									MyPlayer.Position.PosZ = newPosZ;
-								}
-								else
-								{
-									if(moveCount % 10 == 0)
+									MyPlayer.Position.PosY = newHeight;
+
+									C_Move movePacket = new C_Move()
 									{
-										logger.LogWarning("[Client {ClientId}] 이동 불가 지역: ({X:F1}, {Z:F1})",
-											clientId, newPosX, newPosZ );
+										PosInfo = new PosInfo()
+										{
+											PosX = MyPlayer.Position.PosX,
+											PosY = MyPlayer.Position.PosY,
+											PosZ = MyPlayer.Position.PosZ,
+											RotationX = MyPlayer.Position.RotationX,
+											RotationY = MyPlayer.Position.RotationY,
+											RotationZ = MyPlayer.Position.RotationZ,
+											Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+										},
+									};
+									session.Send( movePacket );
+
+									if(moveCount % 5 == 0)
+									{
+										logger.LogInformation( "[Client {ClientId}] [이동] → {Target} | 거리: {Distance:F2}m | 위치: ({X:F2}, {Y:F2},{Z:F2}) | 내 HP: {HP:F1}%",
+											clientId, targetName, distanceToTarget,
+											MyPlayer.Position.PosX, MyPlayer.Position.PosY, MyPlayer.Position.PosZ, MyPlayer.HPPercent );
 									}
 								}
 							}
-
-							// Y 좌표를 타겟 몬스터와 동일하게 설정.
-							MyPlayer.Position.PosY = targetMonster.PosInfo.PosY;
-
-							// 회전 방향 계산 (타겟을 바라보도록)
-							MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
-
-							// 이동 패킷 전송
-							C_Move movePacket = new C_Move()
+							else if ( 0 < AutoMoveWaypoints.Count && AutoMoveWaypoints.Count <= AutoMoveIndex)
 							{
-								PosInfo = new PosInfo()
-								{
-									PosX = MyPlayer.Position.PosX,
-									PosY = MyPlayer.Position.PosY,
-									PosZ = MyPlayer.Position.PosZ,
-									RotationX = MyPlayer.Position.RotationX,
-									RotationY = MyPlayer.Position.RotationY,
-									RotationZ = MyPlayer.Position.RotationZ,
-									Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-								},
-							};
-							session.Send( movePacket );
-
-							if(moveCount % 5 == 0)
-							{
-								logger.LogInformation( "[Client {ClientId}] [이동] → {Target} | 거리: {Distance:F2}m | 위치: ({X:F2}, {Y:F2},{Z:F2}) | 내 HP: {HP:F1}%",
-									clientId, targetName, distanceToTarget,
-									MyPlayer.Position.PosX, MyPlayer.Position.PosY, MyPlayer.Position.PosZ, MyPlayer.HPPercent );
+								logger.LogInformation( "[Client {ClientId}] [경로 완료] 웨이포인트 전체 소진", clientId );
+								AutoMoveIndex = 0;
+								AutoMoveWaypoints.Clear();
+								LastAutoMoveDestination = null;
 							}
+
 						}
 						// 공격 범위 내 -> 정지 후 공격
 						else
@@ -774,6 +796,11 @@ namespace DummyClient
 							// 공격(2초마다)
 							if(AutoAttackEnabled && moveCount % 2 == 0 && 0 < TargetMonsterId)
 							{
+								// 이동 데이터 제거
+								AutoMoveWaypoints.Clear();
+								AutoMoveIndex = 0;
+								LastAutoMoveDestination = null;
+
 								// 스킬 시스템 사용
 								int currentMP = MyPlayer.Stats.CurrentMP;
 								int skillId = SelectAttackSkill(currentMP, logger);
@@ -824,38 +851,61 @@ namespace DummyClient
 					// 3. 타겟이 없으면 Room 중앙으로 천천히 이동
 					else
 					{
-						float centerX = CurrentMapData.Width * CurrentMapData.CellSize / 2;
-						float centerY = CurrentMapData.GroundY;
-						float centerZ = CurrentMapData.Depth * CurrentMapData.CellSize / 2;
-
-						// 중앙까지 거리 계산
-						float dx = centerX - MyPlayer.Position.PosX;
-						float dz = centerZ - MyPlayer.Position.PosZ;
-						float distanceToCenter = (float)Math.Sqrt( dx * dx + dz * dz );
-
-						if(1.0f < distanceToCenter) // 중앙에서 1M 이상 떨어진 경우
+						if(LastAutoMoveDestination == null)
 						{
-							float dirX = dx / distanceToCenter;
-							float dirZ = dz / distanceToCenter;
+							// 랜덤 목표
+							float destX = Random.Shared.NextSingle() * CurrentMapData.Width * CurrentMapData.CellSize;
+							float destZ = Random.Shared.NextSingle() % CurrentMapData.Depth * CurrentMapData.CellSize;
+							float destY = CurrentMapData.GetWorldHeight( destX, destZ );
 
-							float moveDisntace = MoveSpeed * 0.5f * (messageInterval / 1000.0f); // 절반 속도
-
-							float newPosX = MyPlayer.Position.PosX + dirX * moveDisntace;
-							float newPosZ = MyPlayer.Position.PosZ + dirZ * moveDisntace;
-
-							// 이동 가능 여부 확인
-							if(CurrentMapData.IsWalkableWorld( newPosX, newPosZ ))
+							var packet = new C_AutoMove
 							{
-								MyPlayer.Position.PosX = newPosX;
-								MyPlayer.Position.PosZ = newPosZ;
-								MyPlayer.Position.PosY = centerY;
-								MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
+								Destination = new PosInfo
+								{
+									PosX = destX,
+									PosY = destY,
+									PosZ = destZ
+								}
+							};
+
+							session.Send( packet );
+							logger.LogInformation( "[Client {ClientId}] [AutoMove 랜덤 포인트 설정] 랜덤 포인트 : ({X},{Y},{Z})",
+									clientId, destX, destY, destZ );
+						}
+
+						if(0 < AutoMoveWaypoints.Count && AutoMoveIndex < AutoMoveWaypoints.Count)
+						{
+							var waypoint = AutoMoveWaypoints[AutoMoveIndex];
+
+							float dx = waypoint.PosX - MyPlayer.Position.PosX;
+							float dz = waypoint.PosZ - MyPlayer.Position.PosZ;
+							float wayDist = CalculateDistance3D(waypoint, MyPlayer.Position);
+
+							if(wayDist < 0.5f)
+							{
+								AutoMoveIndex++;
 							}
 							else
 							{
-								logger.LogWarning( "[Client {ClientId}] 이동 불가 지역: ({X:F1}, {Z:F1})",
-											clientId, newPosX, newPosZ );
-							}
+								float dirX = dx / wayDist;
+								float dirZ = dz / wayDist;
+
+								// 이동 거리 계산 (초당 MoveSpeed)
+								float moveDistance = MoveSpeed * (messageInterval / 1000.0f);
+								moveDistance = Math.Min( moveDistance, wayDist );
+
+								float newPosX = MyPlayer.Position.PosX + dirX * moveDistance;
+								float newPosZ = MyPlayer.Position.PosZ + dirZ * moveDistance;
+
+								// 회전 방향 계산 (타겟을 바라보도록)
+								MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
+
+								// 높이 계산
+								float newHeight = CurrentMapData.GetWorldHeight(newPosX, newPosZ);
+
+								MyPlayer.Position.PosX = newPosX;
+								MyPlayer.Position.PosZ = newPosZ;
+								MyPlayer.Position.PosY = newHeight;
 
 								C_Move movePacket = new C_Move()
 								{
@@ -868,15 +918,23 @@ namespace DummyClient
 										RotationY = MyPlayer.Position.RotationY,
 										RotationZ = MyPlayer.Position.RotationZ,
 										Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-									}
+									},
 								};
-							session.Send( movePacket );
+								session.Send( movePacket );
 
-							if(moveCount % 10 == 0)
-							{
-								logger.LogDebug( "[Client {ClientId}] [이동] Room 중앙으로 이동 중... 거리: {Distance:F2}m",
-									clientId, distanceToCenter );
+								if(moveCount % 10 == 0)
+								{
+									logger.LogDebug( "[Client {ClientId}] [이동] 랜덤 위치로 이동 중... 거리: {Distance:F2}m",
+										clientId, wayDist );
+								}
 							}
+						}
+						else if(0 < AutoMoveWaypoints.Count && AutoMoveWaypoints.Count <= AutoMoveIndex)
+						{
+							logger.LogInformation( "[Client {ClientId}] [경로 완료] 웨이포인트 전체 소진", clientId );
+							AutoMoveIndex = 0;
+							AutoMoveWaypoints.Clear();
+							LastAutoMoveDestination = null;
 						}
 					}
 
@@ -908,6 +966,21 @@ namespace DummyClient
 					break;
 				}
 			}
+		}
+
+		/// <summary>
+		/// 3D 거리 계산
+		/// </summary>
+		private static float CalculateDistance3D( PosInfo pos1, PosInfo pos2 )
+		{
+			if(pos1 == null || pos2 == null)
+				return float.MaxValue;
+
+			float deltaX = pos1.PosX - pos2.PosX;
+			float deltaY = pos1.PosY - pos2.PosY;
+			float deltaZ = pos1.PosZ - pos2.PosZ;
+
+			return (float)Math.Sqrt( deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ );
 		}
 
 		private static int SelectAttackSkill(int currentMP, Microsoft.Extensions.Logging.ILogger logger)

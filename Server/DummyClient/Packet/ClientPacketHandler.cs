@@ -508,66 +508,6 @@ namespace DummyClient.Packet
 			return ValueTask.CompletedTask;
 		}
 		public override ValueTask On_S_InventoryUpdate( NetworkSession session, S_InventoryUpdate packet ) { Console.WriteLine( "Received but not handled: S_InventoryUpdate" ); return ValueTask.CompletedTask; }
-		//public override ValueTask On_S_MonsterSpawn( NetworkSession session, S_MonsterSpawn packet )
-		//{
-		//	_logger.LogInformation( "[Client] S_MonsterSpawn - {Count} monsters spawned", packet.Monsters.Count );
-
-		//	foreach(var monster in packet.Monsters)
-		//	{
-		//		_logger.LogInformation( "Monster {MonsterId}: {Name} (Lv.{Level})" + "" +
-		//			"HP:{CurrentHP}/{MaxHP} State:{State} at ({PosX:F1},{PosY:F1},{PosZ:F1})",
-		//			monster.MonsterId, monster.Name, monster.Level, monster.CurrentHP, monster.MaxHP,
-		//			monster.State, monster.PosInfo.PosX, monster.PosInfo.PosY, monster.PosInfo.PosZ );
-
-		//		// 몬스터 정보를 Program의 정적 딕셔너리에 저장
-		//		Program.NearbyMonsters[ monster.MonsterId ] = monster;
-		//	}
-
-		//	// 자동 타겟 설정 (첫 번째 몬스터)(
-		//	if (Program.TargetMonsterId == 0 && 0 < packet.Monsters.Count)
-		//	{
-		//		Program.TargetMonsterId = packet.Monsters[0].MonsterId;
-		//		_logger.LogInformation( "Auto-target set to Monster {MonsterId}",
-		//			Program.TargetMonsterId );
-		//	}
-
-		//	return ValueTask.CompletedTask;
-		//}
-		//public override ValueTask On_S_MonsterDespawn( NetworkSession session, S_MonsterDespawn packet )
-		//{
-		//	_logger.LogInformation( "[Client] S_MonsterDespawn - {Count} monsters removed",
-		//		packet.MonsterIds.Count );
-
-		//	foreach(var monsterId in packet.MonsterIds)
-		//	{
-		//		if(Program.NearbyMonsters.TryGetValue( monsterId, out MonsterInfo monster ))
-		//		{
-		//			_logger.LogInformation( "Removed Monster {MonsterId}: {Name}", monsterId, monster.Name );
-		//			Program.NearbyMonsters.Remove( monsterId );
-		//		}
-
-		//		// 타겟이 제거되었으면 초기화
-		//		if(Program.TargetMonsterId == monsterId)
-		//		{
-		//			Program.TargetMonsterId = 0;
-		//			_logger.LogWarning( "Current target removed, searching new target..." );
-		//		}
-		//	}
-
-		//	return ValueTask.CompletedTask;
-		//}
-		//public override ValueTask On_S_MonsterMove( NetworkSession session, S_MonsterMove packet ) { Console.WriteLine( "Received but not handled: S_MonsterMove" ); return ValueTask.CompletedTask; }
-		//public override ValueTask On_S_MonsterAttack( NetworkSession session, S_MonsterAttack packet )
-		//{
-		//	string monsterName = Program.NearbyMonsters.TryGetValue(packet.MonsterId, out var monster)
-		//		? monster.Name
-		//		: $"Monster {packet.MonsterId}";
-
-		//	_logger.LogWarning( "[Client] Monster Attack! {Name} attacked Player {PlayerId} for {Damage} damage",
-		//		monsterName, packet.TargetPlayerId, packet.Damage );
-
-		//	return ValueTask.CompletedTask;
-		//}
 
 		public override ValueTask On_S_MonsterDie( NetworkSession session, S_MonsterDie packet )
 		{
@@ -639,6 +579,25 @@ namespace DummyClient.Packet
 					Program.NearbyObjects[ monster.ObjectId ] = monster;
 				}
 			}
+
+			return ValueTask.CompletedTask;
+		}
+
+		public override ValueTask On_S_PathInfo( NetworkSession session, S_PathInfo packet )
+		{
+			if(packet.Waypoints.Count == 0)
+			{
+				_logger.LogWarning( "[AutoMove] 경로 없음 - 이동 불가" );
+				Program.AutoMoveWaypoints.Clear();
+				return ValueTask.CompletedTask;
+			}
+
+			string reachableStr = packet.Reachable ? "도달 가능" : "best-Effort";
+			_logger.LogInformation( "[AutoMove] 경로 수신: {Count}개 웨이포인트({Reachable})", packet.Waypoints.Count, reachableStr );
+
+			// 웨이 포인트 저장 (자동 이동 루프에서 사용)
+			Program.AutoMoveWaypoints = packet.Waypoints.ToList();
+			Program.AutoMoveIndex = 0;
 
 			return ValueTask.CompletedTask;
 		}

@@ -163,6 +163,48 @@ namespace Server.Game.Map
 			return new List<(int x, int z)>(); // 경로를 찾지 못한 경우 빈 리스트 반환
 		}
 
+		/// <summary>
+		/// Bresenham 직선 체크 - 두 셀 사이 직선 경로에 장애물이 없는지 확인
+		/// </summary>
+		public static bool HasClearLine(MapData mapData, int startX, int startZ, int goalX, int goalZ )
+		{
+			int x = startX, z = startZ;
+			int dx = Math.Abs(goalX - startX);
+			int dz = Math.Abs(goalZ - startZ);
+			int sx = startX < goalX ? 1 : -1;
+			int sz = startZ < goalZ ? 1 : -1;
+			int err = dx - dz;
+
+			while(true)
+			{
+				if(!mapData.IsWalkable( x, z ))
+					return false;
+
+				if(x == goalX && z == goalZ)
+					return true;
+
+				int e2 = err * 2;
+
+				// 대각선 이동 시 corner cutting 방지
+				if(-dz < e2 && e2 < dx)
+				{
+					if(!mapData.IsWalkable( x + sx, z ) || !mapData.IsWalkable( x, z+sz ))
+						return false;
+				}
+
+				// 높이 차이 체크
+				int nextX = x, nextZ = z;
+				if(-dz < e2) { err -= dz; nextX = x + sx; }
+				if(e2 < dx) { err += dx; nextZ = z+sz; }
+
+				if(MAX_STEP_HEIGHT < Math.Abs( mapData.GetHeightAt( nextX, nextZ ) - mapData.GetHeightAt( x, z ) ))
+					return false;
+
+				x = nextX;
+				z = nextZ;
+			}
+		}
+
 		/// <summary> cameFrom 맵을 역추적하여 경로 리스트 생성 (시작점 제외) </summary>
 		private static List<(int x, int z)> ReconstructPath(Dictionary<(int, int), (int, int)> cameFrom,
 			(int x, int z) current)

@@ -479,7 +479,7 @@ namespace Server.Game.Monsters
 
 			// 맨해튼 거리 3셀 이내 + 직선 경로에 장애물 없음 -> 직선 이동
 			int manhattan = Math.Abs(startCell.x - goalCell.x) + Math.Abs(startCell.z - goalCell.z);
-			if(manhattan <= 3)
+			if(manhattan <= 3 && PathFinder.HasClearLine(_room.RoomMap.MapData, startCell.x, startCell.z, goalCell.x, goalCell.z))
 			{
 				MoveTowards( targetPos, speed );
 				return true;

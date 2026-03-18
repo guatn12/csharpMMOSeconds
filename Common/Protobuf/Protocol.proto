@@ -53,6 +53,10 @@ enum MsgId {
 	C_CHANGE_ROOM = 28;			// 룸 변경 요청, 클라 -> 서버
 	S_CHANGE_ROOM = 29;			// 룸 변경 결과, 서버 -> 클라
 
+	// 이동
+	C_AUTO_MOVE = 30;			// 자동 이동 목적지 요청
+	S_PATH_INFO = 31;			// 서버가 계산한 경로 반환
+
 	// 핑퐁
 	C_PING = 10000;				// 클라이언트 → 서버
 	S_PONG = 10001;				// 서버 → 클라이언트
@@ -253,6 +257,17 @@ message S_MonsterDie {
 message S_MonsterUpdate {
 	option (category) = ROOM;
 	repeated ObjectInfo monsters = 1;
+}
+
+message C_AutoMove {
+	option (category) = ROOM;
+	PosInfo destination = 1;		// 목적지 월드 좌표
+}
+
+message S_PathInfo {
+	option (category) = ROOM;
+	repeated PosInfo waypoints = 1;		// 이동할 웨이포인트 순서 목록
+	bool reachable = 2;					// 목적지 완전 도달 가능 여부
 }
 
 // 핑퐁

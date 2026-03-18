@@ -52,6 +52,7 @@ namespace Server.Packet
             _packetTypeToId.Add(typeof(S_MonsterDie), PacketID.S_MonsterDie);
             _packetTypeToId.Add(typeof(S_MonsterUpdate), PacketID.S_MonsterUpdate);
             _packetTypeToId.Add(typeof(S_ChangeRoom), PacketID.S_ChangeRoom);
+            _packetTypeToId.Add(typeof(S_PathInfo), PacketID.S_PathInfo);
             _packetTypeToId.Add(typeof(S_Pong), PacketID.S_Pong);
             // System 카테고리
             _packetCategoryCache.Add(PacketID.C_EnterGame, PacketCategory.System);
@@ -61,6 +62,7 @@ namespace Server.Packet
             _packetCategoryCache.Add(PacketID.C_Move, PacketCategory.Room);
             _packetCategoryCache.Add(PacketID.C_Chat, PacketCategory.Room);
             _packetCategoryCache.Add(PacketID.C_PlayerInfo, PacketCategory.Room);
+            _packetCategoryCache.Add(PacketID.C_AutoMove, PacketCategory.Room);
             // Combat 카테고리
             _packetCategoryCache.Add(PacketID.C_UseSkill, PacketCategory.Combat);
             // Inventory 카테고리
