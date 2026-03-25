@@ -40,6 +40,7 @@ namespace Server.Packet.Handlers
 				}
 				else
 				{
+					// TODO : 기본 로비 입장 실패 시 로비 생성 및 입장 처리가 필요.
 					_logger.LogWarning( "Player {PlayerId} (Session {SessionId}) failed to join the default lobby.",
 						session.Player.ObjectId, session.SessionId );
 				}
