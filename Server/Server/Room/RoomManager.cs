@@ -11,6 +11,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Protocol;
+using Server.Infra;
 
 namespace Server.Room
 {
@@ -26,9 +27,9 @@ namespace Server.Room
 		private readonly ConcurrentDictionary<int, IRoom> _rooms;
 		private readonly object _lock = new object();
 		private readonly DataManager _dataManager;
+		private readonly TickService _tickService;
 
-		private Timer _cleanupTimer;
-		private Timer _tickTimer;
+		private int _isCleanupRunning = 0;	// 재진입 방지 플래그
 		private bool _disposed = false;
 		private int _nextRoomId = 1;
 		private IRoom _defaultLobby;
@@ -42,7 +43,8 @@ namespace Server.Room
 
 		public RoomManager( ILogger<RoomManager> logger, IOptionsMonitor<ServerSettings> serverSettings,
 			ILoggerFactory loggerFactory, DataManager dataManager,
-			IRoomFactory roomFactory, IServiceProvider serviceProvider, ISessionManager sessionManager )
+			IRoomFactory roomFactory, IServiceProvider serviceProvider, ISessionManager sessionManager,
+			TickService tickService)
 		{
 			_roomFactory = roomFactory ?? throw new ArgumentNullException( nameof( roomFactory ) );
 			_sessionManager = sessionManager;
@@ -51,6 +53,7 @@ namespace Server.Room
 			_serverSettings = serverSettings ?? throw new ArgumentNullException( nameof( serverSettings ) );
 			_loggerFactory = loggerFactory ?? throw new ArgumentNullException( nameof( loggerFactory ) );
 			_dataManager = dataManager;
+			_tickService = tickService;
 
 			_rooms = new ConcurrentDictionary<int, IRoom>();
 
@@ -64,14 +67,11 @@ namespace Server.Room
 
 			await InitializeAsync();
 
-			// 정리 타이머 시작
-			TimeSpan cleanupInterval = TimeSpan.FromMinutes(_serverSettings.CurrentValue.Room.EmptyRoomCleanupIntervalMinutes);
-			_cleanupTimer = new Timer( async _ => await PerformCleanupAsync(), null, cleanupInterval, cleanupInterval );
-
-			// tick 타이머 시작 (예: 1초마다)
 			int tickIntervalMs = _serverSettings.CurrentValue.Room.TickIntervalMs;
-			_tickTimer = new Timer( _ => PerformTick(), null, tickIntervalMs, tickIntervalMs );
+			_tickService.Register( "RoomManager.Tick", tickIntervalMs, PerformTick );
 
+			int cleanupMs = _serverSettings.CurrentValue.Room.EmptyRoomCleanupIntervalMinutes * 60 * 1000;
+			_tickService.Register( "RoomManager.Cleanup", cleanupMs, PerformCleanup );
 
 			_logger.LogInformation( "RoomManager started successfully with {RoomCount} rooms", _rooms.Count );
 		}
@@ -81,12 +81,6 @@ namespace Server.Room
 			_logger.LogInformation( "RoomManager shutting down..." );
 
 			await ShutdownAsync();
-
-			_cleanupTimer.Dispose();
-			_cleanupTimer = null;
-
-			_tickTimer.Dispose();
-			_tickTimer = null;
 
 			_logger.LogInformation( "RoomManager stopped" );
 		}
@@ -510,12 +504,30 @@ namespace Server.Room
 			}
 		}
 
-		private void PerformTick()
+		public void PerformTick()
 		{
 			foreach(IRoom room in _rooms.Values)
 			{
 				room.Tick();
 			}
+		}
+
+		public void PerformCleanup()
+		{
+			if(Interlocked.Exchange( ref _isCleanupRunning, 1 ) == 1)
+				return;
+
+			Task.Run( async () =>
+			{
+				try
+				{
+					await PerformCleanupAsync();
+				}
+				finally
+				{
+					Interlocked.Exchange( ref _isCleanupRunning, 0 );
+				}
+			});
 		}
 
 		private long EstimateMemoryUsage()
@@ -529,8 +541,6 @@ namespace Server.Room
 		{
 			if(!_disposed)
 			{
-				_cleanupTimer.Dispose();
-				_tickTimer.Dispose();
 				ShutdownAsync().GetAwaiter().GetResult();
 				_disposed = true;
 			}

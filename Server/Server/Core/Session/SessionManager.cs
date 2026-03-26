@@ -11,22 +11,22 @@ using Server.Room;
 using Server.Infra;
 using Server.Packet;
 using Server.Services;
+using Microsoft.Extensions.Options;
+using Server.Config;
 
 namespace Server.Core.Session
 {
 	/// <summary>
 	/// 전역 세션 관리자
 	/// </summary>
-	public class SessionManager : ISessionManager, IHostedService
+	public class SessionManager : ISessionManager
 	{
 		private readonly ILogger<SessionManager> _logger;
 		private readonly IServiceProvider _serviceProvider;
 		private readonly RedisService _redisService;
 		private readonly PlayerPositionService _playerPositionService;
+		private readonly long _sessionTimoutMs;
 		private long _nextSessionId = 1;
-		private Timer _heartbeatTimer;
-		private const int HeartbeatIntervalMs = 30000; // 30초마다 세션 상태 체크
-		private const long SessionTimeoutMs = 60000; // 60초 동안 응답 없는 세션은 타임아웃 처리
 		private readonly object _lock = new object();
 
 		private readonly ConcurrentDictionary<long, IClientSession> _sessionById;
@@ -38,7 +38,8 @@ namespace Server.Core.Session
 		#endregion
 
 		public SessionManager( ILogger<SessionManager> logger, IServiceProvider serviceProvider,
-			RedisService redisService, PlayerPositionService playerPositionService )
+			RedisService redisService, PlayerPositionService playerPositionService, 
+			TickService tickService, IOptions<ServerSettings> settings )
 		{
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_serviceProvider = serviceProvider ?? throw new ArgumentNullException( nameof( serviceProvider ) );
@@ -46,6 +47,15 @@ namespace Server.Core.Session
 			_playerPositionService=playerPositionService;
 			_sessionById = new ConcurrentDictionary<long, IClientSession>();
 			_sessionByPlayerId = new ConcurrentDictionary<long, IClientSession>();
+
+			// 설정에서 주기 값 읽기
+			SessionConfig sessionConfig = settings.Value.Session;
+			_sessionTimoutMs = sessionConfig.TimeoutMs;
+
+			tickService.Register( "SessionManager.Heartbeat", sessionConfig.HeartbeatIntervalMs, CheckTimeouts );
+
+			_logger.LogInformation( "SessionManager Created. Heartbeat: {Heartbeat}ms, Timeout: {Timeout}ms",
+				sessionConfig.HeartbeatIntervalMs, sessionConfig.TimeoutMs );
 		}
 
 		#region 세션 생성
@@ -229,41 +239,21 @@ namespace Server.Core.Session
 
 		#region IHostedService 구현
 
-		public Task StartAsync( CancellationToken cancellationToken )
+		public void Shutdown()
 		{
-			_logger.LogInformation( "SessionManager starting up..." );
-
-			_heartbeatTimer = new Timer( _ => CheckTimeouts(), null, HeartbeatIntervalMs, HeartbeatIntervalMs );
-
-
-			// 초기화 작업... 현재는 생성자에서 딕셔너리가 초기화됨
-			_logger.LogInformation( "SessionManager started successfully. Heartbeat interval: {Interval}ms Ready to manage sessions.",
-				HeartbeatIntervalMs);
-			return Task.CompletedTask;
-		}
-
-		public Task StopAsync( CancellationToken cancellationToken )
-		{
-			_logger.LogInformation( "SessionManager shutting down..." );
-
-			_heartbeatTimer.Dispose();
-			_heartbeatTimer = null;
-
 			int totalSessions = GetTotalSessionCount();
-			if(totalSessions > 0 )
+			if(0 < totalSessions)
 			{
 				_logger.LogWarning( "SessionManager stopping with {ActiveSessions} active sessions. Cleaning up...", totalSessions );
 
 				lock(_lock)
 				{
-					// 모든 세션 정리
 					_sessionById.Clear();
 					_sessionByPlayerId.Clear();
 				}
 			}
 
-			_logger.LogInformation( "SessionManager stopped successfully" );
-			return Task.CompletedTask;
+			_logger.LogInformation( "SessionManager shutdown completed" );
 		}
 
 		private void CheckTimeouts()
@@ -272,7 +262,7 @@ namespace Server.Core.Session
 			foreach(IClientSession session in _sessionById.Values)
 			{
 				long elapsed = now - session.LastActiveTime;
-				if( SessionTimeoutMs < elapsed)
+				if( _sessionTimoutMs < elapsed)
 				{
 					_logger.LogWarning( "Session timeout. SessionId={SessionId}, PlayerId={PlayerId}, Elapsed={Elapsed}ms",
 						session.SessionId, session.PlayerId, elapsed );

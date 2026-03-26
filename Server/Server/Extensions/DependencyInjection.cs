@@ -78,7 +78,8 @@ namespace Server.Extensions
 			services.AddSingleton<SystemPacketHandler>();
 			services.AddSingleton<PacketManager>();
 			services.AddSingleton<ISessionManager, SessionManager>();
-			services.AddHostedService(sp => (SessionManager)sp.GetRequiredService<ISessionManager>() );
+			//services.AddHostedService(sp => (SessionManager)sp.GetRequiredService<ISessionManager>() );
+
 
 			// DB 서비스
 			DatabaseConfig databaseConfig = configuration.GetSection("ServerSettings:Database").Get<DatabaseConfig>()
@@ -126,6 +127,9 @@ namespace Server.Extensions
 
 			// QueueManager 등록
 			services.AddSingleton<IJobQueueManager, JobQueueManager>();
+
+			// tickService 등록
+			services.AddSingleton<TickService>();
 
 			return services;
 		}

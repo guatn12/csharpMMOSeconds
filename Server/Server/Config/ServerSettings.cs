@@ -40,6 +40,16 @@ namespace Server.Config
 		/// DB 설정
 		/// </summary>
 		public DatabaseConfig Database { get; set; } = new();
+
+		/// <summary>
+		/// 세션 설정
+		/// </summary>
+		public SessionConfig Session { get; set; } = new();
+
+		/// <summary>
+		/// 틱 서비스 설정
+		/// </summary>
+		public TickConfig Tick { get; set; } = new();
 	}
 
 	/// <summary>
@@ -167,5 +177,25 @@ namespace Server.Config
 		public int MaxRetryOnFailure { get; set; } = 3;				// 재시도 횟수
 		public bool EnableRetryOnFailure { get; set; } = true;
 		public bool EnableSensitiveDataLogging { get; set; } = false;
+	}
+
+	public class SessionConfig
+	{
+		/// <summary> 세션 하트비트 체크 주기 (ms). 기본 30초 </summary>
+		[Range( 1000, 120000 )]
+		public int HeartbeatIntervalMs { get; set; } = 30000;
+
+		/// <summary> 세션 타임 아웃(ms). 이 시간 동안 패킷이 없으면 세션 종료. 기본 60초 /// </summary>
+		[Range( 5000, 600000 )]
+		public int TimeoutMs { get; set; } = 60000;
+	}
+
+	public class TickConfig
+	{
+		/// <summary>
+		/// 서버 베이스 틱 주기
+		/// </summary>
+		[Range( 16, 1000 )]
+		public int BaseTickMs { get; set; } = 100;
 	}
 }

@@ -29,6 +29,7 @@ namespace Server.Core.Host
 		private readonly Listener _listener;
 		private readonly IServiceProvider _serviceProvider;
 		private readonly ISessionManager _sessionManager;
+		private readonly TickService _tickService;
 		private CancellationTokenSource _cancellationTokenSource;
 
 		public ServerHost(
@@ -41,7 +42,8 @@ namespace Server.Core.Host
 			PacketManager packetManager,
 			Listener listener,
 			IServiceProvider serviceProvider,
-			ISessionManager sessionManager )
+			ISessionManager sessionManager,
+			TickService tickService)
 		{
 			_logger = logger;
 			_serverSettings = serverSettings;
@@ -55,6 +57,7 @@ namespace Server.Core.Host
 
 			_cancellationTokenSource = new CancellationTokenSource();
 			_sessionManager = sessionManager;
+			_tickService = tickService;
 		}
 
 		public async Task StartAsync(CancellationToken token)
@@ -90,6 +93,11 @@ namespace Server.Core.Host
 
 			// 취소 신호 발송
 			_cancellationTokenSource.Cancel();
+
+			// 틱 서비스 가장 먼저 중지 (새 작업 투입 차단)
+			// 주의: 이미 시작된 비동기 작업(cleanup 등)은 계속 실행될 수 있음
+			// Phase 4에서 AutoSave 추가 시 CancellationToken 기반으로 업그레이드
+			_tickService.Stop();
 
 			// 리스너 정지
 			//_listener.Stop();
@@ -151,6 +159,9 @@ namespace Server.Core.Host
 			// RoomManager 시작
 			if (_roomManager is IHostedService hostedRoomManager)
 				await hostedRoomManager.StartAsync(CancellationToken.None);
+
+			// 모든 구독 등록 완료 후 틱 타이머 시작
+			_tickService.Start();
 
 			_logger.LogInformation( "핵심 서비스 초기화 완료" );
 		}
