@@ -10,6 +10,7 @@ using Server.Data.Models;
 using Server.Database.Entities;
 using Server.Game;
 using Server.Game.Map;
+using Server.Infra;
 using Server.Packet.Handlers;
 using Server.Room;
 using System;
@@ -26,6 +27,17 @@ namespace Server.Tests.TestHelpers
 	/// </summary>
 	public class MockFactoryHelper
 	{
+		public static TickService CreateTickService(int baseTickMs = 100)
+		{
+			var mockLogger = new Mock<ILogger<TickService>>();
+			var settings = Options.Create(new ServerSettings
+			{
+				Tick = new TickConfig{BaseTickMs = baseTickMs },
+			});
+
+			return new TickService( mockLogger.Object, settings );
+		}
+
 		// 1. BaseRoom Mock
 		/// <summary>
 		/// 기본 설정이 된 BaseRoom Mock 생성
@@ -115,21 +127,21 @@ namespace Server.Tests.TestHelpers
 		/// <summary>
 		/// 특정 아이템을 보유한 GameSession Mock 생성
 		/// </summary>
-		public static Mock<ClientSession> CreateMockSessionWithItem(int itemId, int quantity, long playerId = 1, string playerName = "TestPlayer")
-		{
-			var mockSession = CreateMockSession(playerId, playerName);
+		//public static Mock<ClientSession> CreateMockSessionWithItem(int itemId, int quantity, long playerId = 1, string playerName = "TestPlayer")
+		//{
+		//	var mockSession = CreateMockSession(playerId, playerName);
 
-			bool success = mockSession.Object.Player.Inventory.AddItem( itemId, quantity );
+		//	bool success = mockSession.Object.Player.Inventory.AddItem( itemId, quantity );
 
-			if(!success)
-			{
-				throw new InvalidOperationException(
-					$"Failed to add item {itemId} x{quantity} to inventory. " +
-					"Inventory may be full or invalid item data." );
-			}
+		//	if(!success)
+		//	{
+		//		throw new InvalidOperationException(
+		//			$"Failed to add item {itemId} x{quantity} to inventory. " +
+		//			"Inventory may be full or invalid item data." );
+		//	}
 
-			return mockSession;
-		}
+		//	return mockSession;
+		//}
 
 		// ===== 5. 특정 레벨/HP/MP를 가진 Session Mock =====
 
@@ -173,28 +185,28 @@ namespace Server.Tests.TestHelpers
 		/// <summary>
 		/// 여러 아이템을 보유한 GameSession Mock 생성
 		/// </summary>
-		public static Mock<ClientSession> CreateMockSessionWithItems(
-			params (int itemId, int quantity)[] items )
-		{
-			var mockSession = CreateMockSession();
+		//public static Mock<ClientSession> CreateMockSessionWithItems(
+		//	params (int itemId, int quantity)[] items )
+		//{
+		//	var mockSession = CreateMockSession();
 
-			foreach(var (itemId, quantity) in items)
-			{
-				bool success = mockSession.Object.Player.Inventory.AddItem(
-				  itemId: itemId,
-				  quantity: quantity,
-				  options: null
-			  );
+		//	foreach(var (itemId, quantity) in items)
+		//	{
+		//		bool success = mockSession.Object.Player.Inventory.AddItem(
+		//		  itemId: itemId,
+		//		  quantity: quantity,
+		//		  options: null
+		//	  );
 
-				if(!success)
-				{
-					throw new InvalidOperationException(
-						$"Failed to add item {itemId} x{quantity}. " +
-						"Check inventory space or item validity." );
-				}
-			}
+		//		if(!success)
+		//		{
+		//			throw new InvalidOperationException(
+		//				$"Failed to add item {itemId} x{quantity}. " +
+		//				"Check inventory space or item validity." );
+		//		}
+		//	}
 
-			return mockSession;
-		}
+		//	return mockSession;
+		//}
 	}
 }

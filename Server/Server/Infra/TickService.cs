@@ -86,7 +86,7 @@ namespace Server.Infra
 			}
 		}
 
-		public void Dispose() => _timer.Dispose();
+		public void Dispose() => _timer?.Dispose();
 	}
 
 	internal class TickSubscription

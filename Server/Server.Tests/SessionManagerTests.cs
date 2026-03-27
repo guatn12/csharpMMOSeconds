@@ -5,6 +5,9 @@ using Server.Game;
 using Xunit;
 using System.Linq;
 using System.Reflection;
+using Microsoft.Extensions.Options;
+using Server.Config;
+using Server.Tests.TestHelpers;
 
 namespace Server.Tests
 {
@@ -21,12 +24,18 @@ namespace Server.Tests
             // SessionManager 생성 (모든 의존성을 null로 전달)
             var mockLogger = new Mock<ILogger<SessionManager>>();
             var mockServiceProvider = new Mock<IServiceProvider>();
+			var settings = Options.Create(new ServerSettings
+			{
+				Tick = new TickConfig{BaseTickMs = 100}
+			});
+			var tickService = MockFactoryHelper.CreateTickService();
 
             _sessionManager = new SessionManager(
                 mockLogger.Object,
                 mockServiceProvider.Object,
                 redisService: null,
-                playerPositionService: null
+                playerPositionService: null,
+				tickService, settings
             );
         }
 
