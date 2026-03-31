@@ -31,7 +31,6 @@ namespace Server.Room
 		public ObjectManager ObjectManager { get; private set; }
 		public GameMap RoomMap { get; protected set; }
 		protected readonly object _lock = new object();
-		private static int _nextRoomId = 1;
 		private bool _dispose = false;
 
 		public int RoomId { get; private set; }
@@ -69,7 +68,7 @@ namespace Server.Room
 		public event EventHandler<PlayerRoomEventArgs> PlayerEntered;
 		public event EventHandler<PlayerRoomEventArgs> PlayerLeft;
 
-		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, string roomName, int maxPlayers, DataManager dataManager,
+		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, int roomId, string roomName, int maxPlayers, DataManager dataManager,
 			IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
 			PlayerPositionService playerPositionService,
 			Func<IRoom, DataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> monsterManagerFactory = null,
@@ -84,7 +83,6 @@ namespace Server.Room
 			_rewardService = rewardService;
 			_playerPositionService = playerPositionService;
 
-			RoomId = GenerateNextRoomId();
 			RoomName = roomName ?? throw new ArgumentNullException( nameof( roomName ) );
 			MaxPlayers = 0 < maxPlayers ? maxPlayers : throw new ArgumentOutOfRangeException( nameof( maxPlayers ) );
 
@@ -547,11 +545,6 @@ namespace Server.Room
 			} );
 
 			ScheduleTimer( job, 100 );
-		}
-
-		private static int GenerateNextRoomId()
-		{
-			return System.Threading.Interlocked.Increment( ref _nextRoomId );
 		}
 
 		private async Task<bool> ForceLeaveAsync( IClientSession session )

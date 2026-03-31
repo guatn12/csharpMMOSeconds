@@ -22,8 +22,8 @@ namespace Server.Room
 
 		public DungeonRoom(ILogger<DungeonRoom> logger, ILoggerFactory loggerFactory, IOptions<ServerSettings> settings, 
 			DataManager dataManager, IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
-			PlayerPositionService playerPositionService, string roomName, int maxPlayers)
-			: base(logger, loggerFactory, roomName, maxPlayers, dataManager, jobQueueManager, combatService, rewardService, 
+			PlayerPositionService playerPositionService, int roomId, string roomName, int maxPlayers)
+			: base(logger, loggerFactory, roomId, roomName, maxPlayers, dataManager, jobQueueManager, combatService, rewardService, 
 				  playerPositionService, mapId: DUNGEON_MAP_ID)
 		{
 			_settings = settings.Value;

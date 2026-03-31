@@ -16,6 +16,6 @@ namespace Server.Room
 		/// <param name="maxPlayers"></param>
 		/// <param name="serviceProvider"></param>
 		/// <returns></returns>
-		IRoom CreateRoom(RoomType roomType, string roomName, int maxPlayers, IServiceProvider serviceProvider);
+		IRoom CreateRoom(RoomType roomType, int roomId, string roomName, int maxPlayers, IServiceProvider serviceProvider);
 	}
 }

@@ -32,9 +32,8 @@ namespace Server.Room
 
 		public LobbyRoom( ILogger<LobbyRoom> logger, ILoggerFactory loggerFactory, IOptions<ServerSettings> ServerSettings,
 			DataManager datamanager, IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
-			PlayerPositionService playerPositionService,
-			string roomName = null, bool isDefaultLobby = false ) 
-			: base( logger, loggerFactory, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
+			PlayerPositionService playerPositionService, int roomId, string roomName = null, bool isDefaultLobby = false ) 
+			: base( logger, loggerFactory, roomId, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
 				  jobQueueManager, combatService, rewardService, playerPositionService)
 		{
 			_serverSettings = ServerSettings.Value ?? throw new ArgumentNullException(nameof( ServerSettings ) );

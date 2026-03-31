@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Server.Config;
@@ -25,7 +24,7 @@ namespace Server.Room
 		private readonly IOptionsMonitor<ServerSettings> _serverSettings;
 		private readonly ILoggerFactory _loggerFactory;
 		private readonly ConcurrentDictionary<int, IRoom> _rooms;
-		private readonly object _lock = new object();
+		//private readonly object _lock = new object();		미사용 - 사용처가 확정될때까지 주석처리.
 		private readonly DataManager _dataManager;
 		private readonly TickService _tickService;
 
@@ -125,7 +124,9 @@ namespace Server.Room
 					return null;
 				}
 
-				IRoom room = _roomFactory.CreateRoom(roomType, roomName, maxPlayers, _serviceProvider);
+				var roomId = GenerateNextRoomId();
+
+				IRoom room = _roomFactory.CreateRoom(roomType, roomId, roomName, maxPlayers, _serviceProvider);
 
 				// 룸 초기화
 				await room.InitializeAsync();
@@ -528,6 +529,11 @@ namespace Server.Room
 					Interlocked.Exchange( ref _isCleanupRunning, 0 );
 				}
 			});
+		}
+
+		private int GenerateNextRoomId()
+		{
+			return Interlocked.Increment( ref _nextRoomId );
 		}
 
 		private long EstimateMemoryUsage()

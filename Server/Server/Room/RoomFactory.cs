@@ -30,7 +30,7 @@ namespace Server.Room
 			_serverSettings=serverSettings;
 		}
 
-		public IRoom CreateRoom( RoomType roomType, string roomName, int maxPlayers, IServiceProvider serviceProvider )
+		public IRoom CreateRoom( RoomType roomType, int roomId, string roomName, int maxPlayers, IServiceProvider serviceProvider )
 		{
 			var combatService = serviceProvider.GetRequiredService<ICombatService>();
 			var rewardService = serviceProvider.GetRequiredService<IRewardService>();
@@ -39,12 +39,12 @@ namespace Server.Room
 			return roomType switch
 			{
 				RoomType.Lobby => new LobbyRoom( _loggerFactory.CreateLogger<LobbyRoom>(), _loggerFactory, _serverSettings, _dataManager,
-				_jobQueueManager, combatService, rewardService, playerPositionService, roomName,
+				_jobQueueManager, combatService, rewardService, playerPositionService, roomId, roomName,
 				isDefaultLobby: false ),
 
 				RoomType.Battle => throw new NotImplementedException( "BattleRoom not implemented yet" ),
 				RoomType.Dungeon => new DungeonRoom( _loggerFactory.CreateLogger<DungeonRoom>(), _loggerFactory, _serverSettings, _dataManager,
-				_jobQueueManager, combatService, rewardService, playerPositionService, roomName, maxPlayers ),
+				_jobQueueManager, combatService, rewardService, playerPositionService, roomId, roomName, maxPlayers ),
 				RoomType.Guild => throw new NotImplementedException( "GuildRoom not implemented yet" ),
 				RoomType.Private => throw new NotImplementedException( "PrivateRoom not implemented yet" ),
 				_ => throw new ArgumentException( $"Unknown room type: {roomType}" )
