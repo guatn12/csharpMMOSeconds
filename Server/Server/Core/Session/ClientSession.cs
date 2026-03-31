@@ -102,6 +102,14 @@ namespace Server.Core.Session
 		{
 			_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
 
+			// Room에서 퇴장 (ObjectManager + GameMap 포함)
+			// InternalLeave가 Despawn 브로드캐스트를 하므로 이벤트 해제보다 먼저 실행
+			IRoom room = CurrentRoom;
+			if(room != null)
+			{
+				room.TryLeave( this );
+			}
+
             // Player 이벤트 구독 해제 추가
             if(Player != null)
             {

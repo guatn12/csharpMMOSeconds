@@ -35,8 +35,8 @@ namespace Server.Room
 		event EventHandler<RoomDestoryedEventArgs> RoomDestoryed;
 		event EventHandler<PlayerRoomChangedEventArgs> PlayerRoomChanged;
 
-		Task InitializeAsync();
-		Task ShutdownAsync();
+		Task StartAsync();
+		Task StopAsync();
 	}
 
 	public class RoomStatistics

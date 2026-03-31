@@ -14,6 +14,7 @@ namespace DummyClient
 	public class ServerSession : NetworkSession
 	{
 		public int DummyId { get; private set; }
+		public ClientContext Context { get; set; }
 		private readonly ILogger<ServerSession> _logger;
 		public long SessionId { get; private set; }
 

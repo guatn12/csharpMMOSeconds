@@ -305,6 +305,13 @@ namespace Server.Game.Monsters
 		// 공격 수행
 		private void PerformAttack( IClientSession targetPlayer )
 		{
+			// 공격 직전 플레이어 유효성 재확인 (Disconnect 경합 방어)
+			if(!targetPlayer.Player.IsAlive || !_room.ContainsPlayerToPlayerId( targetPlayer.PlayerId ))
+			{
+				_monster.ClearTarget();
+				return;
+			}
+
 			// 데미지
 			int damage = CalculateDamage(targetPlayer);
 

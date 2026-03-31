@@ -106,10 +106,10 @@ namespace Server.Core.Host
 			await _jobQueueManager.StopAsync();
 
 			// RoomManager 정지
-			if(_roomManager is IHostedService hostedRoomManager)
-			{
-				await hostedRoomManager.StopAsync( token );
-			}
+			await _roomManager.StopAsync();
+
+			// SessionManager 정지
+			_sessionManager.Shutdown();
 
 			_logger.LogInformation( "서버 종료 완료" );
 		}
@@ -157,8 +157,7 @@ namespace Server.Core.Host
 			//JobQueueManager.Instance.Start( threadCount );
 
 			// RoomManager 시작
-			if (_roomManager is IHostedService hostedRoomManager)
-				await hostedRoomManager.StartAsync(CancellationToken.None);
+			await _roomManager.StartAsync();
 
 			// 모든 구독 등록 완료 후 틱 타이머 시작
 			_tickService.Start();

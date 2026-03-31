@@ -19,29 +19,30 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_EnterGame( NetworkSession session, S_EnterGame packet )
 		{
+			var ctx = ((ServerSession)session).Context;
 			_logger.LogInformation( "[Client] S_EnterGame - PlayerId: {PlayerId}, " +
 				"PlayerName: {PlayerName}, Level: {Level}, HP: {HP}/{MaxHP}",
 				packet.Player.ObjectId, packet.Player.Name,
 				packet.Player.StatInfo.Level, packet.Player.StatInfo.CurrentHP, packet.Player.StatInfo.MaxHP );
 
 			// 플레이어 초기화.
-			Program.MyPlayer.PlayerId = packet.Player.ObjectId;
-			Program.MyPlayer.PlayerName = packet.Player.Name;
-			Program.MyPlayer.CurrentMapId = packet.MapId;
-			Program.MyPlayer.Stats = packet.Player.StatInfo.Clone();
+			ctx.MyPlayer.PlayerId = packet.Player.ObjectId;
+			ctx.MyPlayer.PlayerName = packet.Player.Name;
+			ctx.MyPlayer.CurrentMapId = packet.MapId;
+			ctx.MyPlayer.Stats = packet.Player.StatInfo.Clone();
 
 			// 위치 정보 초기화
 			if(packet.Player.PosInfo != null)
 			{
-				Program.MyPlayer.Position = packet.Player.PosInfo.Clone();
+				ctx.MyPlayer.Position = packet.Player.PosInfo.Clone();
 			}
 
 			// 맵 데이터 로드
-			Program.CurrentMapData = Program.DataManagerInstance.GetMap( packet.MapId );
-			if(Program.CurrentMapData != null)
+			ctx.CurrentMapData = Program.DataManagerInstance.GetMap( packet.MapId );
+			if(ctx.CurrentMapData != null)
 			{
 				_logger.LogInformation( "현재 맵: {MapName} (ID: {MapId})",
-					Program.CurrentMapData.Name, Program.CurrentMapData.Id );
+					ctx.CurrentMapData.Name, ctx.CurrentMapData.Id );
 			}
 			else
 			{
@@ -49,41 +50,44 @@ namespace DummyClient.Packet
 			}
 
 			// 데이터 초기화 - 타겟 몬스터 초기화
-			Program.TargetMonsterId = 0;
+			ctx.TargetMonsterId = 0;
 
 			// 전체 출력
-			Program.MyPlayer.LogStatus( _logger );
+			ctx.MyPlayer.LogStatus( _logger );
 
 			return ValueTask.CompletedTask;
 		}
 
 		public override ValueTask On_S_LeaveGame( NetworkSession session, S_LeaveGame packet )
 		{
+			var ctx = ((ServerSession)session).Context;
 			_logger.LogInformation( "[Client] Received S_LeaveGame. PlayerId: {ObjectId}", packet.ObjectId );
 
-			Program.MyPlayer.Clear();
-			Program.CurrentMapData = null;
-			Program.NearbyObjects.Clear();
+			ctx.MyPlayer.Clear();
+			ctx.CurrentMapData = null;
+			ctx.NearbyObjects.Clear();
 			
 			return ValueTask.CompletedTask;
 		}
 
 		public override ValueTask On_S_ChangeRoom( NetworkSession session, S_ChangeRoom packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			if(packet.Success)
 			{
 				_logger.LogInformation( $"[Client] 방 이동 성공 - mapId={packet.MapId}" );
 				
 				// 플레이어 정보 초기화.
-				Program.MyPlayer = packet.Player.ToClientPlayerInfo();
-				Program.MyPlayer.CurrentMapId = packet.MapId;
+				ctx.MyPlayer = packet.Player.ToClientPlayerInfo();
+				ctx.MyPlayer.CurrentMapId = packet.MapId;
 
 				// 맵 데이터 로드
-				Program.CurrentMapData = Program.DataManagerInstance.GetMap( packet.MapId );
-				if(Program.CurrentMapData != null)
+				ctx.CurrentMapData = Program.DataManagerInstance.GetMap( packet.MapId );
+				if(ctx.CurrentMapData != null)
 				{
 					_logger.LogInformation( "현재 맵: {MapName} (ID: {MapId})",
-						Program.CurrentMapData.Name, Program.CurrentMapData.Id );
+						ctx.CurrentMapData.Name, ctx.CurrentMapData.Id );
 				}
 				else
 				{
@@ -91,10 +95,10 @@ namespace DummyClient.Packet
 				}
 
 				// 데이터 초기화 - 타겟 몬스터 초기화
-				Program.TargetMonsterId = 0;
+				ctx.TargetMonsterId = 0;
 
 				// 전체 출력
-				Program.MyPlayer.LogStatus( _logger );
+				ctx.MyPlayer.LogStatus( _logger );
 			}
 			else
 			{
@@ -106,6 +110,8 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_Spawn( NetworkSession session, S_Spawn packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			_logger.LogInformation( "[Client] S_Spawn - {ObjectCount} Object spawned", packet.Objects.Count );
 			foreach(var objectInfo in packet.Objects)
 			{
@@ -114,7 +120,7 @@ namespace DummyClient.Packet
 				// 오브젝트 타입 추가시 여기도 추가 필요.
 				case ObjectType.ObjectPlayer:
 				case ObjectType.ObjectMonster:
-					if(Program.NearbyObjects.TryAdd( objectInfo.ObjectId, objectInfo ) == false )
+					if(ctx.NearbyObjects.TryAdd( objectInfo.ObjectId, objectInfo ) == false )
 					{
 						_logger.LogWarning( "Object Add Fail From On_S_Spawn, ObjectId : {ObjectId}", objectInfo.ObjectId );
 					}
@@ -137,6 +143,8 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_Despawn( NetworkSession session, S_Despawn packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			_logger.LogInformation( "[Client] Received S_Despawn. ObjectCount: {ObjectCount}", packet.Objects.Count );
 
 			foreach(var objectInfo in packet.Objects)
@@ -145,7 +153,7 @@ namespace DummyClient.Packet
 				{
 					case ObjectType.ObjectPlayer:
 					case ObjectType.ObjectMonster:
-						if(Program.NearbyObjects.Remove( objectInfo.ObjectId ))
+						if(ctx.NearbyObjects.Remove( objectInfo.ObjectId ))
 						{
 							_logger.LogInformation( "Object Despawned: ID {ObjectId}, Name: {Name}",
 								objectInfo.ObjectId, objectInfo.Name );
@@ -170,23 +178,25 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_Move( NetworkSession session, S_Move packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			foreach(var obj in packet.Objects)
 			{
 				switch(obj.Type)
 				{
 					case ObjectType.ObjectPlayer:
 					case ObjectType.ObjectMonster:
-						if(obj.ObjectId == Program.MyPlayer.PlayerId)
+						if(obj.ObjectId == ctx.MyPlayer.PlayerId)
 						{
 							// 내 위치 정보 업데이트
-							Program.MyPlayer.Position = obj.PosInfo.Clone();
+							ctx.MyPlayer.Position = obj.PosInfo.Clone();
 							_logger.LogInformation( "[Client] S_Move - MyPlayer moved to ({PosX:F1}, {PosY:F1}, {PosZ:F1})",
 								obj.PosInfo.PosX, obj.PosInfo.PosY, obj.PosInfo.PosZ );
 							break;
 						}
 						else
 						{
-							if(Program.NearbyObjects.TryGetValue( obj.ObjectId, out var objectInfo))
+							if(ctx.NearbyObjects.TryGetValue( obj.ObjectId, out var objectInfo))
 							{
 								objectInfo.PosInfo = obj.PosInfo.Clone();
 								_logger.LogInformation( "[Client] S_Move - Object({Type}) {ObjectId} ({Name}) moved to ({PosX:F1}, {PosY:F1}, {PosZ:F1})",
@@ -202,6 +212,8 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_Chat( NetworkSession session, S_Chat packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			_logger.LogInformation( "[Client] Received S_Chat. PlayerId: {PlayerId}, Message: {Message}", 
 				packet.PlayerId, packet.Message );
 			return ValueTask.CompletedTask;
@@ -209,14 +221,16 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_PlayerUpdate( NetworkSession session, S_PlayerUpdate packet )
 		{
-			// 내 플레이어 정보만 업데이트
-			if(packet.Player.ObjectId == Program.MyPlayer.PlayerId)
-			{
-				int oldHP = Program.MyPlayer.Stats.CurrentHP;
-				int oldMP = Program.MyPlayer.Stats.CurrentMP;
+			var ctx = ((ServerSession)session).Context;
 
-				Program.MyPlayer.Stats.CurrentMP = packet.Player.StatInfo.CurrentMP;
-				Program.MyPlayer.Stats.CurrentHP = packet.Player.StatInfo.CurrentHP;
+			// 내 플레이어 정보만 업데이트
+			if(packet.Player.ObjectId == ctx.MyPlayer.PlayerId)
+			{
+				int oldHP = ctx.MyPlayer.Stats.CurrentHP;
+				int oldMP = ctx.MyPlayer.Stats.CurrentMP;
+
+				ctx.MyPlayer.Stats.CurrentMP = packet.Player.StatInfo.CurrentMP;
+				ctx.MyPlayer.Stats.CurrentHP = packet.Player.StatInfo.CurrentHP;
 
 				// HP 변화 로그
 				if(oldHP != packet.Player.StatInfo.CurrentHP)
@@ -225,10 +239,10 @@ namespace DummyClient.Packet
 					string changeStr = 0 < hpChange ? $"+{hpChange}" : hpChange.ToString();
 
 					_logger.LogInformation( "HP : {OldHP} -> {NewHP} ({Change}) [{Percent:F1}%]",
-						oldHP, packet.Player.StatInfo.CurrentHP, changeStr, Program.MyPlayer.HPPercent );
+						oldHP, packet.Player.StatInfo.CurrentHP, changeStr, ctx.MyPlayer.HPPercent );
 
 					// HP 위험 경고 (30% 이하)
-					if(Program.MyPlayer.HPPercent < 30f && 30f <= ((float)oldHP / packet.Player.StatInfo.MaxHP * 100))
+					if(ctx.MyPlayer.HPPercent < 30f && 30f <= ((float)oldHP / packet.Player.StatInfo.MaxHP * 100))
 					{
 						_logger.LogWarning( "HP 위험! 포션 사용 권장" );
 					}
@@ -249,22 +263,26 @@ namespace DummyClient.Packet
 		}
 		public override ValueTask On_S_PlayerStat( NetworkSession session, S_PlayerStat packet )
 		{
-			if(packet.Player.ObjectId == Program.MyPlayer.PlayerId)
+			var ctx = ((ServerSession)session).Context;
+
+			if(packet.Player.ObjectId == ctx.MyPlayer.PlayerId)
 			{
-				Program.MyPlayer.Stats = packet.Player.StatInfo.Clone();
+				ctx.MyPlayer.Stats = packet.Player.StatInfo.Clone();
 
 				// 전체 출력
-				Program.MyPlayer.LogStatus( _logger );
+				ctx.MyPlayer.LogStatus( _logger );
 			}
 
 			return ValueTask.CompletedTask;
 		}
 		public override ValueTask On_S_Damage( NetworkSession session, S_Damage packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			// 공격자와 피해자 정보 파악
 			string attackerName = packet.Attacker.Type == ObjectType.ObjectPlayer
 				? $"Player {packet.Attacker.ObjectId}"
-				: (Program.NearbyObjects.TryGetValue(packet.Attacker.ObjectId, out var attacker)
+				: (ctx.NearbyObjects.TryGetValue(packet.Attacker.ObjectId, out var attacker)
 					? attacker.Name
 					: $"Monster {packet.Attacker.ObjectId}");
 
@@ -279,21 +297,21 @@ namespace DummyClient.Packet
 				case ObjectType.ObjectPlayer:
 				case ObjectType.ObjectMonster:
 					// 타겟이 나인 경우
-					if(target.ObjectId == Program.MyPlayer.PlayerId)
+					if(target.ObjectId == ctx.MyPlayer.PlayerId)
 					{
-						Program.MyPlayer.Stats.CurrentHP = target.CurrentHP;
+						ctx.MyPlayer.Stats.CurrentHP = target.CurrentHP;
 						string playerCriticalStr = target.IsCritical ? " [CRITICAL!]" : "";
 						_logger.LogWarning( "[Client] 피격! {Attacker} -> 나 | Damage: {Damage}{Critical} | Remaining HP:{CurrentHP}/{MaxHP} ({Percent:F1}%)",
-							attackerName, target.Damage, playerCriticalStr, target.CurrentHP, Program.MyPlayer.Stats.MaxHP, Program.MyPlayer.HPPercent );
+							attackerName, target.Damage, playerCriticalStr, target.CurrentHP, ctx.MyPlayer.Stats.MaxHP, ctx.MyPlayer.HPPercent );
 						// HP 위험 경고
-						if(Program.MyPlayer.HPPercent < 30f)
+						if(ctx.MyPlayer.HPPercent < 30f)
 						{
 							_logger.LogError( "HP 위험! 포션 사용 또는 도망 필요!" );
 						}
 					}
 					else
 					{
-						if(!Program.NearbyObjects.TryGetValue( target.ObjectId, out var objectInfo ))
+						if(!ctx.NearbyObjects.TryGetValue( target.ObjectId, out var objectInfo ))
 						{
 							_logger.LogWarning( "[Client] Target Object {TargetId} Not Found From NearbyObjects", target.ObjectId );
 							continue;
@@ -314,7 +332,8 @@ namespace DummyClient.Packet
 		}
 		public override ValueTask On_S_Heal( NetworkSession session, S_Heal packet ) 
 		{
-			
+			var ctx = ((ServerSession)session).Context;
+
 			if(packet.Healer.Damage <= 0)
 			{
 				_logger.LogWarning( "[Client] S_Heal - HealAmount({HealAmount}) is Zero or Negative!!!", packet.Healer.Damage );
@@ -324,10 +343,10 @@ namespace DummyClient.Packet
 			foreach(var target in packet.Targets)
 			{
 				// 힐 타겟이 나인 경우 HP 업데이트
-				if(target.ObjectId == Program.MyPlayer.PlayerId)
+				if(target.ObjectId == ctx.MyPlayer.PlayerId)
 				{
-					int oldHP = Program.MyPlayer.Stats.CurrentHP;
-					Program.MyPlayer.Stats.CurrentHP = target.CurrentHP;
+					int oldHP = ctx.MyPlayer.Stats.CurrentHP;
+					ctx.MyPlayer.Stats.CurrentHP = target.CurrentHP;
 
 					_logger.LogInformation( "[Client] Heal!!! healerId: {healerId} -> TargetId: {TargetId}", packet.Healer.ObjectId, target.ObjectId );
 					_logger.LogInformation( "HealAmount: {healAmount} | oldHP: {oldHP} -> CurrentHP: {CurrentHP} (ChangeValue: {Change}) ",
@@ -336,7 +355,7 @@ namespace DummyClient.Packet
 				}
 
 				// 다른 플레이어 힐
-				if(Program.NearbyObjects.TryGetValue( target.ObjectId, out var targetInfo ))
+				if(ctx.NearbyObjects.TryGetValue( target.ObjectId, out var targetInfo ))
 				{
 					int oldHP = targetInfo.StatInfo.CurrentHP;
 					targetInfo.StatInfo.CurrentHP = target.CurrentHP;
@@ -350,19 +369,21 @@ namespace DummyClient.Packet
 		}
 		public override ValueTask On_S_LevelUp( NetworkSession session, S_LevelUp packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			_logger.LogInformation( "[Client] LEVEL UP! Player {PlayerId} -> Level {NewLevel}",
 				packet.PlayerId, packet.NewLevel );
 			_logger.LogInformation( "  ├─ Max HP: {NewMaxHP}", packet.NewMaxHP );
 			_logger.LogInformation( "  └─ Max MP: {NewMaxMP}", packet.NewMaxMP );
 
-			if(packet.PlayerId == Program.MyPlayer.PlayerId)
+			if(packet.PlayerId == ctx.MyPlayer.PlayerId)
 			{
-				Program.MyPlayer.Stats.Level = packet.NewLevel;
-				Program.MyPlayer.Stats.MaxHP = packet.NewMaxHP;
-				Program.MyPlayer.Stats.MaxMP = packet.NewMaxMP;
-				Program.MyPlayer.Stats.CurrentHP = packet.NewMaxHP;
-				Program.MyPlayer.Stats.CurrentMP = packet.NewMaxMP;
-				Program.MyPlayer.Stats.Experience = 0;
+				ctx.MyPlayer.Stats.Level = packet.NewLevel;
+				ctx.MyPlayer.Stats.MaxHP = packet.NewMaxHP;
+				ctx.MyPlayer.Stats.MaxMP = packet.NewMaxMP;
+				ctx.MyPlayer.Stats.CurrentHP = packet.NewMaxHP;
+				ctx.MyPlayer.Stats.CurrentMP = packet.NewMaxMP;
+				ctx.MyPlayer.Stats.Experience = 0;
 			}
 
 			return ValueTask.CompletedTask;
@@ -370,6 +391,8 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_InventoryData( NetworkSession session, S_InventoryData packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			_logger.LogInformation( "========================================" );
 			_logger.LogInformation( "[Client] S_InventoryData - 인벤토리 조회" );
 			_logger.LogInformation( "========================================" );
@@ -400,13 +423,13 @@ namespace DummyClient.Packet
 			var healthPotion = packet.Items.FirstOrDefault(i => i.ItemId == Program.HealthPotionItemId);
 			if(healthPotion != null)
 			{
-				Program.HealthPotionSlot = healthPotion.Slot;
+				ctx.HealthPotionSlot = healthPotion.Slot;
 				_logger.LogInformation( "[Potion] HP 포션 감지: 슬롯 {Slot}, 수량 x{Quantity}",
 					healthPotion.Slot, healthPotion.Quantity );
 			}
 			else
 			{
-				Program.HealthPotionSlot = -1;
+				ctx.HealthPotionSlot = -1;
 				_logger.LogDebug( "[Potion] HP 포션 없음" );
 			}
 			
@@ -415,6 +438,8 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_UseItem( NetworkSession session, S_UseItem packet ) 
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			_logger.LogInformation( "========================================" );
 			_logger.LogInformation( "[Client] S_UseItem - 아이템 사용" );
 			_logger.LogInformation( "========================================" );
@@ -443,6 +468,8 @@ namespace DummyClient.Packet
 		}
 		public override ValueTask On_S_ItemEquipped( NetworkSession session, S_ItemEquipped packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			_logger.LogInformation( "========================================" );
 			_logger.LogInformation( "[Client] S_ItemEquipped - 아이템 장착" );
 			_logger.LogInformation( "========================================" );
@@ -468,7 +495,7 @@ namespace DummyClient.Packet
 				_logger.LogInformation( "  MP: {CurrentMP}/{MaxMP}", packet.UpdatedStats.CurrentMP, packet.UpdatedStats.MaxMP );
 
 				// 내 플레이어 정보 업데이트
-				Program.MyPlayer.Stats = packet.UpdatedStats.Clone();
+				ctx.MyPlayer.Stats = packet.UpdatedStats.Clone();
 			}
 			else
 			{
@@ -493,9 +520,18 @@ namespace DummyClient.Packet
 				_ => "알 수 없음"
 			};
 		}
-		public override ValueTask On_S_ItemUnequipped( NetworkSession session, S_ItemUnequipped packet ) { Console.WriteLine( "Received but not handled: S_ItemUnequipped" ); return ValueTask.CompletedTask; }
+		public override ValueTask On_S_ItemUnequipped( NetworkSession session, S_ItemUnequipped packet ) 
+		{
+			var ctx = ((ServerSession)session).Context;
+
+			_logger.LogInformation( "Received but not handled: S_ItemUnequipped" );
+
+			return ValueTask.CompletedTask; 
+		}
 		public override ValueTask On_S_ItemAdded( NetworkSession session, S_ItemAdded packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			_logger.LogInformation( "========================================" );
 			_logger.LogInformation( "[Client] S_ItemAdded - 아이템 획득!" );
 			_logger.LogInformation( "========================================" );
@@ -507,11 +543,19 @@ namespace DummyClient.Packet
 
 			return ValueTask.CompletedTask;
 		}
-		public override ValueTask On_S_InventoryUpdate( NetworkSession session, S_InventoryUpdate packet ) { Console.WriteLine( "Received but not handled: S_InventoryUpdate" ); return ValueTask.CompletedTask; }
+		public override ValueTask On_S_InventoryUpdate( NetworkSession session, S_InventoryUpdate packet ) 
+		{
+			var ctx = ((ServerSession)session).Context;
+
+			_logger.LogInformation( "Received but not handled: S_InventoryUpdate" ); 
+			return ValueTask.CompletedTask; 
+		}
 
 		public override ValueTask On_S_MonsterDie( NetworkSession session, S_MonsterDie packet )
 		{
-			string objectName = Program.NearbyObjects.TryGetValue(packet.MonsterId, out var monster)
+			var ctx = ((ServerSession)session).Context;
+
+			string objectName = ctx.NearbyObjects.TryGetValue(packet.MonsterId, out var monster)
 				? monster.Name : $"Monster {packet.MonsterId}";
 
 			_logger.LogInformation( "[Client] Monster Killed! {Name} (ID:{MonsterId})",
@@ -530,21 +574,21 @@ namespace DummyClient.Packet
 			}
 
 			// 몬스터 상태를 Dead로 변경 (제거하지 않음!)
-			if(Program.NearbyObjects.TryGetValue(packet.MonsterId, out var targetMonster))
+			if(ctx.NearbyObjects.TryGetValue(packet.MonsterId, out var targetMonster))
 			{
 				targetMonster.State = State.Dead;	// 사망 상태로 변경
-				//Program.NearbyObjects[packet.MonsterId] = targetMonster;
+				//ctx.NearbyObjects[packet.MonsterId] = targetMonster;
 				_logger.LogInformation( "[Client] Monster {MonsterId} state changed to DEAD (Waiting for despawn...)",
 					packet.MonsterId );
 			}
 
 			// 타겟이 죽었으면 새 타겟 찾기
-			if(Program.TargetMonsterId == packet.MonsterId)
+			if(ctx.TargetMonsterId == packet.MonsterId)
 			{
-				Program.TargetMonsterId = FindNewTarget();
-				if(0 < Program.TargetMonsterId)
+				ctx.TargetMonsterId = FindNewTarget(ctx);
+				if(0 < ctx.TargetMonsterId)
 				{
-					_logger.LogInformation( "New target: Monster {MonsterId}", Program.TargetMonsterId );
+					_logger.LogInformation( "New target: Monster {MonsterId}", ctx.TargetMonsterId );
 				}
 			}
 			return ValueTask.CompletedTask;
@@ -552,12 +596,14 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_MonsterUpdate( NetworkSession session, S_MonsterUpdate packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			foreach(var monster in packet.Monsters)
 			{
 				// 기존 몬스터 정보 업데이트
-				if(Program.NearbyObjects.ContainsKey(monster.ObjectId))
+				if(ctx.NearbyObjects.ContainsKey(monster.ObjectId))
 				{
-					var oldMonster = Program.NearbyObjects[monster.ObjectId];
+					var oldMonster = ctx.NearbyObjects[monster.ObjectId];
 
 					// HP 변화 로그
 					if(oldMonster.StatInfo.CurrentHP != monster.StatInfo.CurrentHP)
@@ -576,7 +622,7 @@ namespace DummyClient.Packet
 							monster.ObjectId, oldMonster.State, monster.State );
 					}
 
-					Program.NearbyObjects[ monster.ObjectId ] = monster;
+					ctx.NearbyObjects[ monster.ObjectId ] = monster;
 				}
 			}
 
@@ -585,10 +631,12 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_PathInfo( NetworkSession session, S_PathInfo packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			if(packet.Waypoints.Count == 0)
 			{
 				_logger.LogWarning( "[AutoMove] 경로 없음 - 이동 불가" );
-				Program.AutoMoveWaypoints.Clear();
+				ctx.AutoMoveWaypoints.Clear();
 				return ValueTask.CompletedTask;
 			}
 
@@ -596,26 +644,28 @@ namespace DummyClient.Packet
 			_logger.LogInformation( "[AutoMove] 경로 수신: {Count}개 웨이포인트({Reachable})", packet.Waypoints.Count, reachableStr );
 
 			// 웨이 포인트 저장 (자동 이동 루프에서 사용)
-			Program.AutoMoveWaypoints = packet.Waypoints.ToList();
-			Program.AutoMoveIndex = 0;
+			ctx.AutoMoveWaypoints = packet.Waypoints.ToList();
+			ctx.AutoMoveIndex = 0;
 
 			return ValueTask.CompletedTask;
 		}
 
 		public override ValueTask On_S_Pong( NetworkSession session, S_Pong packet )
 		{
+			var ctx = ((ServerSession)session).Context;
+
 			_logger.LogDebug( "[Client] Received S_Pong. Timestamp: {Timestamp}", packet.Timestamp );
 			return ValueTask.CompletedTask;
 		}
 
 		// 헬퍼 메서드 : 새 타겟 찾기
-		private long FindNewTarget()
+		private long FindNewTarget(ClientContext ctx)
 		{
-			if(Program.NearbyObjects.Any(m => m.Value.Type == ObjectType.ObjectMonster) == false)
+			if(ctx.NearbyObjects.Any(m => m.Value.Type == ObjectType.ObjectMonster) == false)
 				return 0;
 
 			// 살아 있는 몬스터 중 첫 번째 선택
-			var aliveMonster = Program.NearbyObjects.FirstOrDefault(m => m.Value.Type == ObjectType.ObjectMonster 
+			var aliveMonster = ctx.NearbyObjects.FirstOrDefault(m => m.Value.Type == ObjectType.ObjectMonster 
 			&& m.Value.State != State.Dead);
 			return aliveMonster.Value != null ? aliveMonster.Key : 0;
 		}

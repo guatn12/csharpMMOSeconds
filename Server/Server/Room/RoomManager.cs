@@ -16,7 +16,7 @@ using Server.Infra;
 namespace Server.Room
 {
 	// Room 생성, 관리, 검색을 담당하는 매니저
-	public class RoomManager : IRoomManager, IHostedService, IDisposable
+	public class RoomManager : IRoomManager, IDisposable
 	{
 		private readonly IRoomFactory _roomFactory;
 		private readonly ISessionManager _sessionManager;
@@ -61,7 +61,7 @@ namespace Server.Room
 			
 		}
 
-		public async Task StartAsync( CancellationToken cancellationToken )
+		public async Task StartAsync()
 		{
 			_logger.LogInformation( "RoomManager starting up..." );
 
@@ -76,7 +76,7 @@ namespace Server.Room
 			_logger.LogInformation( "RoomManager started successfully with {RoomCount} rooms", _rooms.Count );
 		}
 
-		public async Task StopAsync( CancellationToken cancellationToken )
+		public async Task StopAsync()
 		{
 			_logger.LogInformation( "RoomManager shutting down..." );
 

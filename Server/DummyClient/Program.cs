@@ -141,15 +141,6 @@ namespace DummyClient
 		private static IServiceProvider _serviceProvider;
 		private static ILogger<Program> _logger;
 
-		// 플레이어 정보 추가
-		public static ClientPlayerInfo MyPlayer = new ClientPlayerInfo();
-
-		public static MapData CurrentMapData { get; set; }
-
-		// 몬스터 추적
-		public static Dictionary<long, ObjectInfo> NearbyObjects = new Dictionary<long, ObjectInfo>();
-
-		public static long TargetMonsterId = 0;
 		public static bool AutoAttackEnabled = true;		// 자동 공격 활성화.
 		public static float AttackRange = 5.0f;    // 공격 범위(서버와 동일)
 		public static float MoveSpeed = 5.0f;      // 이동 속도 (초당 5 유닛)
@@ -157,31 +148,16 @@ namespace DummyClient
 		// 포션 자동 사용 설정
 		public static bool AutoPotionEnabled = true;
 		public static float AutoPotionThreshold = 0.5f;	// 50% 이하 시 사용
-		public static DateTime LastPotionUseTime = DateTime.MinValue;
 		public static readonly TimeSpan PotionCooldown = TimeSpan.FromSeconds(5);
 
 		// 포션 정보
-		public static int HealthPotionSlot = -1;
 		public static int HealthPotionItemId = 1001;
 
 		// 스킬 설정
 		public static bool AutoSkillEnabled = false;
 		public static int PrimarySkillId = 1;	// 기본 공격 스킬.
 
-		// 스킬 쿨타임.
-		public static Dictionary<int, DateTime> SkillCooldowns = new Dictionary<int, DateTime>();
-
-		// 인벤토리 자동 조회
-		public static bool InventoryRequested = false;
-		public static DateTime LastInventoryRequestTime = DateTime.MinValue;
-
-		// 자동 이동
-		public static List<PosInfo> AutoMoveWaypoints = new List<PosInfo>();
-		public static PosInfo LastAutoMoveDestination = null;
-		public static int AutoMoveIndex = 0;
-
 		// ping 전송
-		public static DateTime LastPingTime = DateTime.MinValue;
 		private const int PingIntervalSeconds = 20;
 
 		static void Main( string[] args )
@@ -303,25 +279,41 @@ namespace DummyClient
 				endPoint, clientCount, config.Simulation.MessageIntervalMs );
 
 			List<Task> clientTasks = new List<Task>();
-			CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+			CancellationTokenSource globalCts = new CancellationTokenSource();
+			List<CancellationTokenSource> clientCtsList = new List<CancellationTokenSource>();
 
-			// 각 클라이언트를 별도 Task로 실행
+			// 각 클라이언트를 별도 Task로 실행 (개별 CTS 사용)
 			for(int i = 0; i < clientCount; i++)
 			{
 				int clientId = i + 1;
-				Task clientTask = Task.Run(() => RunClientInstance(clientId, endPoint, config, cancellationTokenSource.Token));
+				var clientCts = CancellationTokenSource.CreateLinkedTokenSource(globalCts.Token);
+				clientCtsList.Add( clientCts );
+
+				Task clientTask = Task.Run(() => RunClientInstance(clientId, endPoint, config, clientCts.Token));
 				clientTasks.Add( clientTask );
 
 				// 연결 간격 (서버 부하 방지)
 				Thread.Sleep( 200 );
 			}
 
-			_logger.LogInformation( "모든 클라이언트 시작 완료. 45초 후 자동 종료됩니다..." );
+			_logger.LogInformation( "모든 클라이언트 시작 완료." );
 
-			// 45초 대기 (테스트를 위해)
-			Thread.Sleep( 45000 );
+			// ===== 세션 타임아웃 테스트 =====
+			_logger.LogInformation( "[테스트] 20초간 정상 동작 대기..." );
+			Thread.Sleep( 20000 );
 
-			cancellationTokenSource.Cancel();
+			int halfCount = clientCount / 2;
+			for(int i = 0; i < halfCount; i++)
+			{
+				_logger.LogInformation( "[테스트] 클라이언트 {ClientId} 패킷 전송 중단(타임아웃 테스트)", i + 1 );
+				clientCtsList[ i ].Cancel();
+			}
+
+			_logger.LogInformation( "[테스트] 서버 타임아웃 감지 대기 중 (80초)..." );
+			Thread.Sleep( 80000 );
+
+			_logger.LogInformation( "[테스트] 나머지 클라이언트 종료" );
+			globalCts.Cancel();
 
 			bool allCompleted = Task.WaitAll(clientTasks.ToArray(), TimeSpan.FromSeconds(5));
 
@@ -339,6 +331,8 @@ namespace DummyClient
 			try
 			{
 				var logger = _serviceProvider.GetRequiredService<ILogger<Program>>();
+				var ctx = new ClientContext();
+
 				logger.LogInformation( "클라이언트 {ClientId} 시작", clientId );
 
 				// PacketManager를 DI 컨테이너에서 직접 가져옴
@@ -374,7 +368,9 @@ namespace DummyClient
 					{
 						var sessionLogger = _serviceProvider.GetRequiredService<ILogger<ServerSession>>();
 						// ServerSession 생성자에 DI에서 관리되는 PacketManager 인스턴스 주입
-						return new ServerSession( sessionLogger, packetManager );
+						var session = new ServerSession( sessionLogger, packetManager );
+						session.Context = ctx;
+						return session;
 					} );
 
 					// 연결 완료 대기(최대 1초)
@@ -434,16 +430,16 @@ namespace DummyClient
 				while(true)
 				{
 					// 룸 입장 대기
-					if(MyPlayer != null && 0 < MyPlayer.PlayerId)
+					if(ctx.MyPlayer != null && 0 < ctx.MyPlayer.PlayerId)
 						break;
 					Thread.Sleep( 100 );
 				}
 
 				logger.LogInformation( "클라이언트 {ClientId}, 플레이어ID: {PlayerId}로 로그인 완료",
-					clientId, MyPlayer.PlayerId );
+					clientId, ctx.MyPlayer.PlayerId );
 
 				//개별 클라이언트 루프 실행 (통합 MainLoop 호출)
-				MainLoop( clientId, (ServerSession)connector.ConnectionSession, config, logger, cancellationToken );
+				MainLoop( clientId, (ServerSession)connector.ConnectionSession, config, logger, ctx, cancellationToken );
 			}
 			catch(Exception ex)
 			{
@@ -457,6 +453,7 @@ namespace DummyClient
 		{
 			var logger = _serviceProvider.GetRequiredService<ILogger<Program>>();
 			long clientId = 1;
+			var ctx = new ClientContext();
 			logger.LogInformation( "클라이언트 {ClientId} 시작", clientId );
 
 			// 연결 재시도 로직(최대 5초, 1초마다 재시도)
@@ -490,7 +487,9 @@ namespace DummyClient
 					var sessionLogger = _serviceProvider.GetRequiredService<ILogger<ServerSession>>();
 					PacketManager packetManager = _serviceProvider.GetRequiredService<PacketManager>();
 					// ServerSession 생성자에 DI에서 관리되는 PacketManager 인스턴스 주입
-					return new ServerSession( sessionLogger, packetManager ); 
+					var session = new ServerSession( sessionLogger, packetManager );
+					session.Context = ctx;
+					return session;
 				} );
 
 				// 연결 완료 대기(최대 3초)
@@ -540,21 +539,21 @@ namespace DummyClient
 			while(true)
 			{
 				// 룸 입장 대기
-				if(MyPlayer != null && 0 < MyPlayer.PlayerId)
+				if(ctx.MyPlayer != null && 0 < ctx.MyPlayer.PlayerId)
 					break;
 				Thread.Sleep( 100 );
 			}
 
 			logger.LogInformation( "클라이언트 {ClientId}, 플레이어ID: {PlayerId}로 로그인 완료",
-				clientId, MyPlayer.PlayerId );
+				clientId, ctx.MyPlayer.PlayerId );
 
 			// 통합 MainLoop 호출
-			MainLoop( (int)clientId, Session, config, logger );
+			MainLoop( (int)clientId, Session, config, logger, ctx );
 		}
 
 		// 통합 메인 루프 (단일/다중 클라이언트 공용)
 		private static void MainLoop(int clientId, ServerSession session, ClientConfiguration config,
-			ILogger<Program> logger, CancellationToken cancellationToken = default)
+			ILogger<Program> logger, ClientContext ctx, CancellationToken cancellationToken = default)
 		{
 			int moveCount = 0;
 			int messageInterval = config.Simulation.MessageIntervalMs;
@@ -570,7 +569,7 @@ namespace DummyClient
 			{
 				try
 				{
-					if(CurrentMapData == null)
+					if(ctx.CurrentMapData == null)
 					{
 						Thread.Sleep( messageInterval );
 						continue;
@@ -585,7 +584,7 @@ namespace DummyClient
 
 						while(true)
 						{
-							if(MyPlayer.CurrentMapId == 3)
+							if(ctx.MyPlayer.CurrentMapId == 3)
 								break;
 							Thread.Sleep( 100 );
 						}
@@ -595,52 +594,52 @@ namespace DummyClient
 
 					// ===== 인벤토리 자동 조회 =====
 					// 1. 초기 조회 (5초 후 1회)
-					if(!InventoryRequested && 5 <= moveCount)
+					if(!ctx.InventoryRequested && 5 <= moveCount)
 					{
 						C_InventoryRequest inventoryPacket = new C_InventoryRequest();
 						session.Send( inventoryPacket );
-						InventoryRequested = true;
-						LastInventoryRequestTime = DateTime.UtcNow;
+						ctx.InventoryRequested = true;
+						ctx.LastInventoryRequestTime = DateTime.UtcNow;
 
 						logger.LogInformation( "[Client {ClientId}] [Send] C_InventoryRequest - 초기 인벤토리 조회", clientId );
 					}
 
 					// 2. 주기적 재조회 (30초마다)
-					if(InventoryRequested && 30 <= (DateTime.UtcNow - LastInventoryRequestTime).TotalSeconds)
+					if(ctx.InventoryRequested && 30 <= (DateTime.UtcNow - ctx.LastInventoryRequestTime).TotalSeconds)
 					{
 						C_InventoryRequest inventoryPacket = new C_InventoryRequest();
 						session.Send( inventoryPacket );
-						LastInventoryRequestTime = DateTime.UtcNow;
+						ctx.LastInventoryRequestTime = DateTime.UtcNow;
 
 						logger.LogInformation( "[Client {ClientId}] [Send] C_InventoryRequest - 주기적 조회 (30초)", clientId );
 					}
 					// ===== 인벤토리 자동 조회 끝 =====
 
 					// ===== Ping 자동 전송 =====
-					if(PingIntervalSeconds <= (DateTime.UtcNow - LastPingTime).TotalSeconds)
+					if(PingIntervalSeconds <= (DateTime.UtcNow - ctx.LastPingTime).TotalSeconds)
 					{
 						session.Send( new C_Ping { Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() } );
-						LastPingTime = DateTime.UtcNow;
+						ctx.LastPingTime = DateTime.UtcNow;
 						logger.LogInformation( "[Client {ClientId}] [Send] C_Ping - 서버에 Ping 전송", clientId );
 					}
 					// ===== Ping 자동 전송 끝 =====
 
 					// ===== 포션 자동 사용 =====
-					if(AutoPotionEnabled && 0 <= HealthPotionSlot)
+					if(AutoPotionEnabled && 0 <= ctx.HealthPotionSlot)
 					{
-						float hpPercent = MyPlayer.HPPercent;
-						bool cooldownReady = PotionCooldown <= (DateTime.UtcNow - LastPotionUseTime);
+						float hpPercent = ctx.MyPlayer.HPPercent;
+						bool cooldownReady = PotionCooldown <= (DateTime.UtcNow - ctx.LastPotionUseTime);
 
 						if(hpPercent < AutoPotionThreshold * 100 && cooldownReady)
 						{
 							C_UseItem useItemPacket = new C_UseItem
 							{
-								Slot = HealthPotionSlot,
+								Slot = ctx.HealthPotionSlot,
 								Quantity = 1
 							};
 
 							session.Send( useItemPacket );
-							LastPotionUseTime = DateTime.UtcNow;
+							ctx.LastPotionUseTime = DateTime.UtcNow;
 
 							logger.LogWarning( "[Client {ClientId}] [Send] C_UseItem - HP 포션 자동 사용 (HP:{Percent:F1}%)",
 								clientId, hpPercent);
@@ -649,21 +648,21 @@ namespace DummyClient
 					// ===== 포션 자동 끝 =====
 
 					// 1. 주변 오브젝트에 몬스터가 있는지 확인.
-					if(NearbyObjects.Values.Any(o => o.Type == ObjectType.ObjectMonster))
+					if(ctx.NearbyObjects.Values.Any(o => o.Type == ObjectType.ObjectMonster))
 					{
 						// 타겟이 없거나, 현재 타겟이 사라졌으면 새로 선택
-						if(TargetMonsterId == 0 || !NearbyObjects.ContainsKey( TargetMonsterId ) ||
-							NearbyObjects[ TargetMonsterId].State == State.Dead)
+						if(ctx.TargetMonsterId == 0 || !ctx.NearbyObjects.ContainsKey( ctx.TargetMonsterId ) ||
+							ctx.NearbyObjects[ ctx.TargetMonsterId].State == State.Dead)
 						{
 							// 가장 가까운 몬스터 선택
 							// TODO : 현재는 리스트에서 첫번째 몬스터 선택중 수정 필요.
-							var aliveMonsters = NearbyObjects.Values
+							var aliveMonsters = ctx.NearbyObjects.Values
 								.Where(m => m.Type == ObjectType.ObjectMonster && m.State != State.Dead).ToList();
 
 							if(0 < aliveMonsters.Count)
 							{
 								var nearestMonster = aliveMonsters.First();
-								TargetMonsterId = nearestMonster.ObjectId;
+								ctx.TargetMonsterId = nearestMonster.ObjectId;
 
 								var packet = new C_AutoMove
 								{
@@ -671,20 +670,20 @@ namespace DummyClient
 								};
 
 								session.Send( packet );
-								LastAutoMoveDestination = nearestMonster.PosInfo;
+								ctx.LastAutoMoveDestination = nearestMonster.PosInfo;
 
 								logger.LogInformation( "[Client {ClientId}] [타겟 변경] 새 타겟: {Name} (ID:{MonsterId})",
-								clientId, nearestMonster.Name, TargetMonsterId );
+								clientId, nearestMonster.Name, ctx.TargetMonsterId );
 							}
 							else
 							{
-								TargetMonsterId = 0;
+								ctx.TargetMonsterId = 0;
 							}
 						}
 					}
 					else
 					{
-						TargetMonsterId = 0;
+						ctx.TargetMonsterId = 0;
 
 						if(logCounter % 10 == 0)
 						{
@@ -693,15 +692,15 @@ namespace DummyClient
 					}
 
 					// 2. 타겟이 있으면 이동 및 공격 처리.
-					if(0 < TargetMonsterId && NearbyObjects.TryGetValue( TargetMonsterId, out var targetMonster ))
+					if(0 < ctx.TargetMonsterId && ctx.NearbyObjects.TryGetValue( ctx.TargetMonsterId, out var targetMonster ))
 					{
 						// 몬스터가 일정 거리 이상 이동하면 C_AutoMove 재전송
-						if(LastAutoMoveDestination != null)
+						if(ctx.LastAutoMoveDestination != null)
 						{
-							float movedDist = CalculateDistance3D(targetMonster.PosInfo, LastAutoMoveDestination);
+							float movedDist = CalculateDistance3D(targetMonster.PosInfo, ctx.LastAutoMoveDestination);
 							if(1.0f < movedDist)
 							{
-								LastAutoMoveDestination = targetMonster.PosInfo.Clone();
+								ctx.LastAutoMoveDestination = targetMonster.PosInfo.Clone();
 								session.Send( new C_AutoMove { Destination = targetMonster.PosInfo } );
 								logger.LogInformation( "[Client {ClientId}] [AutoMove 재전송] 몬스터 이동 감지 ({Dist:F1}m)",
 									clientId, movedDist );
@@ -713,27 +712,27 @@ namespace DummyClient
 						float targetZ = targetMonster.PosInfo.PosZ;
 
 						// 현재 위치에서 타겟까지 거리 계산
-						float distanceToTarget = MyPlayer.DistanceTo(targetMonster.PosInfo);
+						float distanceToTarget = ctx.MyPlayer.DistanceTo(targetMonster.PosInfo);
 
 						string targetName = targetMonster.Name;
 
 						// 공격 범위 밖 -> 타겟을 향해 이동.
 						if(AttackRange < distanceToTarget)
 						{
-							if( 0 < AutoMoveWaypoints.Count && AutoMoveIndex < AutoMoveWaypoints.Count)
+							if( 0 < ctx.AutoMoveWaypoints.Count && ctx.AutoMoveIndex < ctx.AutoMoveWaypoints.Count)
 							{
-								var waypoint = AutoMoveWaypoints[AutoMoveIndex];
+								var waypoint = ctx.AutoMoveWaypoints[ctx.AutoMoveIndex];
 
-								float dx = waypoint.PosX - MyPlayer.Position.PosX;
-								float dz = waypoint.PosZ - MyPlayer.Position.PosZ;
-								float wayDist = CalculateDistance3D(waypoint, MyPlayer.Position);
+								float dx = waypoint.PosX - ctx.MyPlayer.Position.PosX;
+								float dz = waypoint.PosZ - ctx.MyPlayer.Position.PosZ;
+								float wayDist = CalculateDistance3D(waypoint, ctx.MyPlayer.Position);
 
 								// 웨이포인트 도착
 								if(wayDist < 0.5f)
 								{
-									AutoMoveIndex++;
+									ctx.AutoMoveIndex++;
 									logger.LogInformation( "[Client {ClientId}] [웨이포인트 도달] {Index}/{Total}",
-										clientId, AutoMoveIndex, AutoMoveWaypoints.Count );
+										clientId, ctx.AutoMoveIndex, ctx.AutoMoveWaypoints.Count );
 								}
 								// 웨이포인트
 								else
@@ -745,29 +744,29 @@ namespace DummyClient
 									float moveDistance = MoveSpeed * (messageInterval / 1000.0f);
 									moveDistance = Math.Min( moveDistance, wayDist );
 
-									float newPosX = MyPlayer.Position.PosX + dirX * moveDistance;
-									float newPosZ = MyPlayer.Position.PosZ + dirZ * moveDistance;
+									float newPosX = ctx.MyPlayer.Position.PosX + dirX * moveDistance;
+									float newPosZ = ctx.MyPlayer.Position.PosZ + dirZ * moveDistance;
 
 									// 회전 방향 계산 (타겟을 바라보도록)
-									MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
+									ctx.MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
 
 									// 높이 계산
-									float newHeight = CurrentMapData.GetWorldHeight(newPosX, newPosZ);
+									float newHeight = ctx.CurrentMapData.GetWorldHeight(newPosX, newPosZ);
 
-									MyPlayer.Position.PosX = newPosX;
-									MyPlayer.Position.PosZ = newPosZ;
-									MyPlayer.Position.PosY = newHeight;
+									ctx.MyPlayer.Position.PosX = newPosX;
+									ctx.MyPlayer.Position.PosZ = newPosZ;
+									ctx.MyPlayer.Position.PosY = newHeight;
 
 									C_Move movePacket = new C_Move()
 									{
 										PosInfo = new PosInfo()
 										{
-											PosX = MyPlayer.Position.PosX,
-											PosY = MyPlayer.Position.PosY,
-											PosZ = MyPlayer.Position.PosZ,
-											RotationX = MyPlayer.Position.RotationX,
-											RotationY = MyPlayer.Position.RotationY,
-											RotationZ = MyPlayer.Position.RotationZ,
+											PosX = ctx.MyPlayer.Position.PosX,
+											PosY = ctx.MyPlayer.Position.PosY,
+											PosZ = ctx.MyPlayer.Position.PosZ,
+											RotationX = ctx.MyPlayer.Position.RotationX,
+											RotationY = ctx.MyPlayer.Position.RotationY,
+											RotationZ = ctx.MyPlayer.Position.RotationZ,
 											Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
 										},
 									};
@@ -777,16 +776,16 @@ namespace DummyClient
 									{
 										logger.LogInformation( "[Client {ClientId}] [이동] → {Target} | 거리: {Distance:F2}m | 위치: ({X:F2}, {Y:F2},{Z:F2}) | 내 HP: {HP:F1}%",
 											clientId, targetName, distanceToTarget,
-											MyPlayer.Position.PosX, MyPlayer.Position.PosY, MyPlayer.Position.PosZ, MyPlayer.HPPercent );
+											ctx.MyPlayer.Position.PosX, ctx.MyPlayer.Position.PosY, ctx.MyPlayer.Position.PosZ, ctx.MyPlayer.HPPercent );
 									}
 								}
 							}
-							else if ( 0 < AutoMoveWaypoints.Count && AutoMoveWaypoints.Count <= AutoMoveIndex)
+							else if ( 0 < ctx.AutoMoveWaypoints.Count && ctx.AutoMoveWaypoints.Count <= ctx.AutoMoveIndex)
 							{
 								logger.LogInformation( "[Client {ClientId}] [경로 완료] 웨이포인트 전체 소진", clientId );
-								AutoMoveIndex = 0;
-								AutoMoveWaypoints.Clear();
-								LastAutoMoveDestination = null;
+								ctx.AutoMoveIndex = 0;
+								ctx.AutoMoveWaypoints.Clear();
+								ctx.LastAutoMoveDestination = null;
 							}
 
 						}
@@ -794,27 +793,27 @@ namespace DummyClient
 						else
 						{
 							// 공격(2초마다)
-							if(AutoAttackEnabled && moveCount % 2 == 0 && 0 < TargetMonsterId)
+							if(AutoAttackEnabled && moveCount % 2 == 0 && 0 < ctx.TargetMonsterId)
 							{
 								// 이동 데이터 제거
-								AutoMoveWaypoints.Clear();
-								AutoMoveIndex = 0;
-								LastAutoMoveDestination = null;
+								ctx.AutoMoveWaypoints.Clear();
+								ctx.AutoMoveIndex = 0;
+								ctx.LastAutoMoveDestination = null;
 
 								// 스킬 시스템 사용
-								int currentMP = MyPlayer.Stats.CurrentMP;
-								int skillId = SelectAttackSkill(currentMP, logger);
+								int currentMP = ctx.MyPlayer.Stats.CurrentMP;
+								int skillId = SelectAttackSkill(currentMP, ctx, logger);
 
 								if(0 < skillId)
 								{
 									C_UseSkill useSkillPacket = new C_UseSkill
 									{
 										SkillId = skillId,
-										TargetId = TargetMonsterId
+										TargetId = ctx.TargetMonsterId
 									};
 
 									session.Send( useSkillPacket );
-									SkillCooldowns[ skillId ] = DateTime.UtcNow;
+									ctx.SkillCooldowns[ skillId ] = DateTime.UtcNow;
 
 									var skillData = DataManagerInstance.GetSkill(skillId);
 									logger.LogInformation( "[Client {ClientId}] [Send] C_UseSkill - {SkillName}(ID:{SkillId}) -> {Target}(MP:-{ManaCost}, 쿨다운:{Cooldown}초)",
@@ -830,33 +829,33 @@ namespace DummyClient
 								// 기존 일반 공격
 								var attackPacket = new C_UseSkill
 								{
-									TargetId = TargetMonsterId,
+									TargetId = ctx.TargetMonsterId,
 									SkillId = 0
 								};
 
 								session.Send( attackPacket );
 
 								logger.LogInformation( "[Client {ClientId}] [공격] {Target} | 거리: {Distance:F2}m | 내 HP: {MyHP:F1}% | 타겟 HP: {TargetHP}/{MaxHP}",
-									clientId, targetName, distanceToTarget, MyPlayer.HPPercent, targetMonster.StatInfo.CurrentHP, targetMonster.StatInfo.MaxHP );
+									clientId, targetName, distanceToTarget, ctx.MyPlayer.HPPercent, targetMonster.StatInfo.CurrentHP, targetMonster.StatInfo.MaxHP );
 							}
 
 							// 공격 범위 내에서는 이동하지 않음 (위치 패킷 전송 안 함)
 							if(moveCount % 10 == 0)
 							{
 								logger.LogDebug( "[Client {ClientId}] [대기] 공격 범위 내 정지 | 거리: {Distance:F2}m | HP: {HP:F1}%",
-									clientId, distanceToTarget, MyPlayer.HPPercent );
+									clientId, distanceToTarget, ctx.MyPlayer.HPPercent );
 							}
 						}
 					}
 					// 3. 타겟이 없으면 Room 중앙으로 천천히 이동
 					else
 					{
-						if(LastAutoMoveDestination == null)
+						if(ctx.LastAutoMoveDestination == null)
 						{
 							// 랜덤 목표
-							float destX = Random.Shared.NextSingle() * CurrentMapData.Width * CurrentMapData.CellSize;
-							float destZ = Random.Shared.NextSingle() % CurrentMapData.Depth * CurrentMapData.CellSize;
-							float destY = CurrentMapData.GetWorldHeight( destX, destZ );
+							float destX = Random.Shared.NextSingle() * ctx.CurrentMapData.Width * ctx.CurrentMapData.CellSize;
+							float destZ = Random.Shared.NextSingle() % ctx.CurrentMapData.Depth * ctx.CurrentMapData.CellSize;
+							float destY = ctx.CurrentMapData.GetWorldHeight( destX, destZ );
 
 							var packet = new C_AutoMove
 							{
@@ -873,17 +872,17 @@ namespace DummyClient
 									clientId, destX, destY, destZ );
 						}
 
-						if(0 < AutoMoveWaypoints.Count && AutoMoveIndex < AutoMoveWaypoints.Count)
+						if(0 < ctx.AutoMoveWaypoints.Count && ctx.AutoMoveIndex < ctx.AutoMoveWaypoints.Count)
 						{
-							var waypoint = AutoMoveWaypoints[AutoMoveIndex];
+							var waypoint = ctx.AutoMoveWaypoints[ctx.AutoMoveIndex];
 
-							float dx = waypoint.PosX - MyPlayer.Position.PosX;
-							float dz = waypoint.PosZ - MyPlayer.Position.PosZ;
-							float wayDist = CalculateDistance3D(waypoint, MyPlayer.Position);
+							float dx = waypoint.PosX - ctx.MyPlayer.Position.PosX;
+							float dz = waypoint.PosZ - ctx.MyPlayer.Position.PosZ;
+							float wayDist = CalculateDistance3D(waypoint, ctx.MyPlayer.Position);
 
 							if(wayDist < 0.5f)
 							{
-								AutoMoveIndex++;
+								ctx.AutoMoveIndex++;
 							}
 							else
 							{
@@ -894,29 +893,29 @@ namespace DummyClient
 								float moveDistance = MoveSpeed * (messageInterval / 1000.0f);
 								moveDistance = Math.Min( moveDistance, wayDist );
 
-								float newPosX = MyPlayer.Position.PosX + dirX * moveDistance;
-								float newPosZ = MyPlayer.Position.PosZ + dirZ * moveDistance;
+								float newPosX = ctx.MyPlayer.Position.PosX + dirX * moveDistance;
+								float newPosZ = ctx.MyPlayer.Position.PosZ + dirZ * moveDistance;
 
 								// 회전 방향 계산 (타겟을 바라보도록)
-								MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
+								ctx.MyPlayer.Position.RotationY = (float)Math.Atan2( dirX, dirZ ) * (180f / (float)Math.PI);
 
 								// 높이 계산
-								float newHeight = CurrentMapData.GetWorldHeight(newPosX, newPosZ);
+								float newHeight = ctx.CurrentMapData.GetWorldHeight(newPosX, newPosZ);
 
-								MyPlayer.Position.PosX = newPosX;
-								MyPlayer.Position.PosZ = newPosZ;
-								MyPlayer.Position.PosY = newHeight;
+								ctx.MyPlayer.Position.PosX = newPosX;
+								ctx.MyPlayer.Position.PosZ = newPosZ;
+								ctx.MyPlayer.Position.PosY = newHeight;
 
 								C_Move movePacket = new C_Move()
 								{
 									PosInfo = new PosInfo()
 									{
-										PosX = MyPlayer.Position.PosX,
-										PosY = MyPlayer.Position.PosY,
-										PosZ = MyPlayer.Position.PosZ,
-										RotationX = MyPlayer.Position.RotationX,
-										RotationY = MyPlayer.Position.RotationY,
-										RotationZ = MyPlayer.Position.RotationZ,
+										PosX = ctx.MyPlayer.Position.PosX,
+										PosY = ctx.MyPlayer.Position.PosY,
+										PosZ = ctx.MyPlayer.Position.PosZ,
+										RotationX = ctx.MyPlayer.Position.RotationX,
+										RotationY = ctx.MyPlayer.Position.RotationY,
+										RotationZ = ctx.MyPlayer.Position.RotationZ,
 										Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
 									},
 								};
@@ -929,12 +928,12 @@ namespace DummyClient
 								}
 							}
 						}
-						else if(0 < AutoMoveWaypoints.Count && AutoMoveWaypoints.Count <= AutoMoveIndex)
+						else if(0 < ctx.AutoMoveWaypoints.Count && ctx.AutoMoveWaypoints.Count <= ctx.AutoMoveIndex)
 						{
 							logger.LogInformation( "[Client {ClientId}] [경로 완료] 웨이포인트 전체 소진", clientId );
-							AutoMoveIndex = 0;
-							AutoMoveWaypoints.Clear();
-							LastAutoMoveDestination = null;
+							ctx.AutoMoveIndex = 0;
+							ctx.AutoMoveWaypoints.Clear();
+							ctx.LastAutoMoveDestination = null;
 						}
 					}
 
@@ -983,7 +982,7 @@ namespace DummyClient
 			return (float)Math.Sqrt( deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ );
 		}
 
-		private static int SelectAttackSkill(int currentMP, Microsoft.Extensions.Logging.ILogger logger)
+		private static int SelectAttackSkill(int currentMP, ClientContext ctx, Microsoft.Extensions.Logging.ILogger logger)
 		{
 			if(DataManagerInstance == null || !DataManagerInstance.IsDataLoaded)
 			{
@@ -1008,7 +1007,7 @@ namespace DummyClient
 				}
 
 				// 쿨다운 체크
-				if(SkillCooldowns.TryGetValue(skill.Id, out DateTime lastUseTime))
+				if(ctx.SkillCooldowns.TryGetValue(skill.Id, out DateTime lastUseTime))
 				{
 					TimeSpan cooldown = TimeSpan.FromSeconds(skill.CooldownSeconds);
 					TimeSpan elapsed = now - lastUseTime;

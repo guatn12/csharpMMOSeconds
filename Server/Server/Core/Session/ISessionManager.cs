@@ -29,7 +29,9 @@ namespace Server.Core.Session
 		event EventHandler<SessionUnregisteredEventArgs> SessionUnregistered;
 		#endregion
 
-
+		#region 수명주기
+		void Shutdown();
+		#endregion
 
 	}
 }
