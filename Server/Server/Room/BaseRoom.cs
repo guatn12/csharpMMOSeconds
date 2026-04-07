@@ -83,6 +83,7 @@ namespace Server.Room
 			_rewardService = rewardService;
 			_playerPositionService = playerPositionService;
 
+			RoomId = roomId;
 			RoomName = roomName ?? throw new ArgumentNullException( nameof( roomName ) );
 			MaxPlayers = 0 < maxPlayers ? maxPlayers : throw new ArgumentOutOfRangeException( nameof( maxPlayers ) );
 
