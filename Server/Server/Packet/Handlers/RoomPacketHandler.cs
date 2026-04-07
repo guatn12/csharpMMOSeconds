@@ -85,9 +85,6 @@ namespace Server.Packet.Handlers
 			};
 			_room.BroadcastInRange( response, session.Player.PosInfo, excludeSession: session );
 
-			// 6. 룸별 이동 후처리
-			await _room.OnPlayerMoveAsync( session, packet );
-
 			_logger.LogInformation("Player {PlayerId} moved to ({X}, {Y}, {Z})",
 				session.PlayerId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ );
 		}

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,6 +30,69 @@ namespace ServerCore
 			}
 
 			// 작업이 이미 진행중이라면 작업 리스트에 추가만 하고 넘어감.
+		}
+
+		public Task<T> PushAsync<T>(Func<ValueTask<T>> work)
+		{
+			var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+			if(CanAcceptJob() == false)
+			{
+				tcs.SetException(new InvalidOperationException( "작업을 처리할 수 없는 상태입니다." ) );
+				return tcs.Task;
+			}
+
+			DelegateJob job = _jobQueueManager.JobPool.Get<DelegateJob>();
+			job.Initialize( async () =>
+			{
+				try
+				{
+					T result = await work();
+					tcs.TrySetResult( result );
+				}
+				catch(Exception ex)
+				{
+					tcs.TrySetException( ex );
+				}
+			} );
+
+			Push( job );
+			return tcs.Task;
+		}
+
+		public Task PushAsync(Func<ValueTask> work)
+		{
+			var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+			if(CanAcceptJob() == false)
+			{
+				tcs.SetException(new InvalidOperationException( "작업을 처리할 수 없는 상태입니다." ) );
+				return tcs.Task;
+			}
+
+			DelegateJob job = _jobQueueManager.JobPool.Get<DelegateJob>();
+			job.Initialize( async () =>
+			{
+				try
+				{
+					await work();
+					tcs.TrySetResult();
+				}
+				catch(Exception ex)
+				{
+					tcs.TrySetException( ex );
+				}
+			} );
+
+			Push( job );
+			return tcs.Task;
+		}
+
+		protected virtual bool CanAcceptJob()
+		{
+			// 기본적으로 항상 작업을 수락할 수 있다고 가정.
+			// 필요에 따라 파생 클래스(BaseRoom)에서 오버라이드하여 특정 조건에서 작업 수락 여부 결정 가능.
+			return true;
 		}
 
 		protected void ScheduleTimer(IJob job, int tickAfter)

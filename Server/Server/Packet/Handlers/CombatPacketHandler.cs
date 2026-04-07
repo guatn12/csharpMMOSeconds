@@ -57,13 +57,6 @@ namespace Server.Packet.Handlers
 				return;
 			}
 
-			if(!await _room.ValidatePlayerUseSkillAsync( session, packet ))
-			{
-				_logger.LogWarning( "Skill validation failed for Player {PlayerId}, Skill {SkillId}",
-					session.PlayerId, packet.SkillId );
-				return;
-			}
-
 			var skillData = _dataManager.GetSkill(packet.SkillId);
 			if(skillData == null)
 			{
@@ -79,9 +72,6 @@ namespace Server.Packet.Handlers
 					session.PlayerId, packet.SkillId );
 				return;
 			}
-
-			// 룸별 스킬 효과 처리 - 예: 범위 공격, 버프/디버프 적용 등
-			await _room.OnPlayerUseSkillAsync( session, packet );
 
 			CombatResults result = await _combatService.ProcessPlayerAttackMonsterAsync(session.Player, monster, skillData);
 			if(result == null)

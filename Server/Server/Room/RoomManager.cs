@@ -298,7 +298,10 @@ namespace Server.Room
 				return RoomEnterResult.RoomClosed;
 			}
 
-			return await _defaultLobby.TryEnterAsync( session );
+			if(_defaultLobby is not BaseRoom baseRoom)
+				throw new InvalidOperationException( "Default lobby must inherit BaseRoom." );
+
+			return await baseRoom.EnterViaQueueAsync( session );
 		}
 
 		public async Task<RoomEnterResult> MovePlayerToRoomAsync( IClientSession session, int targetRoomId )
@@ -309,7 +312,12 @@ namespace Server.Room
 				IRoom currentRoom = await FindPlayerCurrentRoomAsync(session);
 				if(currentRoom != null)
 				{
-					await currentRoom.TryLeaveAsync( session );
+					if(currentRoom is not BaseRoom currentBaseRoom)
+						throw new InvalidOperationException( "Current room must inherit BaseRoom." );
+
+					bool leaveResult = await currentBaseRoom.LeaveViaQueueAsync(session);
+					if(leaveResult == false)
+						return RoomEnterResult.InvalidState;
 				}
 
 				// 새 룸 입장
@@ -321,7 +329,10 @@ namespace Server.Room
 					return RoomEnterResult.InvalidState;
 				}
 
-				var result = await targetRoom.TryEnterAsync(session);
+				if(targetRoom is not BaseRoom targetBaseRoom)
+					throw new InvalidOperationException( "Target room must inherit BaseRoom." );
+
+				RoomEnterResult result = await targetBaseRoom.EnterViaQueueAsync(session);
 
 				// 룸 변경 이벤트 발생
 				if(result == RoomEnterResult.Success)
@@ -355,7 +366,10 @@ namespace Server.Room
 				var currentRoom = session.CurrentRoom;
 				if(currentRoom != null)
 				{
-					if(await currentRoom.TryLeaveAsync(session))
+					if(currentRoom is not BaseRoom currentBaseRoom)
+						throw new InvalidOperationException( "Current room must inherit BaseRoom." );
+
+					if(await currentBaseRoom.LeaveViaQueueAsync(session))
 					{
 						removed = true;
 						_logger.LogDebug("Player {SessionId} removed from CurrentRoom {RoomId}", session.SessionId, currentRoom.RoomId );
@@ -374,7 +388,10 @@ namespace Server.Room
 
 					foreach(var room in otherRooms)
 					{
-						if(await room.TryLeaveAsync( session ))
+						if(room is not BaseRoom baseRoom)
+							throw new InvalidOperationException( "Room must inherit BaseRoom." );
+
+						if(await baseRoom.LeaveViaQueueAsync(session))
 						{
 							removed = true;
 							roomsChecked++;

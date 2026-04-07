@@ -34,12 +34,10 @@ namespace Server.Room
 		bool ContainsPlayer(IClientSession session);
 		// playerId를 통한 플레이어 확인
 		bool ContainsPlayerToPlayerId(long playerId);
-		// 플레이어 룸 입장 시도
-		Task<RoomEnterResult> TryEnterAsync(IClientSession session);
-		// 플레이어 룸 퇴장 시도
-		Task<bool> TryLeaveAsync(IClientSession session);
-		// 플레이어 룸 퇴장 시도 (동기 버전)
-		bool TryLeave( IClientSession session );
+		// 외부에서 Queue를 통한 플레이어 룸 입장 시도
+		Task<RoomEnterResult> EnterViaQueueAsync(IClientSession session );
+		// 외부에서 Queue를 통한 플레이어 룸 퇴장 시도
+		Task<bool> LeaveViaQueueAsync( IClientSession session );
 		// sessionId를 통해 플레이어 확인
 		IClientSession FindPlayer( int sessionId );
 		// playerId를 통한 플레이어 확인

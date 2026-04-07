@@ -29,7 +29,7 @@ namespace Server.Room
 			_settings = settings.Value;
 		}
 
-		public override Task<RoomEnterResult> TryEnterAsync( IClientSession session )
+		protected override Task<RoomEnterResult> TryEnterAsync( IClientSession session )
 		{
 			// 던전 전용 입장 조건 검증(level, 인원 제한 등)
 			// ex) if(session.Player.Level < datamanager.dungeon.getlevel(DUNGEON_MAP_ID)) 

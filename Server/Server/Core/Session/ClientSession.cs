@@ -10,7 +10,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Server.Core.Session
 {
@@ -83,7 +85,6 @@ namespace Server.Core.Session
 
         public override void OnSend( int bytes )
         {
-            //LogManager.Debug("Packet Sent. SessionId: {SessionId}, Size: {Size}", this.SessionId, bytes);
             _logger.LogDebug( "Packet Sent. SessionId: {SessionId}, Size: {Size}", SessionId, bytes );
         }
 
@@ -102,33 +103,9 @@ namespace Server.Core.Session
 		{
 			_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
 
-			// Room에서 퇴장 (ObjectManager + GameMap 포함)
-			// InternalLeave가 Despawn 브로드캐스트를 하므로 이벤트 해제보다 먼저 실행
 			IRoom room = CurrentRoom;
-			if(room != null)
-			{
-				room.TryLeave( this );
-			}
-
-            // Player 이벤트 구독 해제 추가
-            if(Player != null)
-            {
-                Player.OnHealthChanged -= OnPlayerHealthChanged;
-                Player.OnManaChanged -= OnPlayerManaChanged;
-                Player.OnLevelUp -= OnPlayerLevelUp;
-                Player.OnItemAdded -= OnPlayerItemAdded;
-                Player.OnItemRemoved -= OnPlayerItemRemoved;
-                Player.OnItemUnequipped -= OnPlayerItemUnequipped;
-                Player.OnItemEquipped -= OnPlayerItemEquipped;
-                Player.OnEquipmentStatsChanged -= OnEquipmentStatsChanged;
-                Player.OnDeath -= OnPlayerDeath;
-            }
-
-           // 플레이어 상태를 Disconnected상태로 처리
-			//Player?.Disconnect();
-
-            // 세션 매니저에서 세션 해제
-            _sessionManager.UnregisterSession( SessionId );
+			BaseRoom baseRoom = room as BaseRoom;
+			_ = HandleDisconnectAsync( endPoint, baseRoom );
 		}
 
         // 플레이어 초기화
@@ -136,20 +113,72 @@ namespace Server.Core.Session
         {
 			Player = new Player( SessionId, null );
 
-            Player.OnHealthChanged += OnPlayerHealthChanged;
-            Player.OnManaChanged += OnPlayerManaChanged;
-            Player.OnLevelUp += OnPlayerLevelUp;
-
-            Player.OnItemAdded += OnPlayerItemAdded;
-            Player.OnItemEquipped += OnPlayerItemEquipped;
-            Player.OnItemUnequipped += OnPlayerItemUnequipped;
-            Player.OnItemRemoved += OnPlayerItemRemoved;
-            Player.OnEquipmentStatsChanged += OnEquipmentStatsChanged;
-            Player.OnDeath += OnPlayerDeath;
-			Player.OnStateChanged += OnPlayerStateChanged;
+			SubscribePlayerEvents();
 
 			_logger.LogInformation( "Player initialized: {PlayerInfo}", Player.ToString() );
         }
+
+		private void SubscribePlayerEvents()
+		{
+			if(Player != null)
+			{
+				Player.OnHealthChanged += OnPlayerHealthChanged;
+				Player.OnManaChanged += OnPlayerManaChanged;
+				Player.OnLevelUp += OnPlayerLevelUp;
+
+				Player.OnItemAdded += OnPlayerItemAdded;
+				Player.OnItemEquipped += OnPlayerItemEquipped;
+				Player.OnItemUnequipped += OnPlayerItemUnequipped;
+				Player.OnItemRemoved += OnPlayerItemRemoved;
+				Player.OnEquipmentStatsChanged += OnEquipmentStatsChanged;
+				Player.OnDeath += OnPlayerDeath;
+				Player.OnStateChanged += OnPlayerStateChanged;
+			}
+		}
+
+		private void UnsubscribePlayerEvents()
+		{
+			if(Player != null)
+			{
+				Player.OnHealthChanged -= OnPlayerHealthChanged;
+				Player.OnManaChanged -= OnPlayerManaChanged;
+				Player.OnLevelUp -= OnPlayerLevelUp;
+				Player.OnItemAdded -= OnPlayerItemAdded;
+				Player.OnItemRemoved -= OnPlayerItemRemoved;
+				Player.OnItemUnequipped -= OnPlayerItemUnequipped;
+				Player.OnItemEquipped -= OnPlayerItemEquipped;
+				Player.OnEquipmentStatsChanged -= OnEquipmentStatsChanged;
+				Player.OnDeath -= OnPlayerDeath;
+				Player.OnStateChanged -= OnPlayerStateChanged;
+			}
+		}
+
+		private async Task HandleDisconnectAsync(EndPoint endPoint, BaseRoom baseRoom)
+		{
+			try
+			{
+				_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}",
+					SessionId, endPoint );
+
+				// Room에서 퇴장 (Queue 경유, await로 완료 보장)
+				if(baseRoom != null)
+				{
+					bool left = await baseRoom.LeaveViaQueueAsync(this);
+					if(left == false)
+						_logger.LogWarning( "Disconnect cleanup leave returned false. SessionId: {SessionId}", SessionId );
+				}
+			}
+			catch(Exception ex)
+			{
+				_logger.LogError( ex, "Failed to leave room during disconnect. SessionId: {SessionId}", SessionId );
+			}
+			finally
+			{
+				// Leave 완료 후 정리 (순서 보장)
+				UnsubscribePlayerEvents();
+				_sessionManager.UnregisterSession( SessionId );
+			}
+		}
 
         // HP 변경 이벤트 핸들러
         private void OnPlayerHealthChanged(IGameObject obj, int oldHP, int newHP)
@@ -359,52 +388,40 @@ namespace Server.Core.Session
         // 플레이어 죽음 이벤트 핸들러
         private void OnPlayerDeath(IGameObject obj)
         {
-			S_Despawn packet = new S_Despawn();
-			packet.Objects.Add( obj.ToObjectInfo() );
-			IRoom reEnterRoom = CurrentRoom;
-			if(CurrentRoom != null)
-            {
-				// 룸 내 다른 플레이어에게 사망 패킷 브로드캐스트
-				CurrentRoom.BroadcastInRange ( packet, obj.PosInfo, this );
-				bool result = CurrentRoom.TryLeave( this );
-				if( result == false)
-				{
-					_logger.LogError( "Player failed to leave room after death. PlayerId={PlayerId}, RoomId={RoomId}",
-						obj.ObjectId, CurrentRoom.RoomId );
-				}
-			}
+			_ = HandlePlayerDeath( obj );
+		}
 
-			// 사망 후 리스폰 처리 (3초 딜레이)
-			if(reEnterRoom != null)
+		private async Task HandlePlayerDeath(  IGameObject obj )
+		{
+			try
 			{
-				const int respawnDelayMs = 3000;
-				reEnterRoom.ScheduleJob( async () =>
+				BaseRoom baseRoom = CurrentRoom as BaseRoom;
+				if(baseRoom == null)
 				{
-					try
-					{
-						Player.Revive();
+					_logger.LogWarning( "Player is not in a valid room during death handling. PlayerId={PlayerId}", obj.ObjectId );
+					return;
+				}
 
-						var result = await reEnterRoom.TryEnterAsync(this);
-						if(RoomEnterResult.Success != result)
-						{
-							_logger.LogWarning( "Respawn Failed to Re-Enter Room. PlayerId={PlayerId}", PlayerId );
-							return;
-						}
+				// 룸 내 다른 플레이어에게 사망 패킷 브로드캐스트
+				S_Despawn packet = new S_Despawn();
+				packet.Objects.Add( obj.ToObjectInfo() );
+				CurrentRoom.BroadcastInRange( packet, obj.PosInfo, this );
 
-						reEnterRoom.SendToPlayer( this, new S_EnterGame
-						{
-							Player = Player.ToObjectInfo(),
-							MapId = reEnterRoom.RoomMap.MapId,
-						} );
-					}
-					catch(Exception ex)
-					{
-						_logger.LogError( ex, "Respawn Error for PlayerId: {PlayerId}", PlayerId );
-					}
-				}, respawnDelayMs );
+				// Room에서 퇴장 (Queue 경유, await로 완료 보장)
+				bool left = await baseRoom.LeaveViaQueueAsync(this);
+				if(left == false)
+					_logger.LogError( "Player failed to leave room after death. PlayerId={PlayerId}, RoomId={RoomId}",
+						obj.ObjectId, baseRoom.RoomId );
+
+				// 사망 후 리스폰 처리 (3초 딜레이) - Room에서 스케줄링하여 처리, 리스폰 시 룸 재입장 처리 포함
+				baseRoom.ScheduleRespawn( this, 3000 );
+
+				_logger.LogInformation( "Player OnDeath Handler. SessionId: {SessionId}, PlayerId: {PlayerId}", SessionId, obj.ObjectId);
 			}
-
-			_logger.LogWarning( "[Event] Player Death: PlayerId={PlayerId}", obj.ObjectId );
+			catch(Exception ex)
+			{
+				_logger.LogError( ex, "Failed to OnPlayerDeath Event Handler. SessionId: {SessionId}, PlayerId: {PlayerId}", SessionId, obj.ObjectId );
+			}
 		}
 
 		private void OnPlayerStateChanged( IGameObject obj, int oldState, int newState )

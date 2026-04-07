@@ -183,7 +183,7 @@ namespace Server.Room
 			return _players.Values.Where( p => p.PlayerId == playerId ).FirstOrDefault();
 		}
 
-		public virtual async Task<RoomEnterResult> TryEnterAsync( IClientSession session )
+		protected virtual async Task<RoomEnterResult> TryEnterAsync( IClientSession session )
 		{
 			if(session == null)
 				return RoomEnterResult.InvalidState;
@@ -244,7 +244,7 @@ namespace Server.Room
 			}
 		}
 
-		public virtual async Task<bool> TryLeaveAsync( IClientSession session )
+		protected virtual async Task<bool> TryLeaveAsync( IClientSession session )
 		{
 			if(session == null || !_players.ContainsKey( session.SessionId ))
 				return false;
@@ -252,12 +252,34 @@ namespace Server.Room
 			return await InternalLeaveAsync( session, false );
 		}
 
-		public virtual bool TryLeave( IClientSession session )
+		protected virtual bool TryLeave( IClientSession session )
 		{
 			if(session == null || !_players.ContainsKey( session.SessionId ))
 				return false;
 
 			return InternalLeave( session, false );
+		}
+
+		/// <summary>
+		/// 외부에서 Room의 JobQueue를 경유하여 입장 처리
+		/// Room 내부 핸들러에서는 호출 금지 (데드락 위험)
+		/// </summary>
+		public Task<RoomEnterResult> EnterViaQueueAsync(IClientSession session)
+		{
+			return PushAsync<RoomEnterResult>( () => new ValueTask<RoomEnterResult>( TryEnterAsync( session ) ) );
+		}
+
+		/// <summary>
+		/// 외부에서 Room의 JobQueue를 경유하여 퇴장 처리
+		/// </summary>
+		public Task<bool> LeaveViaQueueAsync(IClientSession session)
+		{
+			return PushAsync<bool>( () => new ValueTask<bool>( TryLeaveAsync( session ) ) );
+		}
+
+		protected override bool CanAcceptJob()
+		{
+			return State != RoomState.Closing;
 		}
 
 		public virtual void Broadcast( IMessage packet, IClientSession excludeSession = null )
@@ -338,6 +360,40 @@ namespace Server.Room
 			Push( job );
 		}
 
+		public void ScheduleRespawn(IClientSession session, int delayMs)
+		{
+			ScheduleJob( async () =>
+			{
+				try
+				{
+					if(session == null || session.Player == null)
+						return;
+
+					// TODO: 활성 세션 여부도 여기서 확인 필요
+
+					session.Player.Revive();
+
+					RoomEnterResult result = await TryEnterAsync(session);
+					if(result != RoomEnterResult.Success)
+					{
+						_logger.LogWarning( "Failed to respawn player {SessionId} in room {RoomId} - Enter Result: {Result}",
+							session.SessionId, RoomId, result );
+						return;
+					}
+
+					SendToPlayer( session, new S_EnterGame
+					{
+						Player = session.Player.ToObjectInfo(),
+						MapId = RoomMap.MapId
+					} );
+				}
+				catch(Exception ex)
+				{
+					_logger.LogError( ex, "Failed to respawn player {SessionId} in room {RoomId}", session.SessionId, RoomId );
+				}
+			}, delayMs );
+		}
+
 		protected virtual Task OnInitializeAsync() => Task.CompletedTask;
 		protected virtual Task OnCleanupAsync() => Task.CompletedTask;
 		protected virtual async Task OnPlayerEnterAsync( IClientSession session )
@@ -388,26 +444,6 @@ namespace Server.Room
 			leavePacket.ObjectId = session.PlayerId;
 			SendToPlayer( session, leavePacket );
 		}
-		public virtual Task OnPlayerMoveAsync( IClientSession session, Protocol.C_Move packet ) => Task.CompletedTask;
-		public virtual Task OnPlayerChatAsync( IClientSession session, Protocol.C_Chat packet ) => Task.CompletedTask;
-		public virtual Task OnPlayerUseSkillAsync( IClientSession session, Protocol.C_UseSkill packet ) => Task.CompletedTask;
-
-		public virtual Task<bool> ValidatePlayerMoveAsync( IClientSession session, Protocol.C_Move packet )
-		{
-			// 기본 3D 위치 검증
-			bool isValid = Utils.Position3DValidator.IsValidPosition(packet.PosInfo, this);
-
-			if(!isValid)
-			{
-				_logger.LogWarning( "Invalid move attempt by player {SessionId} in room{ RoomId}: Position ({X}, {Y}, {Z})",
-					session.SessionId, RoomId, packet.PosInfo.PosX, packet.PosInfo.PosY, packet.PosInfo.PosZ);
-			}
-
-			return Task.FromResult( isValid );
-		}
-		public virtual Task<bool> ValidatePlayerChatAsync( IClientSession session, Protocol.C_Chat packet ) => Task.FromResult( true );
-		public virtual Task<bool> ValidatePlayerInfoAsync( IClientSession session, Protocol.C_PlayerInfo packet ) => Task.FromResult( true );
-		public virtual Task<bool> ValidatePlayerUseSkillAsync( IClientSession session, Protocol.C_UseSkill packet ) => Task.FromResult( true );
 
 		// 몬스터 초기화 메서드 추가
 		protected virtual async Task InitializeMonsterManagerAsync()
@@ -600,33 +636,6 @@ namespace Server.Room
 			}
 		}
 
-		private int GetLastInventorySlot( Player player )
-		{
-			InventoryModel inventoryData = player.GetInventoryData();
-			return inventoryData.Items.LastOrDefault()?.Slot ?? -1;
-		}
-
-		private bool ValidateSession( IClientSession session, ILogger logger )
-		{
-			if(session?.Player == null)
-			{
-				logger.LogWarning( "Invalid session or player in Room {RoomId}", RoomId );
-				return false;
-			}
-			return true;
-		}
-
-		private bool ValidateUseItemPacket( C_UseItem packet, ILogger logger )
-		{
-			if(packet == null || packet.Slot < 0 || packet.Slot >= 50 || packet.Quantity <= 0 || packet.Quantity > 10)
-			{
-				logger.LogWarning( "Invalid use item packet: Slot={Slot},Quantity={Quantity}",
-					packet?.Slot ?? -1, packet?.Quantity ?? -1 );
-				return false;
-			}
-			return true;
-		}
-
 		private void InitializePacketHandlers( ILoggerFactory loggerFactory, ICombatService combatService, IRewardService rewardService,
 			PlayerPositionService playerPositionService )
 		{
@@ -652,16 +661,10 @@ namespace Server.Room
 
 #endif
 
-
 		public void Dispose()
 		{
 			Dispose( true );
 			GC.SuppressFinalize( this );
-		}
-
-		public Monster GetMonster( long monsterId )
-		{
-			return MonsterManager?.GetMonster( monsterId );
 		}
 
 		protected virtual void Dispose( bool disposing )
