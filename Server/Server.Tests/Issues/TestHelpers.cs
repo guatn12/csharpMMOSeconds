@@ -31,4 +31,18 @@ namespace Server.Tests.Issues
 
 		public async ValueTask ProcessJobsForTest() => await ((IJobOwner)this).ProcessJobsAsync();
 	}
+
+	public class TestJobSerializerWithGate : JobSerializer
+	{
+		public bool AcceptJobs { get; set; } = true;
+
+		public TestJobSerializerWithGate(IJobQueueManager jobQueueManager ) 
+			: base( jobQueueManager )
+		{
+		}
+
+		protected override bool CanAcceptJob() => AcceptJobs;
+
+		public async ValueTask ProcessJobsForTest() => await ((IJobOwner)this).ProcessJobsAsync();
+	}
 }

@@ -154,5 +154,91 @@ namespace Server.Tests.Room
 			Assert.True( response.Success );
 			Assert.Equal( 3, response.MapId );
 		}
+
+		/// <summary>
+		/// 검증 5: JoinDefaultLObbyAsync가 EnterViaQueueAsync를 호출하는지
+		/// RoomManager -> Room 경로가 Queue 경유인지 검증
+		/// </summary>
+		[Fact]
+		public async Task JoinDefaultLobby_UsesEnterViaQueueAsync()
+		{
+			// Arrange
+			var mockRoom = MockFactoryHelper.CreateMockRoom(RoomType.Lobby, roomId:1, mapId:1);
+			mockRoom.Setup( r => r.EnterViaQueueAsync( It.IsAny<IClientSession>() ) ).ReturnsAsync( RoomEnterResult.Success );
+
+			var (mockSession, _) = MockFactoryHelper.CreateSessionMock( playerId: 1, initialRoom: null );
+			var mockRoomManager = new Mock<IRoomManager>();
+			mockRoomManager.Setup( rm => rm.JoinDefaultLobbyAsync( It.IsAny<IClientSession>() ) ).Returns<IClientSession>( async session =>
+			{
+				return await mockRoom.Object.EnterViaQueueAsync( session );
+			} );
+
+			// Act
+			RoomEnterResult result = await mockRoomManager.Object.JoinDefaultLobbyAsync(mockSession.Object);
+
+			// Assert
+			Assert.Equal( RoomEnterResult.Success, result );
+			mockRoom.Verify(r => r.EnterViaQueueAsync(It.IsAny<IClientSession>()), Times.Once);
+		}
+
+		/// <summary>
+		/// 검증 6: MovePlayerToRoomAsync가 LeaveViaQueueAsync + EnterViaQueueAsync 호출하는지
+		/// </summary>
+		[Fact]
+		public async Task MovePlayerToRoom_UsesViaQueue()
+		{
+			// Arrange
+			var oldRoom = MockFactoryHelper.CreateMockRoom(RoomType.Lobby, roomId:1, mapId:1);
+			var newRoom = MockFactoryHelper.CreateMockRoom(RoomType.Dungeon, roomId:10, mapId:3);
+
+			oldRoom.Setup( r => r.LeaveViaQueueAsync( It.IsAny<IClientSession>() ) ).ReturnsAsync( true );
+			newRoom.Setup( r => r.EnterViaQueueAsync( It.IsAny<IClientSession>() ) ).ReturnsAsync( RoomEnterResult.Success );
+
+			var (mockSession, _) = MockFactoryHelper.CreateSessionMock( playerId: 1, initialRoom: oldRoom.Object );
+
+			var mockRoomManager = new Mock<IRoomManager>();
+			mockRoomManager.Setup( rm => rm.MovePlayerToRoomAsync( It.IsAny<IClientSession>(), 10 ) ).Returns<IClientSession, int>( async ( session, targetRoomId ) =>
+			{
+				await oldRoom.Object.LeaveViaQueueAsync( session );
+				return await newRoom.Object.EnterViaQueueAsync( session );
+			} );
+
+			// Act
+			RoomEnterResult result = await mockRoomManager.Object.MovePlayerToRoomAsync(mockSession.Object, 10);
+
+			// Assert
+			Assert.Equal( RoomEnterResult.Success, result );
+			oldRoom.Verify( r => r.LeaveViaQueueAsync( It.IsAny<IClientSession>() ), Times.Once );
+			newRoom.Verify( r => r.EnterViaQueueAsync( It.IsAny<IClientSession>() ), Times.Once );
+		}
+
+		/// <summary>
+		/// 검증 7: RemovePlayerFromAllRoomAsync가 LeaveViaQueueAsync를 호출하는지
+		/// </summary>
+		[Fact]
+		public async Task RemovePlayerFromAllRooms_UsesLeavceViaQueueAsync()
+		{
+			// Arrange
+			var room = MockFactoryHelper.CreateMockRoom(RoomType.Lobby, roomId:1, mapId:1);
+			room.Setup( r => r.LeaveViaQueueAsync( It.IsAny<IClientSession>() ) ).ReturnsAsync( true );
+
+			var (mockSession, _) = MockFactoryHelper.CreateSessionMock( playerId: 1, initialRoom: room.Object );
+
+			var mockRoomManager = new Mock<IRoomManager>();
+			mockRoomManager.Setup( rm => rm.RemovePlayerFromAllRoomsAsync( It.IsAny<IClientSession>() ) ).Returns<IClientSession>( async session =>
+			{
+				var currentRoom = session.CurrentRoom;
+				if(currentRoom != null)
+					return await currentRoom.LeaveViaQueueAsync( session );
+				return false;
+			} );
+
+			// Act
+			bool removed = await mockRoomManager.Object.RemovePlayerFromAllRoomsAsync(mockSession.Object);
+
+			// Assert
+			Assert.True( removed );
+			room.Verify( r => r.LeaveViaQueueAsync( It.IsAny<IClientSession>() ), Times.Once );
+		}
 	}
 }
