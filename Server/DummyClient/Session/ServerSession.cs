@@ -15,7 +15,7 @@ namespace DummyClient
 	{
 		public int DummyId { get; private set; }
 		public ClientContext Context { get; set; }
-		private readonly ILogger<ServerSession> _logger;
+		//private readonly ILogger<ServerSession> _logger;
 		public long SessionId { get; private set; }
 
 		private static long _nextSessionId = 1;
@@ -28,8 +28,9 @@ namespace DummyClient
 		}
 
 		public ServerSession(ILogger<ServerSession> logger, PacketManager packetManager )
+			: base( logger )
 		{
-			_logger = logger;
+			//_logger = logger;
 			_packetManager = packetManager;
 		}
 

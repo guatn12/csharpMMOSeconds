@@ -28,37 +28,41 @@ namespace Server.Packet.Handlers
 
 		private async Task HandleC_EnterGameAsync( IClientSession session, C_EnterGame packet)
 		{
-			var currentRoom = session.CurrentRoom;
-			if(currentRoom == null)
-			{
-				// 자동 로비 입장
-				var result = await _roomManager.JoinDefaultLobbyAsync( session );
-				if(result == RoomEnterResult.Success)
-				{
-					_logger.LogInformation( "Player {PlayerId} (Session {SessionId}) automatically joined the default lobby.",
-						session.Player.ObjectId, session.SessionId );
-				}
-				else
-				{
-					// TODO : 기본 로비 입장 실패 시 로비 생성 및 입장 처리가 필요.
-					_logger.LogWarning( "Player {PlayerId} (Session {SessionId}) failed to join the default lobby.",
-						session.Player.ObjectId, session.SessionId );
-				}
+			if(session.TryTransitionTo( SessionState.EnteringGame ) == false)
+				return; // 이미 입장 중 또는 다른 상태
 
-				session.CurrentRoom.SendToPlayer( session, new S_EnterGame()
-				{
-					Player = session.Player.ToObjectInfo(),
-					MapId = session.CurrentRoom.RoomMap.MapId,
-				} );
+
+			// 자동 로비 입장
+			var result = await _roomManager.JoinDefaultLobbyAsync( session );
+			if(result == RoomEnterResult.Success)
+			{
+				_logger.LogInformation( "Player {PlayerId} (Session {SessionId}) automatically joined the default lobby.",
+					session.Player.ObjectId, session.SessionId );
+			}
+			else
+			{
+				// TODO : 기본 로비 입장 실패 시 로비 생성 및 입장 처리가 필요.
+				_logger.LogWarning( "Player {PlayerId} (Session {SessionId}) failed to join the default lobby.",
+					session.Player.ObjectId, session.SessionId );
+				session.TryTransitionTo(SessionState.Connected); // 상태 복구
+				return;
 			}
 
-			
+			session.TryTransitionTo( SessionState.InRoom );
+			session.CurrentRoom.SendToPlayer( session, new S_EnterGame()
+			{
+				Player = session.Player.ToObjectInfo(),
+				MapId = session.CurrentRoom.RoomMap.MapId,
+			} );
 
 			await Task.CompletedTask;
 		}
 
 		private async Task HandleC_ChangeRoomAsync(IClientSession session, C_ChangeRoom packet)
 		{
+			if(session.TryTransitionTo( SessionState.Transferring ) == false)
+				return;
+
 			var targetRoomType = (RoomType)packet.RoomType;
 			var maxPlayers = _serverSettings.Room.Lobby.MaxPlayers;
 
@@ -79,6 +83,7 @@ namespace Server.Packet.Handlers
 			// 이미 같은 타입의 방에 있으면 차단
 			if(session.CurrentRoom.RoomType == targetRoomType)
 			{
+				session.TryTransitionTo( SessionState.InRoom ); // 상태 복구
 				session.Send( new S_ChangeRoom
 				{
 					Success = false,
@@ -109,6 +114,10 @@ namespace Server.Packet.Handlers
 
 			// 방 이동(현재 방 퇴장 + 대상 방 입장)
 			RoomEnterResult result = await _roomManager.MovePlayerToRoomAsync(session, targetRoom.RoomId);
+
+			// 성공 / 실패 여부와 관계없이 복귀
+			session.TryTransitionTo( SessionState.InRoom );
+
 			if(result != RoomEnterResult.Success)
 			{
 				string failReason = result switch

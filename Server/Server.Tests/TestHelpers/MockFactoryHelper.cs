@@ -11,8 +11,10 @@ using Server.Database.Entities;
 using Server.Game;
 using Server.Game.Map;
 using Server.Infra;
+using Server.Packet;
 using Server.Packet.Handlers;
 using Server.Room;
+using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -101,6 +103,71 @@ namespace Server.Tests.TestHelpers
 			mockSession.Setup( s => s.Send( It.IsAny<IMessage>() ) ).Callback<IMessage>( p => sentPackets.Add( p ) );
 
 			return (mockSession, sentPackets);
+		}
+
+		/// <summary>
+		/// 진짜 ClientSession 인스턴스를 외부 종속성 Mock과 함께 생성.
+		/// connected=true 면 OnConnected 정상 진입 경로를 호출 -> Player + 이벤트 구독 완료.
+		/// pakcetManager=null 이면 Send 경로는 NRE - Send를 건드리지 않는 테스트에서만 null 허용.
+		/// </summary>
+		public static (ClientSession session, Mock<ILogger<ClientSession>> mockLogger, Mock<ISessionManager> mockSessionManager)
+			CreateRealClientSession(long sessionId = 1, PacketManager packetManager = null, bool connected = false)
+		{
+			var mockLogger = new Mock<ILogger<ClientSession>>();
+			var mockSessionManager = new Mock<ISessionManager>();
+			var session = new ClientSession(mockLogger.Object, packetManager, mockSessionManager.Object, sessionId);
+			
+			if (connected)
+			{
+				// 정상 진입 경로 - InitializePlayer + RegisterSession 자연 호출
+				// _socket을 사용하지 않으므로 NetworkSession.Start 없이 안전
+				session.OnConnected(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 12345));
+			}
+			return (session, mockLogger, mockSessionManager);
+		}
+
+		/// <summary>
+		/// 비동기 상태 전이를 결정적으로 대기. flaky 방지용.
+		/// OnDisConnected는 fire-and-forget 정리 Task를 띄우므로 폴링 필요.
+		/// </summary>
+		public static async Task WaitForStateAsync(IClientSession session, SessionState expected, int timeoutMs = 1000)
+		{
+			var sw = System.Diagnostics.Stopwatch.StartNew();
+			while(sw.ElapsedMilliseconds < timeoutMs)
+			{
+				if(session.State == expected) return;
+				await Task.Delay( 10 );
+			}
+
+			throw new TimeoutException( $"State {expected} not reached in {timeoutMs}ms (current: {session.State}, SessionId: {session.SessionId}" );
+		}
+
+		/// <summary>
+		/// 진짜 PacketManager 인스턴스 (1차 필터 동작 검증용)
+		/// </summary>
+		public static (PacketManager packetManager, Mock<ILogger<PacketManager>> mockLogger) CreateRealPacketManager(IJobQueueManager jobQueueManager, 
+			SystemPacketHandler systemHandler)
+		{
+			var mockLogger = new Mock<ILogger<PacketManager>>();
+			var packetManager = new PacketManager(mockLogger.Object, jobQueueManager, systemHandler);
+
+			return (packetManager, mockLogger);
+		}
+
+		/// <summary>
+		/// C_* 패킷을 [Size(2)|Id(2)|Body] 구조로 직렬화.
+		/// MakeSendPacket이 S_*만 처리하므로 별도 헬퍼
+		/// </summary>
+		public static ArraySegment<byte> SerializeClientPacket( PacketID id, IMessage packet )
+		{
+			ushort size = (ushort)packet.CalculateSize();
+			ushort total = (ushort)(size + 4);
+			byte[] buffer = new byte[total];
+
+			Array.Copy( BitConverter.GetBytes( total ), 0, buffer, 0, 2 );
+			Array.Copy(BitConverter.GetBytes( (ushort)id ), 0, buffer, 2, 2 );
+			packet.WriteTo( new MemoryStream( buffer, 4, size ) );
+			return new ArraySegment<byte>( buffer );
 		}
 
 		// 3. ILogger Mock

@@ -11,6 +11,7 @@ namespace ServerCore
 {
 	public abstract class NetworkSession
 	{
+		protected readonly ILogger _logger;
 		private Socket _socket;
 
 		private SocketAsyncEventArgs _recvArgs = new SocketAsyncEventArgs();
@@ -29,6 +30,11 @@ namespace ServerCore
 		private const int BufferPendingFreePercent = 10;
 		private const int BufferReleaseFreePercent = 50;
 
+		protected NetworkSession(ILogger logger)
+		{
+			_logger = logger;
+		}
+
 		public bool IsConnected()
 		{
 			lock (_lock)
@@ -37,7 +43,12 @@ namespace ServerCore
 				{
 					return _socket != null && _socket.Connected && !(_socket.Poll( 1, SelectMode.SelectRead ) && _socket.Available == 0);
 				}
-				catch { return false; }
+				catch (SocketException ex)
+				{
+					_logger.LogWarning( ex, "Receive socket error. EndPoint={EndPoint}", _socket.RemoteEndPoint );
+					//Close();
+					return false;
+				}
 			}
 		}
 
@@ -89,9 +100,10 @@ namespace ServerCore
 				if(!pending)
 					OnRecvCompleted( null, _recvArgs );
 			}
-			catch(Exception ex)
+			catch(SocketException ex)
 			{
-				Console.WriteLine( $"Receive Failed {ex}" );
+				_logger.LogWarning( ex, "Recive socket error. EndPoint={EndPoint}", _socket.RemoteEndPoint );
+				//Close();
 			}
 
 		}
@@ -134,9 +146,11 @@ namespace ServerCore
 
 					Receive();
 				}
-				catch(Exception ex)
+				catch(SocketException ex)
 				{
 					Console.WriteLine( $"OnRecvComplated Failed : {ex}" );
+					_logger.LogWarning(ex, "Receive socket error. EndPoint={EndPoint}", _socket.RemoteEndPoint);
+					//Close();
 				}
 
 
@@ -194,7 +208,8 @@ namespace ServerCore
 			}
 			catch(Exception ex)
 			{
-				Console.WriteLine( $"Send Failed: {ex}" );
+				_logger.LogWarning(ex, "Send socket error. EndPoint={EndPoint}", _socket.RemoteEndPoint);
+				//Close();
 			}
 		}
 

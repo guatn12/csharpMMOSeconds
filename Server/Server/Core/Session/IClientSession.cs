@@ -12,6 +12,8 @@ namespace Server.Core.Session
 		long LastActiveTime { get; }
 		Player Player { get; }
 		IRoom CurrentRoom { get; }
+		SessionState State { get; }
+		bool TryTransitionTo( SessionState state );
 		void SetCurrentRoom( IRoom room );
 		void Send( IMessage packet );
 		void Disconnect();

@@ -44,18 +44,21 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning( "SystemPacketHandler _onRecv Dictionary Not Found id {id.ToString()}"  );
 			}
 		}
+
 		private async ValueTask HandleC_EnterGameAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
 			var packet = new C_EnterGame();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_EnterGameAsync(session, packet);
 		}
+
 		private async ValueTask HandleC_ChangeRoomAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
 			var packet = new C_ChangeRoom();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_ChangeRoomAsync(session, packet);
 		}
+
 		private async ValueTask HandleC_PingAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
 			var packet = new C_Ping();

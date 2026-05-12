@@ -22,6 +22,7 @@ namespace Server.Packet
 		private readonly Dictionary<PacketID, PacketCategory> _packetCategoryCache = new();
 		private readonly SystemPacketHandler _systemPacketHandler;
 		private readonly IJobQueueManager _jobQueueManager;
+		private readonly Dictionary<PacketID, SessionState[]> _packetAllowedStates = new();
 		public PacketManager(ILogger<PacketManager> logger, IJobQueueManager jobQueueManager, SystemPacketHandler systemHandler)
 		{
 			_logger = logger;
@@ -29,6 +30,7 @@ namespace Server.Packet
 			_systemPacketHandler = systemHandler;
 			_jobQueueManager = jobQueueManager;
 			Register();
+			RegisterStateFilter();
 		}
         private void Register()
         {
@@ -80,8 +82,31 @@ namespace Server.Packet
 			ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + count);
 			count += 2;
 
+			PacketID packetId = (PacketID)id;
+			// [SM-1] 패킷 허용 상태 검사
+			if(_packetAllowedStates.TryGetValue(packetId, out var allowedStates))
+			{
+				SessionState currentState = session.State;
+				bool allowed = false;
+				foreach(var s in allowedStates)
+				{
+					if(s == currentState) 
+					{
+						allowed = true;
+						break;
+					}
+				}
 
-			PacketCategory packetCategory = GetPacketCategory((PacketID)id);
+				if(!allowed)
+				{
+					_logger.LogDebug("Packet {PacketId} dropped: session {SessionId} in state {State}",
+								packetId, session.SessionId, currentState);
+					return;
+				}
+			}
+
+
+			PacketCategory packetCategory = GetPacketCategory(packetId);
 			_logger.LogDebug("Packet received: ID={PacketId}, Category={Category}", id, packetCategory);
 
 			if( packetCategory == PacketCategory.NoneCategory )
@@ -149,6 +174,21 @@ namespace Server.Packet
 		private PacketCategory GetPacketCategory(PacketID id)
 		{
 			return _packetCategoryCache.TryGetValue(id, out var category) ? category : PacketCategory.NoneCategory;
+		}
+
+		private void RegisterStateFilter()
+		{
+			_packetAllowedStates[PacketID.C_EnterGame] = new[] {SessionState.Connected };
+			_packetAllowedStates[PacketID.C_ChangeRoom] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_Move] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_Chat] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_PlayerInfo] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_UseSkill] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_InventoryRequest] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_UseItem] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_EquipItem] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_UnequipItem] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_AutoMove] = new[] {SessionState.InRoom };
 		}
 	}
 }

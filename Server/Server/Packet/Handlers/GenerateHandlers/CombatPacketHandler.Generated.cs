@@ -40,8 +40,14 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning( "CombatPacketHandler _onRecv Dictionary Not Found id {id.ToString()}"  );
 			}
 		}
+
 		private async ValueTask HandleC_UseSkillAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
+			if(session.State != SessionState.InRoom)
+			{
+				_logger.LogDebug("Packet dropped in handler: SessionId={SessionId}, State={State}", session.SessionId, session.State);
+				return;
+			}
 			var packet = new C_UseSkill();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_UseSkillAsync(session, packet);

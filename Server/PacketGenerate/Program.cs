@@ -191,6 +191,7 @@ namespace PacketGenerator
 						private readonly Dictionary<PacketID, PacketCategory> _packetCategoryCache = new();
 						private readonly SystemPacketHandler _systemPacketHandler;
 						private readonly IJobQueueManager _jobQueueManager;
+						private readonly Dictionary<PacketID, SessionState[]> _packetAllowedStates = new();
 
 				""" );
 
@@ -203,6 +204,7 @@ namespace PacketGenerator
 							_systemPacketHandler = systemHandler;
 							_jobQueueManager = jobQueueManager;
 							Register();
+							RegisterStateFilter();
 						}
 				""" );
 			sb.AppendLine();
@@ -250,8 +252,31 @@ namespace PacketGenerator
 							ushort id = BitConverter.ToUInt16(buffer.Array, buffer.Offset + count);
 							count += 2;
 
+							PacketID packetId = (PacketID)id;
+							// [SM-1] 패킷 허용 상태 검사
+							if(_packetAllowedStates.TryGetValue(packetId, out var allowedStates))
+							{
+								SessionState currentState = session.State;
+								bool allowed = false;
+								foreach(var s in allowedStates)
+								{
+									if(s == currentState) 
+									{
+										allowed = true;
+										break;
+									}
+								}
 
-							PacketCategory packetCategory = GetPacketCategory((PacketID)id);
+								if(!allowed)
+								{
+									_logger.LogDebug("Packet {PacketId} dropped: session {SessionId} in state {State}",
+												packetId, session.SessionId, currentState);
+									return;
+								}
+							}
+
+
+							PacketCategory packetCategory = GetPacketCategory(packetId);
 							_logger.LogDebug("Packet received: ID={PacketId}, Category={Category}", id, packetCategory);
 
 							if( packetCategory == PacketCategory.NoneCategory )
@@ -329,8 +354,42 @@ namespace PacketGenerator
 						{
 							return _packetCategoryCache.TryGetValue(id, out var category) ? category : PacketCategory.NoneCategory;
 						}
+
+				""" );
+
+			sb.Append( """
+
+						private void RegisterStateFilter()
+						{
+
+				""" );
+
+			foreach(var (messageName, categoryName, packetType) in packetCategoryList)
+			{
+				if(packetType != "C_")
+					continue;
+
+				string allowed = categoryName switch
+				{
+					"SYSTEM" when messageName == "C_EnterGame" => "SessionState.Connected",
+					"SYSTEM" when messageName == "C_ChangeRoom" => "SessionState.InRoom",
+					"SYSTEM" when messageName == "C_Ping" => null, // 생략
+					"SYSTEM" => null, // 신규 SYSTEM은 주석 + TODO
+					"ROOM" or "COMBAT" or "INVENTORY" => "SessionState.InRoom",
+					_ => null
+				};
+
+				if(allowed != null)
+					sb.AppendLine( $"			_packetAllowedStates[PacketID.{messageName}] = new[] {{{allowed} }};" );
+				else if(categoryName == "SYSTEM" && messageName != "C_Ping")
+					sb.AppendLine( $"			// TODO: {messageName} 패킷의 허용 상태 설정 필요" );
+			}
+
+			sb.Append( """
+						}
 					}
 				}
+
 				""" );
 		}
 
@@ -565,23 +624,43 @@ namespace PacketGenerator
 								_logger.LogWarning( "{{handlerName}} _onRecv Dictionary Not Found id {id.ToString()}"  );
 							}
 						}
-
 				""" );
 
+			// 카테고리 추가 시 수정 필요 여부 확인.
+			// TODO: 카테고리 누락이 발생하기 쉽다. 수정 필요.
+			bool shouldInjectGuard = category is "ROOM" or "COMBAT" or "INVENTORY";
 			// 개별 핸들러 메서드들 (C_ 패킷)
 			foreach(var packetName in categoryPackets)
 			{
 				sb.Append( $$"""
+
+
 							private async ValueTask Handle{{packetName}}Async(IClientSession session, ArraySegment<byte> buffer)
 							{
+
+					""" );
+
+				if(shouldInjectGuard)
+				{
+					sb.Append( """
+									if(session.State != SessionState.InRoom)
+									{
+										_logger.LogDebug("Packet dropped in handler: SessionId={SessionId}, State={State}", session.SessionId, session.State);
+										return;
+									}
+
+						""" );
+				}
+
+				sb.Append( $$"""
 								var packet = new {{packetName}}();
 								packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 								await Handle{{packetName}}Async(session, packet);
 							}
-
 					""" );
 			}
 
+			sb.AppendLine();
 			sb.AppendLine( "\t}" );
 			sb.AppendLine( "}" );
 

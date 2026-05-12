@@ -6,24 +6,25 @@ using Server.Game;
 using Server.Game.Objects;
 using Server.Packet;
 using Server.Room;
+using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Server.Core.Session
 {
-    public class ClientSession : ServerCore.NetworkSession, IClientSession
+    public class ClientSession : NetworkSession, IClientSession
     {
-        private readonly ILogger<ClientSession> _logger;
+        //private readonly ILogger<ClientSession> _logger;
         private readonly PacketManager _packetManager;
         private readonly ISessionManager _sessionManager;
         private IRoom _currentRoom;
         private readonly object _roomLock = new object();
 		private long _lastActiveTime = Environment.TickCount64;
+		private int _state = (int)SessionState.Connected;
 
         public IRoom CurrentRoom
         {
@@ -44,10 +45,22 @@ namespace Server.Core.Session
 		public Player Player { get; private set; }
         public string PlayerName => Player.Name ?? $"Player_{Player.ObjectId}";
         public long PlayerId => Player.ObjectId;
+		public SessionState State => (SessionState)Volatile.Read( ref _state );
+
+		private static readonly Dictionary<SessionState, HashSet<SessionState>> _validTransitions = new()
+		{
+			[SessionState.Connected] = new() {SessionState.EnteringGame, SessionState.Disconnecting },
+			[SessionState.EnteringGame] = new() {SessionState.InRoom, SessionState.Connected, SessionState.Disconnecting },
+			[SessionState.InRoom] = new() { SessionState.Transferring, SessionState.Disconnecting },
+			[SessionState.Transferring] = new() {SessionState.InRoom, SessionState.Disconnecting },
+			[SessionState.Disconnecting] = new() {SessionState.Disconnected },
+			[SessionState.Disconnected] = new(),
+		};
 
         public ClientSession( ILogger<ClientSession> logger, PacketManager packetManager, ISessionManager sessionManager, long sessionId)
-        {
-            _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
+			:base( logger )
+		{
+            //_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
             _packetManager = packetManager;
             _sessionManager = sessionManager;
             SessionId = sessionId;
@@ -103,13 +116,41 @@ namespace Server.Core.Session
 		{
 			_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
 
+			// 상태 전이 - 필터 즉시 활성화
+			if(TryTransitionTo(SessionState.Disconnecting) == false)
+			{
+				_logger.LogWarning( "Already disconnecting. SessionId={SessionId}", SessionId );
+				return;
+			}
+
 			IRoom room = CurrentRoom;
 			BaseRoom baseRoom = room as BaseRoom;
 			_ = HandleDisconnectAsync( endPoint, baseRoom );
 		}
 
-        // 플레이어 초기화
-        private void InitializePlayer()
+		public bool TryTransitionTo( SessionState next )
+		{
+			SessionState current = (SessionState)Volatile.Read(ref _state);
+
+			if(_validTransitions.TryGetValue(current, out var allowed) == false || allowed.Contains(next) == false)
+			{
+				_logger.LogWarning( "Invalid state transition: {Current} -> {Next} (SessionId={SessionId})", current, next, SessionId );
+				return false;
+			}
+
+			int prev = Interlocked.CompareExchange(ref _state, (int)next, (int)current);
+			if(prev != (int)current)
+			{
+				// 다른 스레드가 먼저 전이시킴
+				return false;
+			}
+
+			_logger.LogDebug( "Session {SessionId} state: {From} -> {To}", SessionId, current, next );
+			return true;
+		}
+
+		// 플레이어 초기화
+		private void InitializePlayer()
         {
 			Player = new Player( SessionId, null );
 
@@ -177,12 +218,17 @@ namespace Server.Core.Session
 				// Leave 완료 후 정리 (순서 보장)
 				UnsubscribePlayerEvents();
 				_sessionManager.UnregisterSession( SessionId );
+				// 상태 전이 - 완료
+				TryTransitionTo( SessionState.Disconnected );
 			}
 		}
 
         // HP 변경 이벤트 핸들러
         private void OnPlayerHealthChanged(IGameObject obj, int oldHP, int newHP)
         {
+			if(State >= SessionState.Disconnecting)
+				return;
+
             S_PlayerUpdate packet = new S_PlayerUpdate
             {
                 Player = obj.ToObjectInfo()
@@ -197,6 +243,9 @@ namespace Server.Core.Session
         // MP 변경 이벤트 핸들러
         private void OnPlayerManaChanged( IGameObject obj, int oldMP, int newMP)
         {
+			if(State >= SessionState.Disconnecting)
+				return;
+
 			S_PlayerUpdate packet = new S_PlayerUpdate
 			{
 				Player = obj.ToObjectInfo(),
@@ -211,7 +260,10 @@ namespace Server.Core.Session
         // 레벨 업 이벤트 핸들러
         private void OnPlayerLevelUp(Player player)
         {
-            S_LevelUp packet = new S_LevelUp
+			if(State >= SessionState.Disconnecting)
+				return;
+
+			S_LevelUp packet = new S_LevelUp
             {
                 PlayerId = player.ObjectId,
                 NewLevel = player.Level,
@@ -234,8 +286,11 @@ namespace Server.Core.Session
         // 아이템 추가 이벤트 핸들러
         private void OnPlayerItemAdded(Player player, int slot, InventoryItem item)
         {
-            // InventoryItem -> InventoryItemInfo 변환
-            S_ItemAdded packet = new S_ItemAdded
+			if(State >= SessionState.Disconnecting)
+				return;
+
+			// InventoryItem -> InventoryItemInfo 변환
+			S_ItemAdded packet = new S_ItemAdded
             {
                 Item = new InventoryItemInfo
                 {
@@ -268,8 +323,11 @@ namespace Server.Core.Session
         // 장비 착용 이벤트 핸들러
         private void OnPlayerItemEquipped(Player player, PlayerEquipment.EquipSlot slot, InventoryItem item)
         {
-            // 현재 장비 상태 조회
-            var equipmentData = player.GetEquipmentData();
+			if(State >= SessionState.Disconnecting)
+				return;
+
+			// 현재 장비 상태 조회
+			var equipmentData = player.GetEquipmentData();
 
             S_ItemEquipped packet = new S_ItemEquipped
             {
@@ -309,7 +367,10 @@ namespace Server.Core.Session
 
         private void OnPlayerItemUnequipped(Player player, PlayerEquipment.EquipSlot slot, InventoryItem item)
         {
-            var equipmentData = player.GetEquipmentData();
+			if(State >= SessionState.Disconnecting)
+				return;
+
+			var equipmentData = player.GetEquipmentData();
 
             S_ItemUnequipped packet = new S_ItemUnequipped
             {
@@ -350,8 +411,11 @@ namespace Server.Core.Session
         // 아이템 제거 이벤트 핸들러
         private void OnPlayerItemRemoved(Player player, int slot, InventoryItem item)
         {
-            // 제거된 아이템 정보 변환
-            InventoryItemInfo changedItem = new InventoryItemInfo
+			if(State >= SessionState.Disconnecting)
+				return;
+
+			// 제거된 아이템 정보 변환
+			InventoryItemInfo changedItem = new InventoryItemInfo
             {
                 ItemId = item.ItemId,
                 Quantity = 0,           // 제거되었으므로 0
@@ -374,7 +438,10 @@ namespace Server.Core.Session
 		// TODO - 장비 변경 이벤트인데, 플레이어 정보를 보냄, 이는 장비 변경으로 인해 플레이어 스탯 정보를 변경해야한다는 의미 - 현재 구조와 다름.
         private void OnEquipmentStatsChanged(Player player, Dictionary<PlayerEquipment.StatType, int> stats)
         {
-            S_PlayerStat packet = new S_PlayerStat
+			if(State >= SessionState.Disconnecting)
+				return;
+
+			S_PlayerStat packet = new S_PlayerStat
             {
                 Player = player.ToObjectInfo(),
             };
@@ -388,11 +455,17 @@ namespace Server.Core.Session
         // 플레이어 죽음 이벤트 핸들러
         private void OnPlayerDeath(IGameObject obj)
         {
+			if(State >= SessionState.Disconnecting)
+				return;
+
 			_ = HandlePlayerDeath( obj );
 		}
 
 		private async Task HandlePlayerDeath(  IGameObject obj )
 		{
+			if(State >= SessionState.Disconnecting)
+				return;
+
 			try
 			{
 				BaseRoom baseRoom = CurrentRoom as BaseRoom;
@@ -426,6 +499,9 @@ namespace Server.Core.Session
 
 		private void OnPlayerStateChanged( IGameObject obj, int oldState, int newState )
 		{
+			if(State >= SessionState.Disconnecting)
+				return;
+
 			S_PlayerUpdate packet = new S_PlayerUpdate
 			{
 				Player = obj.ToObjectInfo(),
@@ -491,6 +567,8 @@ namespace Server.Core.Session
 		{
 			return $"GameSession(Id: {SessionId}, Room: {CurrentRoom?.RoomId})";
 		}
+
+		internal void ForceState(SessionState state) => Volatile.Write(ref _state, (int)state);
 	}
 
     public class GameSessionInfo

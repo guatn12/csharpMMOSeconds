@@ -1,4 +1,4 @@
-﻿using Xunit;
+using Xunit;
 using Server.Tests.TestHelpers;
 using Protocol;
 using Microsoft.Extensions.Logging;

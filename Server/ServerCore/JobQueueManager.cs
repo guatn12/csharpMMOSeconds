@@ -123,6 +123,11 @@ namespace ServerCore
 					{
 						await owner.ProcessJobsAsync();
 					}
+					catch(Exception ex) when(ExceptionPolicy.IsCritical(ex))
+					{
+						_logger.LogCritical( ex, "Critical Exception in JobQueue worker. Propagating to host boundary." );
+						throw;
+					}
 					catch(Exception ex)
 					{
 						_logger.LogError( ex, "An error occurred while executing a job." );

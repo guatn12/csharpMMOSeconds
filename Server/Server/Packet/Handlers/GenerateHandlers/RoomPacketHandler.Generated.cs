@@ -46,26 +46,50 @@ namespace Server.Packet.Handlers
 				_logger.LogWarning( "RoomPacketHandler _onRecv Dictionary Not Found id {id.ToString()}"  );
 			}
 		}
+
 		private async ValueTask HandleC_MoveAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
+			if(session.State != SessionState.InRoom)
+			{
+				_logger.LogDebug("Packet dropped in handler: SessionId={SessionId}, State={State}", session.SessionId, session.State);
+				return;
+			}
 			var packet = new C_Move();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_MoveAsync(session, packet);
 		}
+
 		private async ValueTask HandleC_ChatAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
+			if(session.State != SessionState.InRoom)
+			{
+				_logger.LogDebug("Packet dropped in handler: SessionId={SessionId}, State={State}", session.SessionId, session.State);
+				return;
+			}
 			var packet = new C_Chat();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_ChatAsync(session, packet);
 		}
+
 		private async ValueTask HandleC_PlayerInfoAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
+			if(session.State != SessionState.InRoom)
+			{
+				_logger.LogDebug("Packet dropped in handler: SessionId={SessionId}, State={State}", session.SessionId, session.State);
+				return;
+			}
 			var packet = new C_PlayerInfo();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_PlayerInfoAsync(session, packet);
 		}
+
 		private async ValueTask HandleC_AutoMoveAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
+			if(session.State != SessionState.InRoom)
+			{
+				_logger.LogDebug("Packet dropped in handler: SessionId={SessionId}, State={State}", session.SessionId, session.State);
+				return;
+			}
 			var packet = new C_AutoMove();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_AutoMoveAsync(session, packet);

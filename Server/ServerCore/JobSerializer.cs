@@ -111,17 +111,53 @@ namespace ServerCore
 		/// </summary>
 		protected virtual void OnProcessJobsStart() { }
 
+		private void SafeOnProcessJobStart()
+		{
+			try
+			{
+				OnProcessJobsStart();
+			}
+			catch(Exception ex) when (ExceptionPolicy.IsCritical(ex) == false)
+			{
+				OnLifecycleHookFailed( nameof(OnProcessJobsStart), ex );
+			}
+		}
+
 		/// <summary>
 		/// 빈메서드 - 파생 클래스에서 오버라이드하여 작업 처리 종료시 동작 구현 가능.
 		/// 현재는 디버깅용으로 처리.
 		/// </summary>
 		protected virtual void OnProcessJobsEnd() { }
 
+		private void SafeOnProcessJobEnd()
+		{
+			try
+			{
+				OnProcessJobsEnd();
+			}
+			catch(Exception ex) when (ExceptionPolicy.IsCritical(ex) == false)
+			{
+				OnLifecycleHookFailed( nameof( OnProcessJobsEnd ), ex );
+			}
+		}
+
+		protected virtual void OnJobFailed(IJob job, Exception ex)
+		{
+			// 기본 동작 없음 - 파생 클래스에서 로깅/세션 정리 등을 오버라이드
+			// JobQueueManager catch가 최후 방어선으로 로그를 남김
+		}
+
+		protected virtual void OnLifecycleHookFailed(string hookName, Exception ex )
+		{
+			// 기본 동작 없음 - 파생 클래스가 필요하면 최소 로깅만 수행
+			// 이 hook 안에서는 외부 I/O나 복잡한 복구 로직을 수행하지 않는다.
+		}
+
 		async ValueTask IJobOwner.ProcessJobsAsync()
 		{
 			// 작업 처리중 상태로 변경.
 			Interlocked.Exchange( ref _isProcessing, 1 );
-			OnProcessJobsStart();
+			SafeOnProcessJobStart();
 
 			_jobTimer.Flush( _jobQueue );
 
@@ -149,13 +185,32 @@ namespace ServerCore
 					continue;
 				}
 
-				await job.ExecuteAsync();
-				job.Clear();
-				_jobQueueManager.JobPool.Return( job );
+				try
+				{
+					await job.ExecuteAsync();
+				}
+				catch(Exception ex) when(ExceptionPolicy.IsCritical( ex ) == false)
+				{
+					try
+					{
+						OnJobFailed( job, ex );
+					}
+					catch(Exception hookEx)
+					{
+						// OnJobFailed 자체의 예외로 인해 Owner 루프가 정지하는 것을 방지
+						// 원본 예외(ex)는 이미 when 필터에서 non-critical로 판정된 상태.
+						// hookEx는 삼키되, 상위 워커의 포괄 catch가 최후 방어선
+					}
+				}
+				finally
+				{
+					job.Clear();
+					_jobQueueManager.JobPool.Return( job );
+				}
 			}
 
 			// 작업 처리가 모두 끝남.
-			OnProcessJobsEnd();
+			SafeOnProcessJobEnd();
 		}
 	}
 }
