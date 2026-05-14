@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Extensions;
 using Server.Infra;
@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace Server.Services
 {
-	public class PlayerPositionService
+	public class PlayerPositionService : IPlayerPositionService
 	{
 		private readonly IDatabase _redis;
 		private readonly ILogger<PlayerPositionService> _logger;

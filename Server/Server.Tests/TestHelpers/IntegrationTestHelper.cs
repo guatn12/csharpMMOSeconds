@@ -1,8 +1,8 @@
-using Castle.Core.Logging;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Protocol;
 using Server.Config;
 using Server.Data;
 using Server.Room;
@@ -10,12 +10,6 @@ using Server.Services;
 using Server.Services.Combat;
 using Server.Services.Reward;
 using ServerCore;
-using StackExchange.Redis;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Server.Tests.TestHelpers
 {
@@ -37,9 +31,9 @@ namespace Server.Tests.TestHelpers
 
 			var dataManager = new DataManager(serverSettings, NullLogger<DataManager>.Instance);
 
-			var mockRedisMux = new Mock<IConnectionMultiplexer>();
-			mockRedisMux.Setup( r => r.GetDatabase( It.IsAny<int>(), It.IsAny<object>() ) ).Returns( new Mock<IDatabase>().Object );
-			var positionService = new PlayerPositionService(mockRedisMux.Object, NullLogger<PlayerPositionService>.Instance);
+			var mockPositionService = new Mock<IPlayerPositionService>();
+			mockPositionService.Setup( s => s.UpdatePositionAsync( It.IsAny<long>(), It.IsAny<PosInfo>() ) ).Returns( Task.CompletedTask );
+			mockPositionService.Setup( s => s.RemovePositionAsync( It.IsAny<long>() ) ).Returns( Task.CompletedTask );
 
 			var combatService = new Mock<ICombatService>().Object;
 			var rewardService = new Mock<IRewardService>().Object;
@@ -55,7 +49,7 @@ namespace Server.Tests.TestHelpers
 				jobQueueManager,
 				combatService,
 				rewardService,
-				positionService,
+				mockPositionService.Object,
 				roomId,
 				isDefaultLobby: true );
 

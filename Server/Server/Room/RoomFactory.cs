@@ -34,7 +34,7 @@ namespace Server.Room
 		{
 			var combatService = serviceProvider.GetRequiredService<ICombatService>();
 			var rewardService = serviceProvider.GetRequiredService<IRewardService>();
-			var playerPositionService = serviceProvider.GetRequiredService<PlayerPositionService>();
+			var playerPositionService = serviceProvider.GetRequiredService<IPlayerPositionService>();
 
 			return roomType switch
 			{

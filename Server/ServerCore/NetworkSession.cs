@@ -165,6 +165,12 @@ namespace ServerCore
 		{
 			lock(_lock)
 			{
+				if(_socket == null || _isClosed)
+				{
+					_logger.LogDebug( "Send on closed socket - silent drop." );
+					return;
+				}
+
 				_sendQueue.Enqueue( sendBuffer );
 				// 다른 스레드가 Sending을 진행 중인지 확인.
 				if(!_isSending)

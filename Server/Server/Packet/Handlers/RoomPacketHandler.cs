@@ -18,9 +18,9 @@ namespace Server.Packet.Handlers
 	{
 		private readonly ILogger<RoomPacketHandler> _logger;
 		private readonly BaseRoom _room;
-		private readonly PlayerPositionService _playerPositionService;
+		private readonly IPlayerPositionService _playerPositionService;
 
-		public RoomPacketHandler(ILogger<RoomPacketHandler> logger, BaseRoom room, PlayerPositionService playerPositionService )
+		public RoomPacketHandler(ILogger<RoomPacketHandler> logger, BaseRoom room, IPlayerPositionService playerPositionService )
 		{
 			_logger = logger;
 			_room = room;

@@ -188,7 +188,7 @@ namespace Server.Extensions
 
 			// RedisService 등록
 			services.AddSingleton<RedisService>();
-			services.AddSingleton<PlayerPositionService>();
+			services.AddSingleton<IPlayerPositionService, PlayerPositionService>();
 
 
 			return services;

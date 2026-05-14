@@ -1,6 +1,7 @@
 using Castle.Core.Logging;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Protocol;
@@ -115,6 +116,9 @@ namespace Server.Tests.TestHelpers
 		{
 			var mockLogger = new Mock<ILogger<ClientSession>>();
 			var mockSessionManager = new Mock<ISessionManager>();
+
+			packetManager ??= CreateMinimalPacketManager();
+
 			var session = new ClientSession(mockLogger.Object, packetManager, mockSessionManager.Object, sessionId);
 			
 			if (connected)
@@ -187,6 +191,33 @@ namespace Server.Tests.TestHelpers
 				It.IsAny<Func<It.IsAnyType, Exception, string>>() ) );
 
 			return mockLogger;
+		}
+
+		private static PacketManager CreateMinimalPacketManager()
+		{
+			var maxPlayers = 4;
+			var loggerFactory = LoggerFactory.Create(b => { });
+			var jq = new JobQueueManager(NullLogger<JobQueueManager>.Instance);
+			var mockRoomManager = new Mock<IRoomManager>();
+			var settings = Options.Create( new ServerSettings
+			{
+				Room = new RoomConfig
+				{
+					Dungeon = new DungeonConfig
+					{
+						DefaultName = "default",
+						MaxPlayers = maxPlayers
+					},
+					Lobby = new LobbyConfig { DefaultName = "default", MaxPlayers = maxPlayers },
+					Battle = new BattleConfig { DefaultName = "default", MaxPlayers= maxPlayers },
+					Guild = new GuildConfig { DefaultName = "default", MaxPlayers = maxPlayers },
+					Private = new PrivateConfig { DefaultName = "default", MaxPlayers = maxPlayers },
+					TickIntervalMs = 100
+				},
+				Tick = new TickConfig { BaseTickMs = 100 }
+			} );
+			var systemHandler = new SystemPacketHandler( NullLogger<SystemPacketHandler>.Instance, mockRoomManager.Object, settings );
+			return new PacketManager( NullLogger<PacketManager>.Instance, jq, systemHandler );
 		}
 
 		// 4. 아이템이 있는 Session Mock

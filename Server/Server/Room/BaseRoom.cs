@@ -53,7 +53,7 @@ namespace Server.Room
 		// Service
 		protected readonly ICombatService _combatService;
 		protected readonly IRewardService _rewardService;
-		protected readonly PlayerPositionService _playerPositionService;
+		protected readonly IPlayerPositionService _playerPositionService;
 
 		// Category 핸들러
 		protected SystemPacketHandler SystemPacketHandler { get; private set; }
@@ -70,7 +70,7 @@ namespace Server.Room
 
 		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, int roomId, string roomName, int maxPlayers, DataManager dataManager,
 			IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
-			PlayerPositionService playerPositionService,
+			IPlayerPositionService playerPositionService,
 			Func<IRoom, DataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> monsterManagerFactory = null,
 			int mapId = 1 )
 			: base( jobQueueManager )
@@ -189,6 +189,7 @@ namespace Server.Room
 			if(session == null)
 				return RoomEnterResult.InvalidState;
 
+			// Validate
 			lock(_lock)
 			{
 				// 상태 검증
@@ -202,7 +203,16 @@ namespace Server.Room
 				// 룸이 가득 찬 상태인지 확인
 				if(MaxPlayers <= _players.Count)
 					return RoomEnterResult.RoomFull;
+			}
 
+			// Prepare
+			// 플레이어 위치 초기화
+			await OnInitPlayerPosition( session );
+
+
+			// Apply
+			lock (_lock)
+			{
 				// 플레이어 추가
 				if(!_players.TryAdd( session.SessionId, session ))
 					return RoomEnterResult.UnknownError;
@@ -212,37 +222,20 @@ namespace Server.Room
 					State = RoomState.Full;
 			}
 
-			try
-			{
-				// 입장 시 session의 currentRoom 변경
-				session.SetCurrentRoom( this );
+			// 오브젝트 매니저에 플레이어 등록.
+			ObjectManager.Register( session.Player );
+			// 입장 시 session의 currentRoom 변경
+			session.SetCurrentRoom( this );
+			// 이벤트 발생
+			PlayerEntered?.Invoke( this, new PlayerRoomEventArgs( session, this ) );
 
-				// 룸 별 입장 로직 실행 - 룸 입장 위치 정보는 개별 룸에서 처리.
-				await OnPlayerEnterAsync( session );
-
-				// 이벤트 발생
-				PlayerEntered?.Invoke( this, new PlayerRoomEventArgs( session, this ) );
-
-				_logger.LogInformation( "Player {SessionId} entered room {RoomId} ({CurrentCount}/{MaxPlayers})",
+			_logger.LogInformation( "Player {SessionId} entered room {RoomId} ({CurrentCount}/{MaxPlayers})",
 					session.SessionId, RoomId, CurrentPlayerCount, MaxPlayers );
 
-				return RoomEnterResult.Success;
-			}
-			catch(Exception e)
-			{
-				// 실패 시 플레이어 제거
-				_players.TryRemove( session.SessionId, out _ );
-				if(session.CurrentRoom != null )
-				{
-					session.SetCurrentRoom( this );		// 실패 시 session의 현재 룸도 초기화.
-				}
-
-				// 플레이어 위치 정보도 제거
-				RoomMap.Remove( session.Player );
-
-				_logger.LogError( e, "Failed to enter player {SessionId} to room {RoomId}", session.SessionId, RoomId );
-				return RoomEnterResult.UnknownError;
-			}
+			// Notify
+			// 룸 별 입장 로직 실행 - 주로 입장 시 초기 정보 전송 담당
+			await OnPlayerEnterAsync( session );
+			return RoomEnterResult.Success;
 		}
 
 		protected virtual async Task<bool> TryLeaveAsync( IClientSession session )
@@ -328,15 +321,7 @@ namespace Server.Room
 			if(session == null || packet == null)
 				return;
 
-			try
-			{
-				session.Send( packet );
-			}
-			catch(Exception e)
-			{
-				_logger.LogError( e, "Failed to send packet to player {SessionId} in room {RoomId}",
-					session.SessionId, RoomId );
-			}
+			session.Send( packet );
 		}
 
 		public void ScheduleJob(Action action, int delayMs)
@@ -399,9 +384,6 @@ namespace Server.Room
 		protected virtual Task OnCleanupAsync() => Task.CompletedTask;
 		protected virtual async Task OnPlayerEnterAsync( IClientSession session )
 		{
-			// 오브젝트 매니저에 플레이어 등록.
-			ObjectManager.Register( session.Player );
-
 			// 현재 스폰된 몬스터 중 플레이어 근처 몬스터 정보 전송
 			var monsters = RoomMap.GetNearByMonster(session.Player.PosInfo.PosX, session.Player.PosInfo.PosZ,
 					_dataManager.GameConfig.ViewDistance );
@@ -431,6 +413,7 @@ namespace Server.Room
 			playerSpawnPacket.Objects.Add( session.Player.ToObjectInfo() );
 			BroadcastInRange( playerSpawnPacket, session.Player.PosInfo, excludeSession: session );
 		}
+		protected abstract Task OnInitPlayerPosition( IClientSession session );
 		protected virtual async Task OnPlayerLeaveAsync( IClientSession session )
 		{
 			// 룸 퇴장 패킷 전달
@@ -638,7 +621,7 @@ namespace Server.Room
 		}
 
 		private void InitializePacketHandlers( ILoggerFactory loggerFactory, ICombatService combatService, IRewardService rewardService,
-			PlayerPositionService playerPositionService )
+			IPlayerPositionService playerPositionService )
 		{
 			RoomPacketHandler = new RoomPacketHandler( loggerFactory.CreateLogger<RoomPacketHandler>(), this, playerPositionService );
 			CombatPacketHandler = new CombatPacketHandler( loggerFactory.CreateLogger<CombatPacketHandler>(), this, combatService, rewardService, _dataManager );

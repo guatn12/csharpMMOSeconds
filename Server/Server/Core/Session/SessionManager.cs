@@ -24,7 +24,7 @@ namespace Server.Core.Session
 		private readonly ILogger<SessionManager> _logger;
 		private readonly IServiceProvider _serviceProvider;
 		private readonly RedisService _redisService;
-		private readonly PlayerPositionService _playerPositionService;
+		private readonly IPlayerPositionService _playerPositionService;
 		private readonly long _sessionTimoutMs;
 		private long _nextSessionId = 1;
 		private readonly object _lock = new object();
@@ -38,7 +38,7 @@ namespace Server.Core.Session
 		#endregion
 
 		public SessionManager( ILogger<SessionManager> logger, IServiceProvider serviceProvider,
-			RedisService redisService, PlayerPositionService playerPositionService, 
+			RedisService redisService, IPlayerPositionService playerPositionService, 
 			TickService tickService, IOptions<ServerSettings> settings )
 		{
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );

@@ -22,7 +22,7 @@ namespace Server.Room
 
 		public DungeonRoom(ILogger<DungeonRoom> logger, ILoggerFactory loggerFactory, IOptions<ServerSettings> settings, 
 			DataManager dataManager, IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
-			PlayerPositionService playerPositionService, int roomId, string roomName, int maxPlayers)
+			IPlayerPositionService playerPositionService, int roomId, string roomName, int maxPlayers)
 			: base(logger, loggerFactory, roomId, roomName, maxPlayers, dataManager, jobQueueManager, combatService, rewardService, 
 				  playerPositionService, mapId: DUNGEON_MAP_ID)
 		{
@@ -39,23 +39,20 @@ namespace Server.Room
 
 		protected override async Task OnPlayerEnterAsync(IClientSession session )
 		{
+			// TODO: 추가로 전송해야 할 내용이 있을 경우 여기에 작성 (던전 입장 시 필요한 정보 등)
+			await base.OnPlayerEnterAsync( session );
+		}
+
+		protected override async Task OnInitPlayerPosition( IClientSession session )
+		{
 			// 방 A 중앙 좌표 (14.0, 0.0, 14.0)로 초기 위치 설정
 			var startPos = new PosInfo{PosX = 14.0f, PosY = 0.0f, PosZ = 14.0f };
 
-			try
-			{
-				session.Player.InitPosition( startPos );
-				RoomMap.Add( session.Player, startPos.PosX, startPos.PosZ );
-				await _playerPositionService.UpdatePositionAsync( session.PlayerId, startPos );
+			session.Player.InitPosition( startPos );
+			RoomMap.Add( session.Player, startPos.PosX, startPos.PosZ );
+			await _playerPositionService.UpdatePositionAsync( session.PlayerId, startPos );
 
-				_logger.LogInformation( "Player {Id} spawned at Dungeon entrance (RoomA)", session.PlayerId );
-			}
-			catch(Exception ex)
-			{
-				_logger.LogError( ex, "Failed to set spawn position for Player {Id}", session.PlayerId );
-			}
-
-			await base.OnPlayerEnterAsync( session );
+			_logger.LogInformation( "Player {Id} spawned at Dungeon entrance (RoomA)", session.PlayerId );
 		}
 
 		protected override void SetupDefaultSpawnPoints()
