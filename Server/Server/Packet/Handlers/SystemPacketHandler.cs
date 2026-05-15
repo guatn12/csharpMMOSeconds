@@ -63,6 +63,13 @@ namespace Server.Packet.Handlers
 			if(session.TryTransitionTo( SessionState.Transferring ) == false)
 				return;
 
+			if(session.CurrentRoom == null)
+			{
+				_logger.LogError( "C_ChangeRoom rejected - session.CurrentRoom is null. SessionId={SessionId}", session.SessionId );
+				session.Disconnect(); // 심각한 오류로 간주하여 연결 종료
+				return;
+			}
+
 			var targetRoomType = (RoomType)packet.RoomType;
 			var maxPlayers = _serverSettings.Room.Lobby.MaxPlayers;
 
@@ -104,6 +111,7 @@ namespace Server.Packet.Handlers
 
 			if(targetRoom == null)
 			{
+				session.TryTransitionTo( SessionState.InRoom );
 				session.Send( new S_ChangeRoom
 				{
 					Success = false,
