@@ -582,11 +582,23 @@ namespace DummyClient
 						isDungeon = true;
 						session.Send( new C_ChangeRoom { RoomType = (int)RoomType.Dungeon, TargetId = 0 } );
 
-						while(true)
+						const int ChangeRoomMaxWaitMs = 10000;
+						const int PollIntervalMs = 100;
+						int waitedMs = 0;
+						while(waitedMs < ChangeRoomMaxWaitMs)
 						{
 							if(ctx.MyPlayer.CurrentMapId == 3)
 								break;
-							Thread.Sleep( 100 );
+							Thread.Sleep( PollIntervalMs );
+							waitedMs += PollIntervalMs;
+						}
+
+						if(ctx.MyPlayer.CurrentMapId != 3)
+						{
+							logger.LogWarning( "[Client {ClientId}] 던전 입장 실패 = {WaitedMs}ms 대기 후 timeout. 재시도 허용.",
+								clientId, waitedMs );
+							isDungeon = false;	// 다음 사이클에서 재시도 가능
+							continue;			// moveCount 유지 - 다음 iteration에서 다시 시도.
 						}
 
 						logger.LogInformation( "[Client {ClientId}] 던전 입장 완료. (mapId=3)", clientId );

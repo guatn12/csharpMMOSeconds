@@ -50,6 +50,98 @@ namespace Server.Room
 		public bool IsEmpty => _players.IsEmpty;
 		public bool IsFull => MaxPlayers <= _players.Count;
 
+		#region RoomTransitionCoordinator
+		private int _pendingEnterCount;				// Target 보호: 들어오는 중인 세션 수
+		private int _activeTransitionSourceCount;   // Source 보호: 이 방을 source로 진행 중인 Transition 수 (rollback 대비)
+		private int _respawnPendingCount;			// 부활 대기 카운터 - 사망 후 ScheduleRespawn으로 등록된 잡이 fire될 때까지 _players가 비더라도 룸 파괴를 차단.
+		
+		/// <summary> Target: 예약 슬롯 확보. State/Full 검증 + 카운터 증가가 _lock 아래 원자 단위 </summary>
+		internal bool TryReserveEnter()
+		{
+			lock(_lock)
+			{
+				if(State != RoomState.Active && State != RoomState.Created) return false;
+				if(MaxPlayers <= _players.Count + _pendingEnterCount) return false;
+				_pendingEnterCount++;
+				return true;
+			}
+		}
+
+		/// <summary> 예약 슬롯 반납(rollback / 흐름 중단 시 사용하는 단독 경로 </summary>
+		internal void ReleaseEnterReservation()
+		{
+			lock(_lock)
+			{
+				if(_pendingEnterCount > 0) _pendingEnterCount--;
+			}
+		}
+
+		/// <summary>
+		/// 예약을 든 채 입장. 예약 소진은 입장 성공/실패/예외 어느 경로로 끝나든 finally에서 1회 수행된다. - release ownership이 baseRoom 안에서 완결되므로
+		/// Coordinator가 중복 해제할 여지가 없다. release는 TryEnterAsync가 완전히 끝난 뒤(release-last) 실행 -> 성공 경로에선 이미 세션이 _players에 있어
+		/// 멤버십으로 보호되고, 그 이전 구간은 _pendingEnterCount >= 1로 보호된다.
+		/// </summary>
+		internal async ValueTask<RoomEnterResult> EnterWithReservationAsync(IClientSession session)
+		{
+			try
+			{
+				return await TryEnterAsync( session, consumesReservation: true );
+			}
+			finally
+			{
+				ReleaseEnterReservation();		// 경로 무관 예약 1회 소진
+			}
+		}
+
+		/// <summary> Source 보호 시작 - rollback 대비 </summary>
+		internal void BeginSourceProtection()
+		{
+			lock(_lock)
+			{
+				_activeTransitionSourceCount++;
+			}
+		}
+
+		internal void EndSourceProtection()
+		{
+			lock(_lock)
+			{
+				if(_activeTransitionSourceCount > 0) _activeTransitionSourceCount--;
+			}
+		}
+
+		/// <summary>
+		/// 파괴 안전성 최종 확성 - 비어있고 진행 중 transaction이 없으면 State를 Closing으로 전환하고 true 판정
+		/// </summary>
+		internal bool TryBeginClose()
+		{
+			lock (_lock)
+			{
+				if(State != RoomState.Active && State != RoomState.Created)
+					return false;
+				if(_players.Count != 0 || _pendingEnterCount != 0 || _activeTransitionSourceCount != 0 || _respawnPendingCount != 0)
+					return false;
+				State = RoomState.Closing;
+				return true;
+			}
+		}
+
+		/// <summary> 부활 잡 등록 직후 호출 - cleanup 차단 신호 </summary>
+		internal void BeginRespawnPending()
+		{
+			lock(_lock) { _respawnPendingCount++; }
+		}
+
+		internal void EndRespawnPending()
+		{
+			lock(_lock)
+			{
+				if(_respawnPendingCount > 0) _respawnPendingCount--;
+			}
+		}
+
+		
+		#endregion
 		// Service
 		protected readonly ICombatService _combatService;
 		protected readonly IRewardService _rewardService;
@@ -184,12 +276,13 @@ namespace Server.Room
 			return _players.Values.Where( p => p.PlayerId == playerId ).FirstOrDefault();
 		}
 
-		protected virtual async Task<RoomEnterResult> TryEnterAsync( IClientSession session )
+		protected virtual async Task<RoomEnterResult> TryEnterAsync( IClientSession session, bool consumesReservation = false )
 		{
 			if(session == null)
 				return RoomEnterResult.InvalidState;
 
 			// Validate
+			bool reservationMissing = false;
 			lock(_lock)
 			{
 				// 상태 검증
@@ -201,25 +294,43 @@ namespace Server.Room
 					return RoomEnterResult.AlreadyInRoom;
 
 				// 룸이 가득 찬 상태인지 확인
-				if(MaxPlayers <= _players.Count)
+				int reservationDiscount = (consumesReservation && _pendingEnterCount > 0) ? 1 : 0;
+				if(consumesReservation && _pendingEnterCount == 0)
+					reservationMissing = true;
+				if(MaxPlayers <= _players.Count + _pendingEnterCount - reservationDiscount)
 					return RoomEnterResult.RoomFull;
 			}
+
+			if(reservationMissing)
+				_logger.LogWarning( "예약 입장인데 _pendingEnterCount == 0 - 예약 불변식 위반 의심 (sessionId={SessionId})", session.SessionId );
 
 			// Prepare
 			// 플레이어 위치 초기화
 			await OnInitPlayerPosition( session );
 
-
 			// Apply
+			bool applied = false;
 			lock (_lock)
 			{
 				// 플레이어 추가
 				if(!_players.TryAdd( session.SessionId, session ))
-					return RoomEnterResult.UnknownError;
+				{
+					applied = false;
+				}
+				else
+				{
+					// 룸이 가득 찼는지 상태 업데이트
+					if(MaxPlayers <= _players.Count) State = RoomState.Full;
+					applied = true;
+				}
+			}
 
-				// 룸이 가득 찼는지 상태 업데이트
-				if(MaxPlayers <= _players.Count)
-					State = RoomState.Full;
+			if(!applied)
+			{
+				// Prepare 부작용 rollback
+				RoomMap.Remove( session.Player );
+				await _playerPositionService.RemovePositionAsync( session.PlayerId );
+				return RoomEnterResult.UnknownError;
 			}
 
 			// 오브젝트 매니저에 플레이어 등록.
@@ -348,36 +459,53 @@ namespace Server.Room
 
 		public void ScheduleRespawn(IClientSession session, int delayMs)
 		{
-			ScheduleJob( async () =>
+			BeginRespawnPending();  // 외부 컨텍스트에서 동기 +1
+
+			bool scheduled = false;
+			try
 			{
-				try
+				ScheduleJob( async () =>
 				{
-					if(session == null || session.Player == null)
-						return;
-
-					// TODO: 활성 세션 여부도 여기서 확인 필요
-
-					session.Player.Revive();
-
-					RoomEnterResult result = await TryEnterAsync(session);
-					if(result != RoomEnterResult.Success)
+					try
 					{
-						_logger.LogWarning( "Failed to respawn player {SessionId} in room {RoomId} - Enter Result: {Result}",
-							session.SessionId, RoomId, result );
-						return;
+						if(session == null || session.Player == null)
+							return;
+
+						// TODO: 활성 세션 여부도 여기서 확인 필요
+
+						session.Player.Revive();
+
+						RoomEnterResult result = await TryEnterAsync(session);
+						if(result != RoomEnterResult.Success)
+						{
+							_logger.LogWarning( "Failed to respawn player {SessionId} in room {RoomId} - Enter Result: {Result}",
+								session.SessionId, RoomId, result );
+							return;
+						}
+
+						SendToPlayer( session, new S_EnterGame
+						{
+							Player = session.Player.ToObjectInfo(),
+							MapId = RoomMap.MapId
+						} );
 					}
-
-					SendToPlayer( session, new S_EnterGame
+					catch(Exception ex)
 					{
-						Player = session.Player.ToObjectInfo(),
-						MapId = RoomMap.MapId
-					} );
-				}
-				catch(Exception ex)
-				{
-					_logger.LogError( ex, "Failed to respawn player {SessionId} in room {RoomId}", session.SessionId, RoomId );
-				}
-			}, delayMs );
+						_logger.LogError( ex, "Failed to respawn player {SessionId} in room {RoomId}", session.SessionId, RoomId );
+					}
+					finally
+					{
+						EndRespawnPending();    // 경로(성공/실패/예외) 무관 1회 -1
+					}
+				}, delayMs );
+				scheduled = true;
+			}
+			finally
+			{
+				if(!scheduled)
+					EndRespawnPending();		// ScheduleJob 자체가 throw한 경우 즉시 -1(누수 방지)
+			}
+			
 		}
 
 		protected virtual Task OnInitializeAsync() => Task.CompletedTask;

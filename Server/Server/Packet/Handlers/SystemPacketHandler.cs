@@ -17,12 +17,15 @@ namespace Server.Packet.Handlers
 		private readonly ILogger<SystemPacketHandler> _logger;
 		private readonly IRoomManager _roomManager;
 		private readonly ServerSettings _serverSettings;
+		private readonly IRoomTransitionCoordinator _transitionCoordinator;
 
-		public SystemPacketHandler(ILogger<SystemPacketHandler> logger, IRoomManager roomManager, IOptions<ServerSettings> settings )
+		public SystemPacketHandler(ILogger<SystemPacketHandler> logger, IRoomManager roomManager, IOptions<ServerSettings> settings, 
+			IRoomTransitionCoordinator transitionCoordinator )
 		{
 			_logger = logger;
 			_roomManager = roomManager;
 			_serverSettings = settings.Value;
+			_transitionCoordinator = transitionCoordinator;
 			InitializeHandlers();
 		}
 
@@ -121,19 +124,17 @@ namespace Server.Packet.Handlers
 			}
 
 			// 방 이동(현재 방 퇴장 + 대상 방 입장)
-			RoomEnterResult result = await _roomManager.MovePlayerToRoomAsync(session, targetRoom.RoomId);
+			//RoomEnterResult result = await _roomManager.MovePlayerToRoomAsync(session, targetRoom.RoomId);
+
+			// Coordinator 위임
+			RoomTransitionResult result = await _transitionCoordinator.ChangeRoomAsync(session, targetRoom.RoomId, RoomTransitionReason.PlayerRequest);
 
 			// 성공 / 실패 여부와 관계없이 복귀
 			session.TryTransitionTo( SessionState.InRoom );
 
-			if(result != RoomEnterResult.Success)
+			if(result != RoomTransitionResult.Success)
 			{
-				string failReason = result switch
-				{
-					RoomEnterResult.RoomFull => "방이 가득 찼습니다.",
-					RoomEnterResult.RoomClosed => "방이 닫혀 있습니다.",
-					_ => "방 이동에 실패했습니다."
-				};
+				string failReason = MapTransitionResultToFailReason(result);
 
 				session.Send( new S_ChangeRoom
 				{
@@ -166,6 +167,21 @@ namespace Server.Packet.Handlers
 				session.Player.ObjectId, session.SessionId );
 
 			return Task.CompletedTask;
+		}
+
+		private string MapTransitionResultToFailReason( RoomTransitionResult result )
+		{
+			return result switch
+			{
+				RoomTransitionResult.TargetFull => "방이 가득 찼습니다.",
+				RoomTransitionResult.TargetClosed => "방이 닫혀 있습니다.",
+				RoomTransitionResult.TargetNotFound => "방을 찾을 수 없습니다.",
+				RoomTransitionResult.AlreadyTransferring => "이미 방 이동 중입니다.",
+				RoomTransitionResult.Cancelled => "방 이동이 취소되었습니다.",
+				RoomTransitionResult.RollbackSucceeded => "방 이동에 실패했습니다. 원래 방으로 복귀했습니다.",
+				RoomTransitionResult.RollbackFailed => "방 이동에 실패했습니다.",
+				_ => "방 이동에 실패했습니다."
+			};
 		}
 	}
 }

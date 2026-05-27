@@ -35,6 +35,7 @@ namespace Server.Core.Session
 		#region 이벤트
 		public event EventHandler<SessionRegisteredEventArgs> SessionRegistered;
 		public event EventHandler<SessionUnregisteredEventArgs> SessionUnregistered;
+		public event EventHandler<SessionDisconnectingEventArgs> SessionDisconnecting;
 		#endregion
 
 		public SessionManager( ILogger<SessionManager> logger, IServiceProvider serviceProvider,
@@ -212,6 +213,41 @@ namespace Server.Core.Session
 			} );
 
 			return true;
+		}
+
+		public void NotifyDisconnecting(IClientSession session, DisconnectReason reason)
+		{
+			if(session == null)
+			{
+				_logger.LogWarning( "NotifyDisconnecting: session is null" );
+				return;
+			}
+
+			var handler = SessionDisconnecting;
+			if(handler == null) return;
+
+			var args = new SessionDisconnectingEventArgs
+			{
+				SessionId = session.SessionId,
+				PlayerId = session.PlayerId,
+				Reason = reason,
+				DisconnectingAt = DateTime.UtcNow,
+			};
+
+			// 한 구독자 throw가 다른 구독자 호출을 막지 않도록 격리.
+			// '?.Invoke'는 첫 throw에서 dispatch 중단 + 호출자로 전파되므로 부적합
+			foreach(Delegate d in handler.GetInvocationList())
+			{
+				try
+				{
+					((EventHandler<SessionDisconnectingEventArgs>)d)( this, args );
+				}
+				catch(Exception ex)
+				{
+					_logger.LogError( ex, "SessionDisconnecting handler threw. SessionId={SessionId}, Handler={Handler}",
+						session.SessionId, d.Method.DeclaringType?.FullName );
+				}
+			}
 		}
 		#endregion
 

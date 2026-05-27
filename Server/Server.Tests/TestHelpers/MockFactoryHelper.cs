@@ -62,6 +62,7 @@ namespace Server.Tests.TestHelpers
 
 		public static SystemPacketHandler CreateSystemPacketHandler(Mock<IRoomManager> roomManager, int maxPlayers = 4)
 		{
+			var (coordinator, mockRoomManager, mockSessionManager) = CreateCoordinator();
 			Mock<ILogger<SystemPacketHandler>> mockLogger = new Mock<ILogger<SystemPacketHandler>>();
 			var settings = Options.Create( new ServerSettings
 			{
@@ -83,7 +84,7 @@ namespace Server.Tests.TestHelpers
 				}
 			} );
 
-			return new SystemPacketHandler( mockLogger.Object, roomManager.Object, settings );
+			return new SystemPacketHandler( mockLogger.Object, roomManager.Object, settings, coordinator );
 		}
 
 		/// <summary>
@@ -198,7 +199,9 @@ namespace Server.Tests.TestHelpers
 			var maxPlayers = 4;
 			var loggerFactory = LoggerFactory.Create(b => { });
 			var jq = new JobQueueManager(NullLogger<JobQueueManager>.Instance);
-			var mockRoomManager = new Mock<IRoomManager>();
+			//var mockRoomManager = new Mock<IRoomManager>();
+			var (coordinator, mockRoomManager, mockSessionManager) = CreateCoordinator();
+
 			var settings = Options.Create( new ServerSettings
 			{
 				Room = new RoomConfig
@@ -216,12 +219,25 @@ namespace Server.Tests.TestHelpers
 				},
 				Tick = new TickConfig { BaseTickMs = 100 }
 			} );
-			var systemHandler = new SystemPacketHandler( NullLogger<SystemPacketHandler>.Instance, mockRoomManager.Object, settings );
+			var systemHandler = new SystemPacketHandler( NullLogger<SystemPacketHandler>.Instance, mockRoomManager.Object, settings, coordinator );
 			return new PacketManager( NullLogger<PacketManager>.Instance, jq, systemHandler );
 		}
 
+		public static (RoomTransitionCoordinator coordinator,
+			Mock<IRoomManager> mockRoomManager,
+			Mock<ISessionManager> mockSessionManager)
+			CreateCoordinator()
+		{
+			var mockRoomManager = new Mock<IRoomManager>();
+			var mockSessionManager = new Mock<ISessionManager>();
+			var coordinator = new RoomTransitionCoordinator(NullLogger<RoomTransitionCoordinator>.Instance,
+				mockRoomManager.Object, mockSessionManager.Object);
+
+			return (coordinator, mockRoomManager, mockSessionManager);
+		}
+
 		// 4. 아이템이 있는 Session Mock
-		
+
 		/// <summary>
 		/// 특정 아이템을 보유한 GameSession Mock 생성
 		/// </summary>

@@ -14,12 +14,14 @@ namespace Server.Room
 		Task<int> CleanupEmptyRoomsAsync();
 
 		Task<IRoom> FindRoomAsync( int roomId );
+		IRoom FindRoom( int roomId );
 		Task<IRoom> FindRoomByNameAsync(string roomName );
 		Task<IRoom> FindAvailableRoomAsync( RoomType roomType = RoomType.Lobby );
 		Task<IReadOnlyList<IRoom>> GetRoomsByTypeAsync( RoomType roomType );
 		IReadOnlyList<IRoom> GetActiveRooms();
 
 		Task<RoomEnterResult> JoinDefaultLobbyAsync( IClientSession session );
+		[Obsolete("제거 예정", error:false)]
 		Task<RoomEnterResult> MovePlayerToRoomAsync( IClientSession session, int targetRoomId );
 		Task<IRoom> FindPlayerCurrentRoomAsync( IClientSession session );
 		Task<bool> RemovePlayerFromAllRoomsAsync( IClientSession session );

@@ -27,10 +27,16 @@ namespace Server.Core.Session
 		#region 이벤트
 		event EventHandler<SessionRegisteredEventArgs> SessionRegistered;
 		event EventHandler<SessionUnregisteredEventArgs> SessionUnregistered;
+		event EventHandler<SessionDisconnectingEventArgs> SessionDisconnecting;
 		#endregion
 
 		#region 수명주기
 		void Shutdown();
+		/// <summary>
+		/// 세션이 disconnect 절차에 진입했음을 lifecycle 구독자에게 알린다.
+		/// NetworkSession.OnDisConnected 흐름에서만 호출하며, 일반 게임 로직은 호출 금지
+		/// </summary>
+		void NotifyDisconnecting( IClientSession session, DisconnectReason reason );
 		#endregion
 
 	}

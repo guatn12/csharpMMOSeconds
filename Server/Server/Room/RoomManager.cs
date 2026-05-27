@@ -233,9 +233,13 @@ namespace Server.Room
 				int cleanedCount = 0;
 				foreach(var room in emptyRooms)
 				{
-					if(await DestoryRoomAsync( room.RoomId ))
+					// TryBeginClose : _lock 안에서 players == 0 && pending == 0 && source == 0 && respawnPending == 0 확인 후 State=Closing 전환 까지 원자적 통과한 방만 파괴.
+					if(room is BaseRoom baseRoom && baseRoom.TryBeginClose())
 					{
-						cleanedCount++;
+						if(await DestoryRoomAsync( room.RoomId ))
+						{
+							cleanedCount++;
+						}
 					}
 				}
 
@@ -255,6 +259,12 @@ namespace Server.Room
 		{
 			_rooms.TryGetValue( roomId, out var room );
 			return Task.FromResult( room );
+		}
+
+		public IRoom FindRoom(int roomId)
+		{
+			_rooms.TryGetValue( roomId, out var room );
+			return room;
 		}
 
 		public Task<IRoom> FindRoomByNameAsync( string roomName )
@@ -304,6 +314,7 @@ namespace Server.Room
 			return await baseRoom.EnterViaQueueAsync( session );
 		}
 
+		[Obsolete("제거 예정", error:false)]
 		public async Task<RoomEnterResult> MovePlayerToRoomAsync( IClientSession session, int targetRoomId )
 		{
 			try

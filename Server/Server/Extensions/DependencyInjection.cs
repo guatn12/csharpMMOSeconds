@@ -145,6 +145,9 @@ namespace Server.Extensions
 			// Room 시스템
 			services.AddSingleton<IRoomManager, RoomManager>();
 
+			// Room Transition Coordinator 등록
+			services.AddSingleton<IRoomTransitionCoordinator, RoomTransitionCoordinator>();
+
 			// Service 등록
 			services.AddSingleton<ICombatService, CombatService>();
 			services.AddSingleton<IRewardService, RewardService>();

@@ -123,6 +123,8 @@ namespace Server.Core.Session
 				return;
 			}
 
+			_sessionManager.NotifyDisconnecting( this, DisconnectReason.ClientDisconnect );
+
 			IRoom room = CurrentRoom;
 			BaseRoom baseRoom = room as BaseRoom;
 			_ = HandleDisconnectAsync( endPoint, baseRoom );

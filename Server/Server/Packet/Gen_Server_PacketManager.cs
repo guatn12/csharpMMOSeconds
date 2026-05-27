@@ -120,7 +120,15 @@ namespace Server.Packet
 			if ( packetCategory == PacketCategory.System )
 			{
 				packetHandler = _systemPacketHandler;
-				await packetHandler.HandleAsync( session, id, packetBuffer );
+				try
+				{
+					await packetHandler.HandleAsync( session, id, packetBuffer );
+				}
+				catch(Exception ex) when (ExceptionPolicy.IsCritical(ex) == false)
+				{
+					// TM-1 임시 안전망 TODO: F-1 적용 시 제거
+					_logger.LogError(ex, "SYSTEM handler exception. SessionId={SessionId}, PacketId={PacketId}", session.SessionId, id);
+				}
 			}
 			else
 			{

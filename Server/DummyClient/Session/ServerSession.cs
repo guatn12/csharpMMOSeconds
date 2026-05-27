@@ -54,7 +54,19 @@ namespace DummyClient
 
 		public override void OnDisConnected( EndPoint endPoint )
 		{
-			_logger.LogInformation( "OnDisConnected: {endPoint}", endPoint );
+			_logger.LogInformation( "OnDisConnected: {endPoint}, SessionId={SessionId}", endPoint, SessionId );
+
+			// ClientContext 정리 - MainLoop의 다음 IsConnected 검사 전 상태 일관성 확보
+			if(Context != null)
+			{
+				Context.MyPlayer.Clear();
+				Context.CurrentMapData = null;
+				Context.NearbyObjects.Clear();
+				Context.TargetMonsterId = 0;
+				Context.AutoMoveWaypoints.Clear();
+				Context.InventoryRequested = false;
+				Context.SkillCooldowns.Clear();
+			}
 		}
 
 		public override void OnRecvPacket( ArraySegment<byte> buffer )
