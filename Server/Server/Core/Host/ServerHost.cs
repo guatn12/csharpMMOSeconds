@@ -22,7 +22,7 @@ namespace Server.Core.Host
 		private readonly ILogger<ServerHost> _logger;
 		private readonly IOptions<ServerSettings> _serverSettings;
 		private readonly IJobQueueManager _jobQueueManager;
-		private readonly DataManager _dataManager;
+		private readonly IDataManager _dataManager;
 		private readonly RedisService _redisService;
 		private readonly IRoomManager _roomManager;
 		private readonly PacketManager _packetManager;
@@ -36,7 +36,7 @@ namespace Server.Core.Host
 			ILogger<ServerHost> logger,
 			IOptions<ServerSettings> serverSettings,
 			IJobQueueManager jobQueueManager,
-			DataManager dataManager,
+			IDataManager dataManager,
 			RedisService redisService,
 			IRoomManager roomManager,
 			PacketManager packetManager,

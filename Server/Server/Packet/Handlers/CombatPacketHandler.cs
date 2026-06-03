@@ -20,10 +20,10 @@ namespace Server.Packet.Handlers
 		private readonly BaseRoom _room;
 		private readonly ICombatService _combatService;
 		private readonly IRewardService _rewardService;
-		private readonly DataManager _dataManager;
+		private readonly IDataManager _dataManager;
 
 		public CombatPacketHandler(ILogger<CombatPacketHandler> logger, BaseRoom room, 
-			ICombatService combatService, IRewardService rewardService, DataManager dataManager )
+			ICombatService combatService, IRewardService rewardService, IDataManager dataManager )
 		{
 			_logger = logger;
 			_room = room;

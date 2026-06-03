@@ -60,9 +60,8 @@ namespace Server.Tests.TestHelpers
 			return mockRoom;
 		}
 
-		public static SystemPacketHandler CreateSystemPacketHandler(Mock<IRoomManager> roomManager, int maxPlayers = 4)
+		public static SystemPacketHandler CreateSystemPacketHandler(Mock<IRoomManager> roomManager, Mock<IRoomTransitionCoordinator> coordinator, int maxPlayers = 4)
 		{
-			var (coordinator, mockRoomManager, mockSessionManager) = CreateCoordinator();
 			Mock<ILogger<SystemPacketHandler>> mockLogger = new Mock<ILogger<SystemPacketHandler>>();
 			var settings = Options.Create( new ServerSettings
 			{
@@ -84,7 +83,7 @@ namespace Server.Tests.TestHelpers
 				}
 			} );
 
-			return new SystemPacketHandler( mockLogger.Object, roomManager.Object, settings, coordinator );
+			return new SystemPacketHandler( mockLogger.Object, roomManager.Object, settings, coordinator.Object );
 		}
 
 		/// <summary>
@@ -103,6 +102,8 @@ namespace Server.Tests.TestHelpers
 			mockSession.Setup( s => s.CurrentRoom ).Returns( () => currentRoom );
 			mockSession.Setup( s => s.SetCurrentRoom( It.IsAny<IRoom>() ) ).Callback<IRoom>( r => currentRoom = r );
 			mockSession.Setup( s => s.Send( It.IsAny<IMessage>() ) ).Callback<IMessage>( p => sentPackets.Add( p ) );
+
+			mockSession.Setup( s => s.TryTransitionTo( It.IsAny<SessionState>() ) ).Returns( true );
 
 			return (mockSession, sentPackets);
 		}

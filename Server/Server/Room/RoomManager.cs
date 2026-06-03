@@ -25,7 +25,7 @@ namespace Server.Room
 		private readonly ILoggerFactory _loggerFactory;
 		private readonly ConcurrentDictionary<int, IRoom> _rooms;
 		//private readonly object _lock = new object();		미사용 - 사용처가 확정될때까지 주석처리.
-		private readonly DataManager _dataManager;
+		private readonly IDataManager _dataManager;
 		private readonly TickService _tickService;
 
 		private int _isCleanupRunning = 0;	// 재진입 방지 플래그
@@ -41,7 +41,7 @@ namespace Server.Room
 		public event EventHandler<PlayerRoomChangedEventArgs> PlayerRoomChanged;
 
 		public RoomManager( ILogger<RoomManager> logger, IOptionsMonitor<ServerSettings> serverSettings,
-			ILoggerFactory loggerFactory, DataManager dataManager,
+			ILoggerFactory loggerFactory, IDataManager dataManager,
 			IRoomFactory roomFactory, IServiceProvider serviceProvider, ISessionManager sessionManager,
 			TickService tickService)
 		{
@@ -312,53 +312,6 @@ namespace Server.Room
 				throw new InvalidOperationException( "Default lobby must inherit BaseRoom." );
 
 			return await baseRoom.EnterViaQueueAsync( session );
-		}
-
-		[Obsolete("제거 예정", error:false)]
-		public async Task<RoomEnterResult> MovePlayerToRoomAsync( IClientSession session, int targetRoomId )
-		{
-			try
-			{
-				// 현재 룸에서 퇴장
-				IRoom currentRoom = await FindPlayerCurrentRoomAsync(session);
-				if(currentRoom != null)
-				{
-					if(currentRoom is not BaseRoom currentBaseRoom)
-						throw new InvalidOperationException( "Current room must inherit BaseRoom." );
-
-					bool leaveResult = await currentBaseRoom.LeaveViaQueueAsync(session);
-					if(leaveResult == false)
-						return RoomEnterResult.InvalidState;
-				}
-
-				// 새 룸 입장
-				IRoom targetRoom = await FindRoomAsync(targetRoomId);
-				if(targetRoom == null)
-				{
-					_logger.LogWarning( "Target room not found: {RoomId} for Player {SessionId}",
-						targetRoomId, session.SessionId );
-					return RoomEnterResult.InvalidState;
-				}
-
-				if(targetRoom is not BaseRoom targetBaseRoom)
-					throw new InvalidOperationException( "Target room must inherit BaseRoom." );
-
-				RoomEnterResult result = await targetBaseRoom.EnterViaQueueAsync(session);
-
-				// 룸 변경 이벤트 발생
-				if(result == RoomEnterResult.Success)
-				{
-					PlayerRoomChanged?.Invoke( this, new PlayerRoomChangedEventArgs( session, currentRoom, targetRoom ) );
-				}
-
-				return result;
-			}
-			catch( Exception ex )
-			{
-				_logger.LogError( ex, "Failed to move Player {SessionId} to Room {RoomId}",
-					session.SessionId, targetRoomId );
-				return RoomEnterResult.UnknownError;
-			}
 		}
 
 		public Task<IRoom> FindPlayerCurrentRoomAsync( IClientSession session )

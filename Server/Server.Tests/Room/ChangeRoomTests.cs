@@ -29,7 +29,8 @@ namespace Server.Tests.Room
 			var (mockSession, sentPackets) = MockFactoryHelper.CreateSessionMock( playerId: 1, initialRoom: dungeonRoom.Object );
 			
 			var mockRoomManager = new Mock<IRoomManager>();
-			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager);
+			var mockCoordinator = new Mock<IRoomTransitionCoordinator>();
+			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager, mockCoordinator);
 
 			var packet = new C_ChangeRoom
 			{
@@ -47,16 +48,22 @@ namespace Server.Tests.Room
 			Assert.Contains( "이미", response.FailReason );
 
 			// 방 이동 시도 자체가 없어야 함
-			mockRoomManager.Verify(rm => rm.MovePlayerToRoomAsync(It.IsAny<IClientSession>(), It.IsAny<int>()), Times.Never() );
-
+			mockCoordinator.Verify(c => c.ChangeRoomAsync( It.IsAny<IClientSession>(), It.IsAny<int>(), It.IsAny<RoomTransitionReason>() ), Times.Never );
 		}
 
 		/// <summary>
 		/// 검증 2: MovePlayerToRoomAsync가 RoomFull 반환 -> 실패
 		/// </summary>
 		/// <returns></returns>
-		[Fact]
-		public async Task HandleChangeRoom_RoomFull_ReturnsFailure()
+		[Theory]
+		[InlineData( RoomTransitionResult.TargetFull, "방이 가득 찼습니다." )]
+		[InlineData( RoomTransitionResult.TargetClosed, "방이 닫혀 있습니다." )]
+		[InlineData( RoomTransitionResult.TargetNotFound, "방을 찾을 수 없습니다." )]
+		[InlineData( RoomTransitionResult.AlreadyTransferring, "이미 방 이동 중입니다." )]
+		[InlineData( RoomTransitionResult.Cancelled, "방 이동이 취소되었습니다." )]
+		[InlineData( RoomTransitionResult.RollbackSucceeded, "방 이동에 실패했습니다. 원래 방으로 복귀했습니다." )]
+		[InlineData( RoomTransitionResult.RollbackFailed, "방 이동에 실패했습니다." )]
+		public async Task HandleChangeRoom_CoordinatorFailure_MapsCorrectFailReason(RoomTransitionResult transitionResult, string expectedFailReason)
 		{
 			// Arrange
 			var lobbyRoom = MockFactoryHelper.CreateMockRoom(RoomType.Lobby, roomId:1, mapId:1);
@@ -65,9 +72,10 @@ namespace Server.Tests.Room
 
 			var mockRoomManager = new Mock<IRoomManager>();
 			mockRoomManager.Setup(rm => rm.FindAvailableRoomAsync(RoomType.Dungeon)).ReturnsAsync(dungeonRoom.Object );
-			mockRoomManager.Setup( rm => rm.MovePlayerToRoomAsync( mockSession.Object, dungeonRoom.Object.RoomId ) ).ReturnsAsync( RoomEnterResult.RoomFull );
-
-			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager);
+			var mockCoordinator = new Mock<IRoomTransitionCoordinator>();
+			mockCoordinator.Setup( c => c.ChangeRoomAsync( mockSession.Object, dungeonRoom.Object.RoomId, RoomTransitionReason.PlayerRequest ) )
+				.ReturnsAsync( transitionResult );
+			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager, mockCoordinator);
 			var packet = new C_ChangeRoom{RoomType = (int)RoomType.Dungeon, TargetId = 0};
 
 			// Act
@@ -78,7 +86,7 @@ namespace Server.Tests.Room
 
 			Assert.NotNull( response );
 			Assert.False( response.Success );
-			Assert.Equal( "방이 가득 찼습니다.", response.FailReason );
+			Assert.Equal( expectedFailReason, response.FailReason );
 		}
 
 		/// <summary>
@@ -100,11 +108,12 @@ namespace Server.Tests.Room
 			// On-Demand 생성
 			mockRoomManager.Setup( rm => rm.CreateRoomAsync( RoomType.Dungeon, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<IClientSession>() ) ).ReturnsAsync( newDungeonRoom.Object );
 			// 이동 성공 + 세션 룸 갱신
-			mockRoomManager.Setup(rm => rm.MovePlayerToRoomAsync(mockSession.Object, newDungeonRoom.Object.RoomId))
-				.Callback(() => mockSession.Object.SetCurrentRoom(newDungeonRoom.Object))
-				.ReturnsAsync(RoomEnterResult.Success );
+			var mockCoordinator = new Mock<IRoomTransitionCoordinator>();
+			mockCoordinator.Setup( c => c.ChangeRoomAsync( mockSession.Object, newDungeonRoom.Object.RoomId, RoomTransitionReason.PlayerRequest ) )
+			   .Callback( () => mockSession.Object.SetCurrentRoom( newDungeonRoom.Object ) )
+			   .ReturnsAsync( RoomTransitionResult.Success );
 
-			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager);
+			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager, mockCoordinator);
 			var packet = new C_ChangeRoom{RoomType=(int)RoomType.Dungeon, TargetId = 0 };
 
 			// Act
@@ -134,11 +143,13 @@ namespace Server.Tests.Room
 
 			var mockRoomManager = new Mock<IRoomManager>();
 			mockRoomManager.Setup( rm => rm.FindAvailableRoomAsync( RoomType.Dungeon ) ).ReturnsAsync( dungeonRoom.Object );
-			mockRoomManager.Setup( rm => rm.MovePlayerToRoomAsync( mockSession.Object, dungeonRoom.Object.RoomId ) )
+			
+			var mockCoordinator = new Mock<IRoomTransitionCoordinator>();
+			mockCoordinator.Setup( c => c.ChangeRoomAsync( mockSession.Object, dungeonRoom.Object.RoomId, RoomTransitionReason.PlayerRequest ) )
 				.Callback( () => mockSession.Object.SetCurrentRoom( dungeonRoom.Object ) )
-				.ReturnsAsync( RoomEnterResult.Success );
+				.ReturnsAsync( RoomTransitionResult.Success );
 
-			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager);
+			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager, mockCoordinator);
 			var packet = new C_ChangeRoom
 			{
 				RoomType = (int)RoomType.Dungeon,
@@ -184,32 +195,40 @@ namespace Server.Tests.Room
 		/// <summary>
 		/// 검증 6: MovePlayerToRoomAsync가 LeaveViaQueueAsync + EnterViaQueueAsync 호출하는지
 		/// </summary>
-		[Fact]
+		[Trait("Category", "Integration")]
+		[Fact(Timeout = 5000)]
 		public async Task MovePlayerToRoom_UsesViaQueue()
 		{
-			// Arrange
-			var oldRoom = MockFactoryHelper.CreateMockRoom(RoomType.Lobby, roomId:1, mapId:1);
-			var newRoom = MockFactoryHelper.CreateMockRoom(RoomType.Dungeon, roomId:10, mapId:3);
-
-			oldRoom.Setup( r => r.LeaveViaQueueAsync( It.IsAny<IClientSession>() ) ).ReturnsAsync( true );
-			newRoom.Setup( r => r.EnterViaQueueAsync( It.IsAny<IClientSession>() ) ).ReturnsAsync( RoomEnterResult.Success );
-
-			var (mockSession, _) = MockFactoryHelper.CreateSessionMock( playerId: 1, initialRoom: oldRoom.Object );
-
-			var mockRoomManager = new Mock<IRoomManager>();
-			mockRoomManager.Setup( rm => rm.MovePlayerToRoomAsync( It.IsAny<IClientSession>(), 10 ) ).Returns<IClientSession, int>( async ( session, targetRoomId ) =>
+			// Arrange: 실제 LobbyRoom + DungeonRoom 인스턴스 (Mock 아님)
+			var (sourceLobby, sourceJqm) = await IntegrationTestHelper.BuildAndRegisterLobbyRoomAsync(roomId: 1, roomName: "SourceLobby", maxPlayers: 4 );
+			var (targetDungeon, targetJqm) = await IntegrationTestHelper.BuildAndRegisterDungeonRoomAsync( roomId: 10, roomName: "TargetDungeon", maxPlayers: 4 );
+			
+			try
 			{
-				await oldRoom.Object.LeaveViaQueueAsync( session );
-				return await newRoom.Object.EnterViaQueueAsync( session );
-			} );
+				// 실제 Coordinator + Mock IRoomManager (FindRoom Setup 만 필요)
+				var (coordinator, mockRoomManager, _) = MockFactoryHelper.CreateCoordinator();
+				mockRoomManager.Setup( rm => rm.FindRoom( 10 ) ).Returns( targetDungeon );
 
-			// Act
-			RoomEnterResult result = await mockRoomManager.Object.MovePlayerToRoomAsync(mockSession.Object, 10);
+				// 실제 ClientSession + source 입장 상태
+				var (session, _, _) = MockFactoryHelper.CreateRealClientSession( sessionId: 1, connected: true );
+				session.SetCurrentRoom( sourceLobby );
+				await sourceLobby.EnterViaQueueAsync( session );
 
-			// Assert
-			Assert.Equal( RoomEnterResult.Success, result );
-			oldRoom.Verify( r => r.LeaveViaQueueAsync( It.IsAny<IClientSession>() ), Times.Once );
-			newRoom.Verify( r => r.EnterViaQueueAsync( It.IsAny<IClientSession>() ), Times.Once );
+				// Act: Coordinator.ChangeRoomAsync 호출 (Step 0 ~ 5 + finally 모두 실행)
+				RoomTransitionResult result = await coordinator.ChangeRoomAsync( session, targetDungeon.RoomId, RoomTransitionReason.PlayerRequest );
+
+				// Assert: 상태 기반 검증
+				Assert.Equal( RoomTransitionResult.Success, result );
+				Assert.False( sourceLobby.ContainsPlayer( session ) );								// Leave 실제 호출됨
+				Assert.True(targetDungeon.ContainsPlayer( session ) );								// Enter 실제 호출됨
+				Assert.Same( targetDungeon, session.CurrentRoom );									// 세션의 CurrentRoom이 최종적으로 TargetDungeon으로 갱신됨
+				Assert.False( coordinator.TryGetActiveTransition( session.SessionId, out _ ) );		// finally cleanup
+			}
+			finally
+			{
+				await sourceJqm.StopAsync();
+				await targetJqm.StopAsync();
+			}
 		}
 
 		/// <summary>

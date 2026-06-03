@@ -47,7 +47,7 @@ namespace Server.Game.Monsters
 	public class MonsterSpawner
 	{
 		private readonly IRoom _room;
-		private readonly DataManager _dataManager;
+		private readonly IDataManager _dataManager;
 		private readonly ObjectManager _objectManager;
 		private readonly ILogger _logger;
 
@@ -67,7 +67,7 @@ namespace Server.Game.Monsters
 		public int MonsterCount => _monsterIds.Count;
 		public int SpawnPointCount => _spawnPoints.Count;
 
-		public MonsterSpawner(IRoom room, DataManager dataManager, ObjectManager objectManager, ILogger logger)
+		public MonsterSpawner(IRoom room, IDataManager dataManager, ObjectManager objectManager, ILogger logger)
 		{
 			_room = room;
 			_dataManager = dataManager;

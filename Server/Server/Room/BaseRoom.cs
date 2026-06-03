@@ -42,9 +42,9 @@ namespace Server.Room
 		public RoomState State { get; protected set; } = RoomState.Created;
 
 		// 몬스터
-		private readonly Func<IRoom, DataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> _monsterManagerFactory;
+		private readonly Func<IRoom, IDataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> _monsterManagerFactory;
 		public IMonsterManager MonsterManager { get; private set; }
-		protected readonly DataManager _dataManager;
+		protected readonly IDataManager _dataManager;
 
 		public IReadOnlyList<IClientSession> Players => _players.Values.ToList();
 		public bool IsEmpty => _players.IsEmpty;
@@ -160,10 +160,10 @@ namespace Server.Room
 		public event EventHandler<PlayerRoomEventArgs> PlayerEntered;
 		public event EventHandler<PlayerRoomEventArgs> PlayerLeft;
 
-		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, int roomId, string roomName, int maxPlayers, DataManager dataManager,
+		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, int roomId, string roomName, int maxPlayers, IDataManager dataManager,
 			IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
 			IPlayerPositionService playerPositionService,
-			Func<IRoom, DataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> monsterManagerFactory = null,
+			Func<IRoom, IDataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> monsterManagerFactory = null,
 			int mapId = 1 )
 			: base( jobQueueManager )
 		{

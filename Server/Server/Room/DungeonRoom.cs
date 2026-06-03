@@ -21,7 +21,7 @@ namespace Server.Room
 		public override RoomType RoomType => RoomType.Dungeon;
 
 		public DungeonRoom(ILogger<DungeonRoom> logger, ILoggerFactory loggerFactory, IOptions<ServerSettings> settings, 
-			DataManager dataManager, IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
+			IDataManager dataManager, IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
 			IPlayerPositionService playerPositionService, int roomId, string roomName, int maxPlayers)
 			: base(logger, loggerFactory, roomId, roomName, maxPlayers, dataManager, jobQueueManager, combatService, rewardService, 
 				  playerPositionService, mapId: DUNGEON_MAP_ID)

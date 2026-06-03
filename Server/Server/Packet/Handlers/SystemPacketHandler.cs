@@ -123,9 +123,6 @@ namespace Server.Packet.Handlers
 				return;
 			}
 
-			// 방 이동(현재 방 퇴장 + 대상 방 입장)
-			//RoomEnterResult result = await _roomManager.MovePlayerToRoomAsync(session, targetRoom.RoomId);
-
 			// Coordinator 위임
 			RoomTransitionResult result = await _transitionCoordinator.ChangeRoomAsync(session, targetRoom.RoomId, RoomTransitionReason.PlayerRequest);
 

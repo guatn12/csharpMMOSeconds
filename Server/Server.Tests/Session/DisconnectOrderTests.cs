@@ -23,6 +23,7 @@ namespace Server.Tests.Session
 			// Arrange: 초기 상태 Connected 
 			var (session, _, _) = MockFactoryHelper.CreateRealClientSession( sessionId: 1, connected: true );
 			var lobbyMock = MockFactoryHelper.CreateMockRoom(RoomType.Lobby, roomId: 1, mapId: 1);
+			var mockICoordinator = new Mock<IRoomTransitionCoordinator>();
 
 			int joinCallCount = 0;
 			var mockRoomManager = new Mock<IRoomManager>();
@@ -36,7 +37,7 @@ namespace Server.Tests.Session
 					return RoomEnterResult.Success;
 				} );
 
-			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager);
+			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager, mockICoordinator);
 
 			// Act 
 			var t1 = handler.Handlers[typeof(C_EnterGame)](session, new C_EnterGame());
@@ -55,6 +56,7 @@ namespace Server.Tests.Session
 			var (session, _, _) = MockFactoryHelper.CreateRealClientSession( sessionId: 1, connected: true );
 			var lobbyMock = MockFactoryHelper.CreateMockRoom(RoomType.Lobby, roomId: 1, mapId: 1);
 			var dungeonMock = MockFactoryHelper.CreateMockRoom(RoomType.Dungeon, roomId: 10, mapId: 3);
+			
 
 			int moveCallCount = 0;
 			var mockRoomManager = new Mock<IRoomManager>();
@@ -68,17 +70,17 @@ namespace Server.Tests.Session
 			mockRoomManager
 				.Setup( rm => rm.FindAvailableRoomAsync( RoomType.Dungeon ) )
 				.ReturnsAsync( dungeonMock.Object );
-			mockRoomManager
-				.Setup( rm => rm.MovePlayerToRoomAsync( It.IsAny<IClientSession>(), 10 ) )
-				.Returns<IClientSession, int>( async ( s, _ ) =>
+			var mockICoordinator = new Mock<IRoomTransitionCoordinator>();
+			mockICoordinator.Setup( c => c.ChangeRoomAsync( It.IsAny<IClientSession>(), 10, RoomTransitionReason.PlayerRequest ) )
+				.Returns<ClientSession, int, RoomTransitionReason>( async ( s, _, __ ) =>
 				{
 					Interlocked.Increment( ref moveCallCount );
 					await Task.Yield();     // race 강제
 					s.SetCurrentRoom( dungeonMock.Object );
-					return RoomEnterResult.Success;
+					return RoomTransitionResult.Success;
 				} );
 
-			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager);
+			var handler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager, mockICoordinator);
 
 			// 정상 진입: C_EnterGame -> InRoom 도달
 			await handler.Handlers[typeof(C_EnterGame)]( session, new C_EnterGame());
@@ -123,17 +125,18 @@ namespace Server.Tests.Session
 			mockRoomManager
 				.Setup( rm => rm.FindAvailableRoomAsync( RoomType.Dungeon ) )
 				.ReturnsAsync( dungeonMock.Object );
-			mockRoomManager
-				.Setup( rm => rm.MovePlayerToRoomAsync( It.IsAny<IClientSession>(), 10 ) )
-				.Returns<IClientSession, int>( async ( s, _ ) =>
+			
+			var mockICoordinator = new Mock<IRoomTransitionCoordinator>();
+			mockICoordinator.Setup( c => c.ChangeRoomAsync( It.IsAny<IClientSession>(), 10, RoomTransitionReason.PlayerRequest ) )
+				.Returns<ClientSession, int, RoomTransitionReason>( async ( s, _, __ ) =>
 				{
-					moveSatrted.SetResult();				// Transferring 진입을 외부에 알림
-					await moveProceed.Task;					// 외부가 신호 줄 때까지 유지
+					moveSatrted.SetResult();                // Transferring 진입을 외부에 알림
+					await moveProceed.Task;                 // 외부가 신호 줄 때까지 유지
 					s.SetCurrentRoom( dungeonMock.Object );
-					return RoomEnterResult.Success;
+					return RoomTransitionResult.Success;
 				} );
 
-			var systemHandler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager);
+			var systemHandler = MockFactoryHelper.CreateSystemPacketHandler(mockRoomManager, mockICoordinator);
 
 			var loggerFactory = LoggerFactory.Create(b => { });
 			var jobQueueManager = new JobQueueManager(loggerFactory.CreateLogger<JobQueueManager>());

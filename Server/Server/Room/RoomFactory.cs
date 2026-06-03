@@ -18,11 +18,11 @@ namespace Server.Room
 	public class RoomFactory : IRoomFactory
 	{
 		private readonly ILoggerFactory _loggerFactory;
-		private readonly DataManager _dataManager;
+		private readonly IDataManager _dataManager;
 		private readonly IJobQueueManager _jobQueueManager;
 		private readonly IOptions<ServerSettings> _serverSettings;
 
-		public RoomFactory(ILoggerFactory loggerFactory, DataManager dataManager, IJobQueueManager jobQueueManager, IOptions<ServerSettings> serverSettings )
+		public RoomFactory(ILoggerFactory loggerFactory, IDataManager dataManager, IJobQueueManager jobQueueManager, IOptions<ServerSettings> serverSettings )
 		{
 			_loggerFactory=loggerFactory;
 			_dataManager=dataManager;

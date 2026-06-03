@@ -29,7 +29,7 @@ namespace Server.Room
 		public bool IsDefaultLobby { get; private set; }
 
 		public LobbyRoom( ILogger<LobbyRoom> logger, ILoggerFactory loggerFactory, IOptions<ServerSettings> ServerSettings,
-			DataManager datamanager, IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
+			IDataManager datamanager, IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
 			IPlayerPositionService playerPositionService, int roomId, string roomName = null, bool isDefaultLobby = false ) 
 			: base( logger, loggerFactory, roomId, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
 				  jobQueueManager, combatService, rewardService, playerPositionService)

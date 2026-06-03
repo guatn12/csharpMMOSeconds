@@ -14,7 +14,7 @@ using System.Threading.Tasks;
 
 namespace Server.Data
 {
-	public class DataManager
+	public class DataManager : IDataManager
 	{
 		private readonly ILogger<DataManager> _logger;
 		private readonly ServerSettings _serverSettings;
@@ -30,6 +30,8 @@ namespace Server.Data
 		private readonly object _lock = new object();
 
 		public GameConfigData GameConfig => _gameConfig;
+		public bool IsDataLoaded => _isDataLoaded;
+		public DateTime LastLoadTime => _lastLoadTime;
 
 		public DataManager(
 			IOptions<ServerSettings> serverOptions,
@@ -40,7 +42,7 @@ namespace Server.Data
 			_logger.LogInformation( "DataManager initialized with data path: {DataPath}", _serverSettings.GameData.DataPath );
 		}
 
-		public ItemData? GetItem( int itemId )
+		public ItemData GetItem( int itemId )
 		{
 			if(!_isDataLoaded)
 			{
@@ -51,7 +53,7 @@ namespace Server.Data
 			return _items.TryGetValue( itemId, out var item ) ? item : null;
 		}
 
-		public MonsterData? GetMonster( int monsterId )
+		public MonsterData GetMonster( int monsterId )
 		{
 			if(!_isDataLoaded)
 			{
@@ -62,7 +64,7 @@ namespace Server.Data
 			return _monsters.TryGetValue( monsterId, out var monster ) ? monster : null;
 		}
 
-		public SkillData? GetSkill( int skillId )
+		public SkillData GetSkill( int skillId )
 		{
 			if(!_isDataLoaded)
 			{
@@ -73,7 +75,7 @@ namespace Server.Data
 			return _skills.TryGetValue( skillId, out var skill ) ? skill : null;
 		}
 
-		public MapData? GetMap(int mapId)
+		public MapData GetMap(int mapId)
 		{
 			if(!_isDataLoaded)
 			{
@@ -209,9 +211,6 @@ namespace Server.Data
 
 			return skills;
 		}
-
-		public bool IsDataLoaded => _isDataLoaded;
-		public DateTime LastLoadTime => _lastLoadTime;
 
 		public async Task<bool> LoadAllDataAsync()
 		{

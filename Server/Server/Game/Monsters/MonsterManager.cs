@@ -17,7 +17,7 @@ namespace Server.Game.Monsters
 	public class MonsterManager : IMonsterManager
 	{
 		private readonly IRoom _room;
-		private readonly DataManager _dataManager;
+		private readonly IDataManager _dataManager;
 		private readonly ILogger _logger;
 		private readonly ObjectManager _objectManager;
 		private MonsterSpawner _monsterSpawner;
@@ -28,7 +28,7 @@ namespace Server.Game.Monsters
 		public event Action<long, Monster> OnMonsterDespawned;
 		public event Action<Monster> OnMonsterSpawned;
 
-		public MonsterManager(IRoom room, DataManager dataManager, ObjectManager objectManager, ILogger logger, 
+		public MonsterManager(IRoom room, IDataManager dataManager, ObjectManager objectManager, ILogger logger, 
 			MonsterSpawnPolicy monsterSpawnPolicy = null )
 		{
 			_room=room;

@@ -161,7 +161,7 @@ namespace Server.Extensions
 		private static IServiceCollection AddDataServices( this IServiceCollection services )
 		{
 			// 기본 데이터 관리
-			services.AddSingleton<DataManager>();
+			services.AddSingleton<IDataManager, DataManager>();
 
 			// 새 캐싱 서비스들 추가
 			services.AddSingleton<PlayerCacheService>();
