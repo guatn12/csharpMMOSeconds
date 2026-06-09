@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Server.Room
@@ -76,7 +77,7 @@ namespace Server.Room
 				// Step3: target room 예약 (target + 1)
 				context.Step = RoomTransitionStep.ReservingTarget;
 				bool reserved = await baseTargetRoom.PushAsync<bool>(
-					() => ValueTask.FromResult(baseTargetRoom.TryReserveEnter()));
+					() => ValueTask.FromResult(baseTargetRoom.TryReserveEnter()), context.Cancellation.Token);
 				if(!reserved) return RoomTransitionResult.TargetFull;
 				reservationHeld = true;
 
@@ -87,7 +88,7 @@ namespace Server.Room
 					{
 						baseSourceRoom.BeginSourceProtection();
 						return ValueTask.CompletedTask;
-					} );
+					}, context.Cancellation.Token );
 					sourceProtected = true;
 				}
 
@@ -98,7 +99,7 @@ namespace Server.Room
 				context.Step = RoomTransitionStep.LeavingSource;
 				if(baseSourceRoom != null)
 				{
-					bool left = await baseSourceRoom.LeaveViaQueueAsync(session);
+					bool left = await baseSourceRoom.LeaveViaQueueAsync(session, context.Cancellation.Token);
 					if(!left)
 					{
 						context.Step = RoomTransitionStep.Failed;
@@ -109,6 +110,7 @@ namespace Server.Room
 				// Step5: target room 입장 (예약 보유 상태)
 				// push 직전에 release 책임을 잡으로 이전. EnterWithReservationAsync는 finally에서 경로(성공/실패/예외) 무관 예약을 1회 소진하므로
 				// "잡이 돌면 반드시 release"가 성립. -> 이후 Coordinator finally는 Step 2 ~ 4 사이 실패만 담당 = 이중 해제 구조적 불가능.
+				// EnterWithReservationAsync - token 전달 금지 -> reservation 해제 책임이 잡 finally로 이전된 상태
 				context.Step = RoomTransitionStep.EnteringTarget;
 				reservationHeld = false;
 				RoomEnterResult enterResult = await baseTargetRoom.PushAsync<RoomEnterResult>(
@@ -126,6 +128,13 @@ namespace Server.Room
 
 				return RoomTransitionResult.Success;
 			}
+			catch(OperationCanceledException) when (context.Cancellation.IsCancellationRequested)
+			{
+				// J-2 큐 대기 중 cancel 또는 transition timeout
+				_logger.LogInformation( "[Transition:{TransitionId}] Cancellaed via queue wait. SessionId = {SessionId}, Step={Step}",
+					context.TransitionId, session.SessionId, context.Step );
+				return RoomTransitionResult.Cancelled;
+			}
 			finally
 			{
 				// Reservation 미consume 상태로 흐름 종료 시 해제(실패 경로)
@@ -135,7 +144,7 @@ namespace Server.Room
 					{
 						baseTargetRoom.ReleaseEnterReservation();
 						return ValueTask.CompletedTask;
-					} );
+					}, CancellationToken.None );
 				}
 
 				// source 보호 해제 (rollback 시도까지 끝난 후)
@@ -145,7 +154,7 @@ namespace Server.Room
 					{
 						baseSourceRoom.EndSourceProtection();
 						return ValueTask.CompletedTask;
-					} );
+					}, CancellationToken.None );
 				}
 
 				_activeTransitions.TryRemove( session.SessionId, out _ );

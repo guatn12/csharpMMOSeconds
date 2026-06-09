@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using Server.Core.Session;
+using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,8 +12,11 @@ namespace Server.Tests.Session
 {
 	public class SessionStateTests
 	{
-		private ClientSession CreateSession() => new ClientSession(
-			new Mock<ILogger<ClientSession>>().Object, null, new Mock<ISessionManager>().Object, 1 );
+		private ClientSession CreateSession()
+		{
+			return new ClientSession(
+			new Mock<ILogger<ClientSession>>().Object, null, new Mock<ISessionManager>().Object, new Mock<IJobQueueManager>().Object, 1 );
+		}
 
 		[Fact]
 		public void InitialState_ShouldBeConnected()

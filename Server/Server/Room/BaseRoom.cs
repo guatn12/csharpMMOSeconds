@@ -20,6 +20,7 @@ using Server.Packet.Handlers;
 using Server.Game.Map;
 using Server.Utils;
 using Server.Game.Objects;
+using System.Threading;
 
 namespace Server.Room
 {
@@ -368,18 +369,37 @@ namespace Server.Room
 		/// <summary>
 		/// 외부에서 Room의 JobQueue를 경유하여 입장 처리
 		/// Room 내부 핸들러에서는 호출 금지 (데드락 위험)
+		/// cancellationToken 미사용.
 		/// </summary>
 		public Task<RoomEnterResult> EnterViaQueueAsync(IClientSession session)
+			=> EnterViaQueueAsync( session, CancellationToken.None );
+
+		/// <summary>
+		/// 외부에서 Room의 JobQueue를 경유하여 입장 처리
+		/// Room 내부 핸들러에서는 호출 금지 (데드락 위험)
+		/// cancellationToken 사용
+		/// </summary>
+		public Task<RoomEnterResult> EnterViaQueueAsync(IClientSession session, CancellationToken token)
 		{
-			return PushAsync<RoomEnterResult>( () => new ValueTask<RoomEnterResult>( TryEnterAsync( session ) ) );
+			return PushAsync<RoomEnterResult>( () => new ValueTask<RoomEnterResult>( TryEnterAsync( session ) ), token );
 		}
 
 		/// <summary>
 		/// 외부에서 Room의 JobQueue를 경유하여 퇴장 처리
+		/// Room 내부 핸들러에서는 호출 금지 (데드락 위험)
+		/// cancellationToken 미사용.
 		/// </summary>
-		public Task<bool> LeaveViaQueueAsync(IClientSession session)
+		public Task<bool> LeaveViaQueueAsync( IClientSession session )
+			=> LeaveViaQueueAsync( session, CancellationToken.None );
+
+		/// <summary>
+		/// 외부에서 Room의 JobQueue를 경유하여 퇴장 처리
+		/// Room 내부 핸들러에서는 호출 금지 (데드락 위험)
+		/// cancellationToken 사용
+		/// </summary>
+		public Task<bool> LeaveViaQueueAsync(IClientSession session, CancellationToken token)
 		{
-			return PushAsync<bool>( () => new ValueTask<bool>( TryLeaveAsync( session ) ) );
+			return PushAsync<bool>( () => new ValueTask<bool>( TryLeaveAsync( session ) ), token );
 		}
 
 		protected override bool CanAcceptJob()

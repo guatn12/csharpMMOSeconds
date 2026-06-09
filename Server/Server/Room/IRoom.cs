@@ -16,6 +16,8 @@ namespace Server.Room
 		string RoomName { get; }
 		int MaxPlayers { get; }
 		int CurrentPlayerCount { get; }
+		bool IsEmpty { get; }   // 룸이 비어 있는지 확인
+		bool IsFull { get; }    // 룸이 가득 찼는지 확인
 
 		RoomType RoomType { get; }
 		RoomState State { get; }
@@ -59,8 +61,7 @@ namespace Server.Room
 		// 룸 정리 및 종료
 		Task CleanupAsync();
 
-		bool IsEmpty { get; }	// 룸이 비어 있는지 확인
-		bool IsFull { get; }    // 룸이 가득 찼는지 확인
+
 
 		///<summary> 플레이어 입장 이벤트 - 외부(로깅, 퀘스트 등)에서 구독 가능 </summary> 
 		event EventHandler<PlayerRoomEventArgs> PlayerEntered;

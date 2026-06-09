@@ -119,9 +119,11 @@ namespace Server.Tests.TestHelpers
 			var mockLogger = new Mock<ILogger<ClientSession>>();
 			var mockSessionManager = new Mock<ISessionManager>();
 
-			packetManager ??= CreateMinimalPacketManager();
 
-			var session = new ClientSession(mockLogger.Object, packetManager, mockSessionManager.Object, sessionId);
+			var (tempPacketManager, jobQueueManager) = CreateMinimalPacketManager();
+			packetManager ??= tempPacketManager;
+
+			var session = new ClientSession(mockLogger.Object, packetManager, mockSessionManager.Object, jobQueueManager, sessionId);
 			
 			if (connected)
 			{
@@ -195,7 +197,8 @@ namespace Server.Tests.TestHelpers
 			return mockLogger;
 		}
 
-		private static PacketManager CreateMinimalPacketManager()
+		private static (PacketManager packetManager, JobQueueManager jobQueueManager) 
+			CreateMinimalPacketManager()
 		{
 			var maxPlayers = 4;
 			var loggerFactory = LoggerFactory.Create(b => { });
@@ -221,7 +224,7 @@ namespace Server.Tests.TestHelpers
 				Tick = new TickConfig { BaseTickMs = 100 }
 			} );
 			var systemHandler = new SystemPacketHandler( NullLogger<SystemPacketHandler>.Instance, mockRoomManager.Object, settings, coordinator );
-			return new PacketManager( NullLogger<PacketManager>.Instance, jq, systemHandler );
+			return (new PacketManager( NullLogger<PacketManager>.Instance, jq, systemHandler ), jq);
 		}
 
 		public static (RoomTransitionCoordinator coordinator,

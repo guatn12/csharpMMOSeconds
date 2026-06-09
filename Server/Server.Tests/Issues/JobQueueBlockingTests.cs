@@ -1,3 +1,4 @@
+using Server.Tests.TestHelpers;
 using ServerCore;
 using System;
 using System.Collections.Concurrent;
@@ -23,7 +24,7 @@ namespace Server.Tests.Issues
 		public void Test_WorkerBlocking_GetAwaiterResult()
 		{
 			var mockJobQueueManager = new MockJobQueueManager();
-			var mockTestRoom = new TestRoom( mockJobQueueManager );
+			var mockTestRoom = new JobSerializerTestRoom( mockJobQueueManager );
 			var mockLogger = new List<string>();
 			var mockStopWatch = new Stopwatch();
 			mockStopWatch.Start();
@@ -69,7 +70,7 @@ namespace Server.Tests.Issues
 		public async Task Test_ThreadTransfer_FireAndForget()
 		{
 			var mockManager = new MockJobQueueManager();
-			var mockTestRoom = new TestRoom( mockManager );
+			var mockTestRoom = new JobSerializerTestRoom( mockManager );
 			var mockLogger = new ConcurrentBag<string>();
 			var stopWatch = new Stopwatch();
 			int sharedCounter = 0;

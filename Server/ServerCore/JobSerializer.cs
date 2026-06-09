@@ -32,9 +32,16 @@ namespace ServerCore
 			// 작업이 이미 진행중이라면 작업 리스트에 추가만 하고 넘어감.
 		}
 
-		public Task<T> PushAsync<T>(Func<ValueTask<T>> work)
+		public Task<T> PushAsync<T>(Func<ValueTask<T>> work, CancellationToken token = default)
 		{
 			var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+			// Push 시점 즉시 검사 - 큐에 들어가기 전 빠르게 정리를 위한 검사
+			if(token.IsCancellationRequested)
+			{
+				tcs.SetCanceled( token );
+				return tcs.Task;
+			}
 
 			if(CanAcceptJob() == false)
 			{
@@ -45,9 +52,16 @@ namespace ServerCore
 			DelegateJob job = _jobQueueManager.JobPool.Get<DelegateJob>();
 			job.Initialize( async () =>
 			{
+				// dispatch 직전 재검사 - 큐 대기 중 cancel 신호 캐치
+				if(token.IsCancellationRequested)
+				{
+					tcs.TrySetCanceled( token );
+					return;
+				}
+
 				try
 				{
-					T result = await work();
+					T result = await work();			// 진행 중에는 token 무시
 					tcs.TrySetResult( result );
 				}
 				catch(Exception ex)
@@ -60,9 +74,16 @@ namespace ServerCore
 			return tcs.Task;
 		}
 
-		public Task PushAsync(Func<ValueTask> work)
+		public Task PushAsync(Func<ValueTask> work, CancellationToken token = default)
 		{
 			var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+			// Push 시점 즉시 검사 - 큐에 들어가기 전 빠르게 정리를 위한 검사
+			if(token.IsCancellationRequested)
+			{
+				tcs.SetCanceled( token );
+				return tcs.Task;
+			}
 
 			if(CanAcceptJob() == false)
 			{
@@ -73,9 +94,16 @@ namespace ServerCore
 			DelegateJob job = _jobQueueManager.JobPool.Get<DelegateJob>();
 			job.Initialize( async () =>
 			{
+				// dispatch 직전 재검사 - 큐 대기 중 cancel 신호 캐치
+				if(token.IsCancellationRequested)
+				{
+					tcs.TrySetCanceled( token );
+					return;
+				}
+
 				try
 				{
-					await work();
+					await work();           // 진행 중에는 token 무시
 					tcs.TrySetResult();
 				}
 				catch(Exception ex)

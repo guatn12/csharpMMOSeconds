@@ -1,3 +1,4 @@
+using Server.Tests.TestHelpers;
 using ServerCore;
 using System.Diagnostics;
 using Xunit.Abstractions;
@@ -17,7 +18,7 @@ namespace Server.Tests.Issues
 		public async Task Test_AsyncJob_Seriality_Guaranteed()
 		{
 			var mockJobQueueManager = new MockJobQueueManager();
-			var mockTestRoom = new TestRoom( mockJobQueueManager );
+			var mockTestRoom = new JobSerializerTestRoom( mockJobQueueManager );
 			var mockLogger = new List<string>();
 			var mockStopWatch = new Stopwatch();
 			mockStopWatch.Start();
@@ -58,7 +59,7 @@ namespace Server.Tests.Issues
 		public async Task Test_MixedJobs_OrderGuaranteed()
 		{
 			var mockJobQueueManager = new MockJobQueueManager();
-			var mockTestRoom = new TestRoom( mockJobQueueManager );
+			var mockTestRoom = new JobSerializerTestRoom( mockJobQueueManager );
 			var log = new List<string>();
 			var sw = new Stopwatch();
 			sw.Start();

@@ -1,11 +1,12 @@
 using Server.Tests.Issues;
+using Server.Tests.TestHelpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Server.Tests.Room
+namespace Server.Tests.Infra
 {
 	public class PushAsyncTests
 	{
