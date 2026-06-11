@@ -13,6 +13,7 @@ using Server.Packet;
 using Server.Services;
 using Microsoft.Extensions.Options;
 using Server.Config;
+using ServerCore;
 
 namespace Server.Core.Session
 {
@@ -69,9 +70,10 @@ namespace Server.Core.Session
 			// DI 컨테이너에서 의존성 해결
 			var logger = _serviceProvider.GetRequiredService<ILogger<ClientSession>>();
 			var packetManager = _serviceProvider.GetRequiredService<PacketManager>();
+			var jobQueueManager = _serviceProvider.GetRequiredService<IJobQueueManager>();
 
 			// GameSession  생성
-			var session = new ClientSession(logger,  packetManager, this, sessionId );
+			var session = new ClientSession(logger, packetManager, this, jobQueueManager, sessionId );
 
 			_logger.LogInformation( "Session created: SessionId={SessionId}", sessionId );
 

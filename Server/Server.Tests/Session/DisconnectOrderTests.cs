@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Protocol;
 using Server.Core.Session;
+using Server.Packet;
 using Server.Room;
 using Server.Tests.TestHelpers;
 using ServerCore;
@@ -153,7 +154,12 @@ namespace Server.Tests.Session
 			// Act: Transferring 시점에 C_Move 도착
 			var movePacket = new C_Move {PosInfo = new PosInfo{PosX = 10 } };
 			var buffer = MockFactoryHelper.SerializeClientPacket(PacketID.C_Move, movePacket);
-			await packetManager.HandlePacket( session, buffer );
+			PacketRoute route = packetManager.RouteIncoming(session, buffer);
+			if(!route.Dropped)
+			{
+				if(route.Category == PacketCategory.System) session.EnqueueSystemJob( route.Job );
+				else (session.CurrentRoom as BaseRoom)?.Push( route.Job );
+			}
 
 			// 정리
 			moveProceed.SetResult();

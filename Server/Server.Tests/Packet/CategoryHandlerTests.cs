@@ -61,5 +61,23 @@ namespace Server.Tests.Packet
 			Assert.NotNull( response );
 			Assert.Equal( 1, response.MapId );
 		}
+
+		// 검증 6 - Disconnecting 상태에서 잔역 ChangeRoom이 Coordinator를 안 부름
+		[Fact]
+		public async Task DisconnectedSession_PendingChangeRoom_IsNoOp()
+		{
+			var room = MockFactoryHelper.CreateMockRoom(RoomType.Lobby, roomId: 1, mapId: 1);
+			var (mockSession, _) = MockFactoryHelper.CreateSessionMock( playerId: 1, initialRoom: room.Object );
+			mockSession.Setup( s => s.State ).Returns( SessionState.Disconnecting );
+			mockSession.Setup( s => s.TryTransitionTo( SessionState.Transferring ) ).Returns( false ); // 가드 발동
+
+			var roomMgr = new Mock<IRoomManager>();
+			var mockCoordinator = new Mock<IRoomTransitionCoordinator>();
+			var handler = MockFactoryHelper.CreateSystemPacketHandler(roomMgr, mockCoordinator);
+
+			await handler.Handlers[ typeof( C_ChangeRoom ) ]( mockSession.Object, new C_ChangeRoom { RoomType = (int)RoomType.Battle } );
+
+			mockCoordinator.Verify( c => c.ChangeRoomAsync( It.IsAny<IClientSession>(), It.IsAny<int>(), It.IsAny<RoomTransitionReason>() ), Times.Never );
+		}
 	}
 }

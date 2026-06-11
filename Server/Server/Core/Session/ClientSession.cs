@@ -21,6 +21,7 @@ namespace Server.Core.Session
         //private readonly ILogger<ClientSession> _logger;
         private readonly PacketManager _packetManager;
         private readonly ISessionManager _sessionManager;
+		private readonly SessionJobQueue _sessionQueue;
         private IRoom _currentRoom;
         private readonly object _roomLock = new object();
 		private long _lastActiveTime = Environment.TickCount64;
@@ -57,14 +58,18 @@ namespace Server.Core.Session
 			[SessionState.Disconnected] = new(),
 		};
 
-        public ClientSession( ILogger<ClientSession> logger, PacketManager packetManager, ISessionManager sessionManager, long sessionId)
+        public ClientSession( ILogger<ClientSession> logger, PacketManager packetManager, ISessionManager sessionManager, 
+			IJobQueueManager jobQueueManager, long sessionId)
 			:base( logger )
 		{
             //_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
             _packetManager = packetManager;
             _sessionManager = sessionManager;
             SessionId = sessionId;
+			_sessionQueue = new SessionJobQueue( jobQueueManager, this );
         }
+
+		public void EnqueueSystemJob( IJob job ) => _sessionQueue.Push( job );
 
 		public void Send( IMessage packet )
 		{
@@ -78,21 +83,36 @@ namespace Server.Core.Session
 
 		public override void OnRecvPacket( ArraySegment<byte> buffer )
         {
-            ushort packetIdValue = BitConverter.ToUInt16(buffer.Array, buffer.Offset + 2);
-            PacketID packetId = (PacketID)packetIdValue;
+			if( _packetManager == null )
+			{
+				_logger.LogError( "PacketManager is null. Cannot handle received packet. SessionId: {SessionId}",
+					SessionId );
+				return;
+			}
 
-            _logger.LogDebug( "Packet Received. SessionId: {SessionId}, PacketID: {PacketID}, Size: {Size}",
-                SessionId, packetId, buffer.Count );
+			Interlocked.Exchange( ref _lastActiveTime, Environment.TickCount64 );
+			PacketRoute packetRoute = _packetManager.RouteIncoming(this, buffer);
 
-            if(_packetManager != null)
-            {
-				Interlocked.Exchange( ref _lastActiveTime, Environment.TickCount64 );
-				_ = _packetManager.HandlePacket( this, buffer );
+			_logger.LogDebug( "Packet Received. SessionId: {SessionId}, Size: {Size}", SessionId, buffer.Count );
+
+			if( packetRoute.Dropped ) return;
+
+			if( packetRoute.Category == PacketCategory.System )
+			{
+				// 순수 Push 경로는 CanAcceptJob을 검사하지 않으므로 종료 상태 가디를 여기서 둔다.
+				if( State >= SessionState.Disconnecting ) return;
+				EnqueueSystemJob( packetRoute.Job );					// 세션 큐 위임
 			}
 			else
 			{
-				_logger.LogError( "PacketManager is null. Cannot handle received packet. SessionId: {SessionId}, PacketID: {PacketID}",
-					SessionId, packetId );
+				BaseRoom baseRoom = CurrentRoom as BaseRoom;
+				if( baseRoom == null )
+				{
+					_logger.LogError( "Room lost between routing ans push. SessionId = {SessionId}, Category={Category}, State={State}",
+						SessionId, packetRoute.Category, State );
+					return;
+				}
+				baseRoom.Push( packetRoute.Job );						// 룸 큐 위임
 			}
         }
 

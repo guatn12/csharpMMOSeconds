@@ -1,4 +1,3 @@
-using Castle.Core.Logging;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,6 +18,7 @@ using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -132,6 +132,19 @@ namespace Server.Tests.TestHelpers
 				session.OnConnected(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 12345));
 			}
 			return (session, mockLogger, mockSessionManager);
+		}
+		/// <summary>
+		/// 외부 JobQueueManager를 주입해 세션 큐를 테스트가 start/stop 제어할 수 있는 실제 ClientSession 
+		/// CreateRealClientSession은 내부 Jq를 반환하지 않아 쿼거 구동이 불가하므로 통합 테스트는 이 오버로드를 사용한다.
+		/// </summary>
+		public static ClientSession CreateRealClientSessionWithQueue(PacketManager packetManager, JobQueueManager jq, long sessionId = 1, bool connected = false)
+		{
+			var session = new ClientSession(NullLogger<ClientSession>.Instance, packetManager, new Mock<ISessionManager>().Object, jq, sessionId);
+
+			if(connected)
+				session.OnConnected( new IPEndPoint( IPAddress.Loopback, 12345 ) );
+
+			return session;
 		}
 
 		/// <summary>

@@ -15,6 +15,14 @@ using Server.Room;
 
 namespace Server.Packet
 {
+	public readonly struct PacketRoute
+	{
+		public bool Dropped { get; init; }
+		public PacketCategory Category { get; init; }
+		public IJob Job { get; init; }
+		public static PacketRoute Drop => new() { Dropped = true };
+	}
+
 	public class PacketManager
 	{
 		private readonly ILogger<PacketManager> _logger;
@@ -74,7 +82,7 @@ namespace Server.Packet
             _packetCategoryCache.Add(PacketID.C_UnequipItem, PacketCategory.Inventory);
         }
 
-		public async ValueTask HandlePacket(IClientSession session, ArraySegment<byte> buffer)
+		public PacketRoute RouteIncoming(IClientSession session, ArraySegment<byte> buffer)
 		{
 			ushort count = 0;
 			ushort size = BitConverter.ToUInt16(buffer.Array, buffer.Offset);
@@ -101,18 +109,18 @@ namespace Server.Packet
 				{
 					_logger.LogDebug("Packet {PacketId} dropped: session {SessionId} in state {State}",
 								packetId, session.SessionId, currentState);
-					return;
+					return PacketRoute.Drop;
 				}
 			}
 
-
+			// 카테고리 분류
 			PacketCategory packetCategory = GetPacketCategory(packetId);
 			_logger.LogDebug("Packet received: ID={PacketId}, Category={Category}", id, packetCategory);
 
 			if( packetCategory == PacketCategory.NoneCategory )
 			{
 				_logger.LogWarning("PacketId:{PacketId} not found Category", id);
-				return;
+				return PacketRoute.Drop;
 			}
 
 			IPacketHandler packetHandler = null;
@@ -120,15 +128,6 @@ namespace Server.Packet
 			if ( packetCategory == PacketCategory.System )
 			{
 				packetHandler = _systemPacketHandler;
-				try
-				{
-					await packetHandler.HandleAsync( session, id, packetBuffer );
-				}
-				catch(Exception ex) when (ExceptionPolicy.IsCritical(ex) == false)
-				{
-					// TM-1 임시 안전망 TODO: F-1 적용 시 제거
-					_logger.LogError(ex, "SYSTEM handler exception. SessionId={SessionId}, PacketId={PacketId}", session.SessionId, id);
-				}
 			}
 			else
 			{
@@ -136,7 +135,7 @@ namespace Server.Packet
 				if(session.CurrentRoom == null)
 				{
 					_logger.LogWarning( "Player {PlayerId} not in any room for packet {PacketId}", session.PlayerId, id.ToString() );
-					return;
+					return PacketRoute.Drop;
 				}
 
 				var room = session.CurrentRoom;
@@ -149,19 +148,12 @@ namespace Server.Packet
 					_ => null
 				};
 
-				var packetJob = _jobQueueManager.JobPool.Get<PacketJob>();
-				packetJob.Initialize( packetHandler, session, id, packetBuffer );
-
-				BaseRoom baseRoom = room as BaseRoom;
-				if(baseRoom == null)
-				{
-					_logger.LogWarning( "Player {PlayerId} current room is not BaseRoom for packet {PacketId}",
-					session.PlayerId, id.ToString() );
-					return;
-				}
-
-				baseRoom.Push( packetJob );
+				if( packetHandler == null ) return PacketRoute.Drop;
 			}
+
+			var packetJob = _jobQueueManager.JobPool.Get<PacketJob>();
+			packetJob.Initialize( packetHandler, session, id, packetBuffer );
+			return new PacketRoute { Category = packetCategory, Job = packetJob };
 		}
 		public ArraySegment<byte> MakeSendPacket(IMessage packet)
 		{
