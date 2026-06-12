@@ -1,28 +1,26 @@
+using DatabaseLib.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Server.Config;
 using StackExchange.Redis;
-using System;
 using System.Text.Json;
-using System.Threading.Tasks;
 
-namespace Server.Infra
+namespace DatabaseLib
 {
 	public class RedisService : IDisposable
 	{
 		private readonly IConnectionMultiplexer _connectionMultiplexer;
 		private readonly IDatabase _database;
-		private readonly RedisConfig _redisConfig;
+		private readonly RedisOptions _redisOption;
 		private readonly ILogger<RedisService> _logger;
 		private readonly string _keyPrefix = "MMO:";
 		
 		private readonly object _lock  = new object();
 
 		public RedisService(IConnectionMultiplexer connectionMultiplexer, 
-			IOptions<ServerSettings> serverSettings, ILogger<RedisService> logger)
+			IOptions<RedisOptions> redisOptions, ILogger<RedisService> logger)
 		{
 			_connectionMultiplexer = connectionMultiplexer;
-			_redisConfig = serverSettings.Value.Redis;
+			_redisOption = redisOptions.Value;
 			_logger = logger;
 
 			_database = _connectionMultiplexer.GetDatabase();

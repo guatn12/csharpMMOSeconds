@@ -2,7 +2,7 @@ using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Protocol;
 using Server.Core.Session;
-using Server.Database.Entities;
+using DatabaseLib.Entities;
 using ServerCore;
 using System;
 using System.Collections.Concurrent;

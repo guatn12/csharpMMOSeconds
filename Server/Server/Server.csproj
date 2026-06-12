@@ -55,6 +55,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ServerCore\ServerCore.csproj" />
+    <ProjectReference Include="..\DatabaseLib\DatabaseLib.csproj" />
   </ItemGroup>
 
   <ItemGroup>

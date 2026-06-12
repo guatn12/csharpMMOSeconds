@@ -1,12 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using DatabaseLib;
 
 namespace Server.Infra
 {
@@ -36,7 +33,10 @@ namespace Server.Infra
 			Console.WriteLine( $"Using ConnectionString: {connectionString.Substring( 0, 20 )}..." );
 
 			DbContextOptionsBuilder<AppDbContext> optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-			optionsBuilder.UseNpgsql( connectionString );
+			optionsBuilder.UseNpgsql( connectionString, npgsql =>
+			{
+				npgsql.MigrationsAssembly( "DatabaseLib" );
+			} );
 
 			return new AppDbContext( optionsBuilder.Options );
 		}

@@ -8,16 +8,13 @@ using ServerCore;
 using Server.Config;
 using Server.Core.Session;
 using Server.Infra;
-using Microsoft.EntityFrameworkCore;
-using StackExchange.Redis;
-using System;
-using Npgsql;
-using Server.Database.Services;
 using Server.Services;
 using Server.Services.Combat;
 using Server.Services.Reward;
 using Server.Packet.Handlers;
 using Server.Infra.HealthCheck;
+using DatabaseLib;
+using DatabaseLib.Extensions;
 
 namespace Server.Extensions
 {
@@ -40,8 +37,8 @@ namespace Server.Extensions
 			// 데이터 서비스 등록
 			services.AddDataServices();
 
-			// 레디스 서비스 등록
-			services.AddRedisService( configuration );
+			// DB 라이브러리를 이용해 DB / Redis / 일부 서비스 등록
+			services.AddDatabaseLib( configuration );
 
 			// Health Check 추가 (DB 연결 상태 모니터링)
 			services.AddHealthChecks()
@@ -78,52 +75,6 @@ namespace Server.Extensions
 			services.AddSingleton<SystemPacketHandler>();
 			services.AddSingleton<PacketManager>();
 			services.AddSingleton<ISessionManager, SessionManager>();
-			//services.AddHostedService(sp => (SessionManager)sp.GetRequiredService<ISessionManager>() );
-
-
-			// DB 서비스
-			DatabaseConfig databaseConfig = configuration.GetSection("ServerSettings:Database").Get<DatabaseConfig>()
-				?? throw new InvalidOperationException("Database 설정을 찾을 수 없습니다.");
-
-			var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
-
-			string connectionString = databaseConfig.ConnectionString;
-			if(string.IsNullOrEmpty( connectionString ))
-			{
-				connectionString = configuration.GetConnectionString( "DefaultConnection" )
-					?? throw new InvalidOperationException( "Database 연결 문자열을 찾을 수 없습니다." );
-			}
-
-			// Npgsql Connection Pool 최적화
-			var connectionStringBuilder = new NpgsqlConnectionStringBuilder(connectionString)
-			{
-				MinPoolSize = databaseConfig.MinPoolSize,
-				MaxPoolSize = databaseConfig.MaxPoolSize,
-				ConnectionLifetime = databaseConfig.ConnectionTimeout,
-				Timeout = databaseConfig.ConnectionTimeout,
-				CommandTimeout = databaseConfig.CommandTimeout,
-
-				// 추가 성능 최적화
-				Pooling = true,
-				IncludeErrorDetail = environment == "Development"
-			};
-
-			// DbContextFactory만 사용 (MMORPG 서버에서는 Scoped DbContext 불필요)
-			services.AddDbContextFactory<AppDbContext>( options =>
-			{
-				options.UseNpgsql( connectionStringBuilder.ConnectionString, npgsqloptions =>
-				{
-					npgsqloptions.CommandTimeout( databaseConfig.CommandTimeout );
-				} );
-
-				if(environment == "Development" && databaseConfig.EnableSensitiveDataLogging)
-				{
-					options.EnableSensitiveDataLogging();
-					options.EnableDetailedErrors();
-				}
-
-				options.EnableServiceProviderCaching();
-			} );
 
 			// QueueManager 등록
 			services.AddSingleton<IJobQueueManager, JobQueueManager>();
@@ -151,6 +102,7 @@ namespace Server.Extensions
 			// Service 등록
 			services.AddSingleton<ICombatService, CombatService>();
 			services.AddSingleton<IRewardService, RewardService>();
+			services.AddSingleton<IPlayerPositionService, PlayerPositionService>();			// 내부에서 Redis 사용
 
 			return services;
 		}
@@ -162,37 +114,6 @@ namespace Server.Extensions
 		{
 			// 기본 데이터 관리
 			services.AddSingleton<IDataManager, DataManager>();
-
-			// 새 캐싱 서비스들 추가
-			services.AddSingleton<PlayerCacheService>();
-			services.AddSingleton<InventoryCacheService>();
-
-			return services;
-		}
-
-		public static IServiceCollection AddRedisService(this IServiceCollection services, IConfiguration configuration )
-		{
-			// Redis 설정 가져오기
-			var redisConnectionString = configuration.GetSection("ServerSettings:Redis:ConnectionString").Value;
-
-			// ConnectionMultiplexer 등록
-			services.AddSingleton<IConnectionMultiplexer>( provider =>
-			{
-				var configurationOptions = new ConfigurationOptions
-				{
-					EndPoints = {redisConnectionString},
-					AbortOnConnectFail = false, // 연결 실패 시 서버 중단 방지
-					ConnectTimeout = 5000,
-					ConnectRetry = 3
-				};
-
-				return ConnectionMultiplexer.Connect( configurationOptions );
-			} );
-
-			// RedisService 등록
-			services.AddSingleton<RedisService>();
-			services.AddSingleton<IPlayerPositionService, PlayerPositionService>();
-
 
 			return services;
 		}

@@ -1,7 +1,7 @@
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Protocol;
-using Server.Database.Entities;
+using DatabaseLib.Entities;
 using Server.Game;
 using Server.Game.Objects;
 using Server.Packet;

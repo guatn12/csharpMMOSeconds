@@ -32,12 +32,6 @@ namespace Server.Config
 			// Room 설정 검증
 			ValidateRoom( options.Room, failures );
 
-			// Redis 설정 검증
-			ValidateRedis( options.Redis, failures );
-
-			// DB 설정 검증
-			ValidateDatabase( options.Database, failures );
-
 			// Session 설정 검증
 			ValidateSession( options.Session, failures );
 
@@ -115,30 +109,6 @@ namespace Server.Config
 
 			if(room.TickIntervalMs < 16 || 1000 < room.TickIntervalMs)
 				failures.Add( $"Room TickIntervalMs must be between 16 and 1000, got: {room.TickIntervalMs}" );
-		}
-
-		private void ValidateRedis( RedisConfig redis, List<string> failures )
-		{
-			if(redis == null)
-			{
-				failures.Add( "Redis configuration is required" );
-				return;
-			}
-
-			if(string.IsNullOrWhiteSpace( redis.ConnectionString ))
-				failures.Add( "Redis ConnectionString is required" );
-		}
-
-		private void ValidateDatabase( DatabaseConfig database, List<string> failures )
-		{
-			if(database == null)
-			{
-				failures.Add( "Database configuration is required" );
-				return;
-			}
-
-			if(string.IsNullOrWhiteSpace( database.ConnectionString ))
-				failures.Add( "Database ConnectionString is required" );
 		}
 
 		private void ValidateSession( SessionConfig session, List<string> failures )

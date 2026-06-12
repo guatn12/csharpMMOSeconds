@@ -1,4 +1,4 @@
-using Server.Database.Entities;
+using DatabaseLib.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;

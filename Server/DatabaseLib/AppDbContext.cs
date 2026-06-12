@@ -1,12 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Server.Database.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using DatabaseLib.Entities;
 
-namespace Server.Infra
+namespace DatabaseLib
 {
 	public class AppDbContext : DbContext
 	{

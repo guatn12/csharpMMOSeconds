@@ -1,5 +1,5 @@
 using Protocol;
-using Server.Database.Entities;
+using DatabaseLib.Entities;
 using Server.Game.Objects;
 using System;
 using System.Collections.Generic;

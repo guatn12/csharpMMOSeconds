@@ -1,8 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Server.Migrations
+namespace DatabaseLib.Migrations
 {
 	/// <inheritdoc />
 	public partial class JsonbPerformanceOptimization : Migration

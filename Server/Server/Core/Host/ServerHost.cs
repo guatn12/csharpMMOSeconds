@@ -14,6 +14,7 @@ using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using DatabaseLib;
 
 namespace Server.Core.Host
 {
@@ -144,10 +145,6 @@ namespace Server.Core.Host
 		private async Task InitializeCoreServicesAsync()
 		{
 			ServerSettings settings = _serverSettings.Value;
-
-			// JobQueueManager 초기화
-			//var jobQueueLogger = _serviceProvider.GetRequiredService<ILogger<JobQueueManager>>();
-			//JobQueueManager.Initialize( jobQueueLogger );
 
 			// JobQueue 시작
 			int threadCount = 0 < settings.JobQueue.WorkerThreadCount

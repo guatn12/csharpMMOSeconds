@@ -7,7 +7,7 @@ using Protocol;
 using Server.Config;
 using Server.Core.Session;
 using Server.Data.Models;
-using Server.Database.Entities;
+using DatabaseLib.Entities;
 using Server.Game;
 using Server.Game.Map;
 using Server.Infra;

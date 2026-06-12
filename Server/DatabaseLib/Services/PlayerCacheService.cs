@@ -1,15 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Server.Database.Entities;
-using Server.Game;
-using Server.Infra;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using DatabaseLib.Entities;
 
-namespace Server.Database.Services
+namespace DatabaseLib.Services
 {
 	public class PlayerCacheService
 	{
