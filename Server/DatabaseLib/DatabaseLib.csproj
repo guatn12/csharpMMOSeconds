@@ -7,6 +7,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.7">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.7" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.7">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.7" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.7" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.7" />
@@ -14,6 +23,13 @@
     <PackageReference Include="StackExchange.Redis" Version="2.9.11" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.7" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="dbcontext.designtime.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>      <!-- design-time 전용 -> publish 산출물 유출 방지 -->
+    </None>
   </ItemGroup>
 
 </Project>
