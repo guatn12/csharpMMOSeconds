@@ -1,4 +1,5 @@
 using DatabaseLib.Options;
+using DatabaseLib.Redis;
 using DatabaseLib.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -51,7 +52,7 @@ namespace DatabaseLib.Extensions
 				return ConnectionMultiplexer.Connect( configurationOptions );
 			} );
 
-			services.AddSingleton<RedisService>();
+			services.AddSingleton<IRedisService, RedisService>();
 			services.AddSingleton<PlayerCacheService>();
 			services.AddSingleton<InventoryCacheService>();
 

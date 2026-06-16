@@ -145,11 +145,11 @@ namespace Server.Game
 				Stats.CurrentMP = MaxMP;
 
 				// 레벨업 이벤트 발생
-				OnLevelUp.Invoke( this );
+				OnLevelUp?.Invoke( this );
 
 				// HP/MP 변경 이벤트 발생
 				RaiseOnHealthChanged( oldHP, CurrentHP );
-				OnManaChanged.Invoke(this, oldMP, CurrentMP );
+				OnManaChanged?.Invoke(this, oldMP, CurrentMP );
 			}
 
 			UpdateLastUpdateTime();
@@ -262,7 +262,7 @@ namespace Server.Game
 			Stats.CurrentMP = Math.Max( 0, CurrentMP - actualMpCost );
 
 			// MP 변경 이벤트 발생
-			OnManaChanged.Invoke( this, oldMP, CurrentMP );
+			OnManaChanged?.Invoke( this, oldMP, CurrentMP );
 
 			UpdateLastUpdateTime();
 			return true;
@@ -537,7 +537,7 @@ namespace Server.Game
 			int oldMP = CurrentMP;
 			Stats.CurrentMP = Math.Min(MaxMP, CurrentMP + manaAmount);
 
-			OnManaChanged.Invoke( this, oldMP, CurrentMP );
+			OnManaChanged?.Invoke( this, oldMP, CurrentMP );
 			UpdateLastUpdateTime();
 			return true;
 		}
@@ -553,7 +553,7 @@ namespace Server.Game
 			Stats.CurrentMP = MaxMP;
 
 			RaiseOnHealthChanged( oldHP, CurrentHP );
-			OnManaChanged.Invoke(this, oldMP, CurrentMP );
+			OnManaChanged?.Invoke(this, oldMP, CurrentMP );
 			UpdateLastUpdateTime();
 			return true;
 		}

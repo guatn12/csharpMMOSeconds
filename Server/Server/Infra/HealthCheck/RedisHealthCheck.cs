@@ -1,5 +1,5 @@
+using DatabaseLib.Redis;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using StackExchange.Redis;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -7,10 +7,10 @@ namespace Server.Infra.HealthCheck
 {
 	public class RedisHealthCheck : IHealthCheck
 	{
-		private readonly IConnectionMultiplexer _redis;
+		private readonly IRedisService _redis;
 
 		// 생성자에서 이미 만들어진 진짜 Redis 연결을 주입받음
-		public RedisHealthCheck( IConnectionMultiplexer redis )
+		public RedisHealthCheck( IRedisService redis )
 		{
 			_redis = redis;
 		}

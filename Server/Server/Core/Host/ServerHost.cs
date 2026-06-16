@@ -14,7 +14,7 @@ using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DatabaseLib;
+using DatabaseLib.Redis;
 
 namespace Server.Core.Host
 {
@@ -24,7 +24,7 @@ namespace Server.Core.Host
 		private readonly IOptions<ServerSettings> _serverSettings;
 		private readonly IJobQueueManager _jobQueueManager;
 		private readonly IDataManager _dataManager;
-		private readonly RedisService _redisService;
+		private readonly IRedisService _redisService;
 		private readonly IRoomManager _roomManager;
 		private readonly PacketManager _packetManager;
 		private readonly Listener _listener;
@@ -38,7 +38,7 @@ namespace Server.Core.Host
 			IOptions<ServerSettings> serverSettings,
 			IJobQueueManager jobQueueManager,
 			IDataManager dataManager,
-			RedisService redisService,
+			IRedisService redisService,
 			IRoomManager roomManager,
 			PacketManager packetManager,
 			Listener listener,

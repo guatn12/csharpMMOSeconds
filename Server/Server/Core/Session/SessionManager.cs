@@ -11,7 +11,7 @@ using Server.Services;
 using Microsoft.Extensions.Options;
 using Server.Config;
 using ServerCore;
-using DatabaseLib;
+using DatabaseLib.Redis;
 
 namespace Server.Core.Session
 {
@@ -22,7 +22,7 @@ namespace Server.Core.Session
 	{
 		private readonly ILogger<SessionManager> _logger;
 		private readonly IServiceProvider _serviceProvider;
-		private readonly RedisService _redisService;
+		private readonly IRedisService _redisService;
 		private readonly IPlayerPositionService _playerPositionService;
 		private readonly long _sessionTimoutMs;
 		private long _nextSessionId = 1;
@@ -38,7 +38,7 @@ namespace Server.Core.Session
 		#endregion
 
 		public SessionManager( ILogger<SessionManager> logger, IServiceProvider serviceProvider,
-			RedisService redisService, IPlayerPositionService playerPositionService, 
+			IRedisService redisService, IPlayerPositionService playerPositionService, 
 			TickService tickService, IOptions<ServerSettings> settings )
 		{
 			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
@@ -140,7 +140,7 @@ namespace Server.Core.Session
 						RegisteredAt = DateTime.UtcNow
 					};
 
-					await _redisService.SetSessionAsync( session.SessionId, sessionInfo, TimeSpan.FromHours( 2 ) );
+					await _redisService.SetAsync( $"session:{session.SessionId}", sessionInfo, TimeSpan.FromHours( 2 ) );
 
 					_logger.LogDebug( "Redis에 세션 정보 저장 완료: SessionId={SessionId}", session.SessionId );
 				}
@@ -199,7 +199,7 @@ namespace Server.Core.Session
 				try
 				{
 					// Redis 세션 정보 삭제
-					await _redisService.DeleteSessionAsync( sessionId );
+					await _redisService.DeleteAsync( $"session:{sessionId}" );
 					_logger.LogDebug( "Redis에서 세션 정보 삭제 완료: SessionId={SessionId}", sessionId );
 
 					// 플레이어 위치 정보 제거

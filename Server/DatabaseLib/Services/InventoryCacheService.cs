@@ -1,19 +1,20 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using DatabaseLib.Entities;
+using DatabaseLib.Redis;
 
 namespace DatabaseLib.Services
 {
 	public class InventoryCacheService
 	{
 		private readonly IDbContextFactory<AppDbContext> _contextFactory;
-		private readonly RedisService _redis;
+		private readonly IRedisService _redis;
 		private readonly ILogger<InventoryCacheService> _logger;
 
 		private const string INVENTORY_CACHE_PREFIX = "MMO:inventory:";
 		private readonly TimeSpan _cacheTTL = TimeSpan.FromMinutes(30);
 
-		public InventoryCacheService(IDbContextFactory<AppDbContext> contextFactory, RedisService redis, ILogger<InventoryCacheService> logger )
+		public InventoryCacheService(IDbContextFactory<AppDbContext> contextFactory, IRedisService redis, ILogger<InventoryCacheService> logger )
 		{
 			_contextFactory = contextFactory;
 			_redis=redis;

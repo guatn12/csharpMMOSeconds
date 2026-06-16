@@ -65,7 +65,7 @@ namespace Server.Game.Objects
 				var oldState = CreatureState;
 				_creatureState = newState;
 
-				OnStateChanged.Invoke( this, (int)oldState, (int)newState );
+				OnStateChanged?.Invoke( this, (int)oldState, (int)newState );
 			}
 
 			UpdateLastUpdateTime();
@@ -78,12 +78,12 @@ namespace Server.Game.Objects
 
 		protected void RaiseOnDeath()
 		{
-			OnDeath.Invoke( this );
+			OnDeath?.Invoke( this );
 		}
 
 		protected void RaiseOnHealthChanged(int oldValue, int newValue)
 		{
-			OnHealthChanged.Invoke( this, oldValue, newValue );
+			OnHealthChanged?.Invoke( this, oldValue, newValue );
 		}
 	}
 }

@@ -1,19 +1,20 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using DatabaseLib.Entities;
+using DatabaseLib.Redis;
 
 namespace DatabaseLib.Services
 {
 	public class PlayerCacheService
 	{
 		private readonly IDbContextFactory<AppDbContext> _contextFactory;
-		private readonly RedisService _redis;
+		private readonly IRedisService _redis;
 		private readonly ILogger<PlayerCacheService> _logger;
 
 		private const string PLAYER_CACHE_PREFIX = "MMO:player:";
 		private readonly TimeSpan _cacheTTL = TimeSpan.FromHours(1);
 
-		public PlayerCacheService(IDbContextFactory<AppDbContext> contextFactory, RedisService redis, ILogger<PlayerCacheService> logger)
+		public PlayerCacheService(IDbContextFactory<AppDbContext> contextFactory, IRedisService redis, ILogger<PlayerCacheService> logger)
 		{
 			_contextFactory = contextFactory;
 			_redis=redis;

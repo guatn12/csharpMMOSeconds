@@ -492,6 +492,8 @@ namespace Server.Room
 							return;
 
 						// TODO: 활성 세션 여부도 여기서 확인 필요
+						if(SessionState.Disconnecting <= session.State)
+							return;
 
 						session.Player.Revive();
 

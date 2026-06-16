@@ -1,19 +1,17 @@
+using DatabaseLib.Redis;
 using Microsoft.Extensions.Logging;
 using Protocol;
-using Server.Extensions;
-using Server.Infra;
-using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
+using System.Globalization;
 
 namespace Server.Services
 {
 	public class PlayerPositionService : IPlayerPositionService
 	{
-		private readonly IDatabase _redis;
+		private readonly IRedisService _redis;
 		private readonly ILogger<PlayerPositionService> _logger;
 
 
@@ -22,9 +20,9 @@ namespace Server.Services
 		private const string POSITION_KEY_PREFIX = "player:position:";
 		private const string ACTIVE_PLAYERS_SET = "active_players";
 
-		public PlayerPositionService( IConnectionMultiplexer redis, ILogger<PlayerPositionService> logger )
+		public PlayerPositionService( IRedisService redis, ILogger<PlayerPositionService> logger )
 		{
-			_redis = redis.GetDatabase();
+			_redis = redis;
 			_logger = logger;
 		}
 
@@ -35,32 +33,22 @@ namespace Server.Services
 				string key = $"{POSITION_KEY_PREFIX}{playerId}";
 
 				// Redis Hash로 3D 좌표 저장 (메모리 효율적)
-				HashEntry[] positionData = new HashEntry[]
-				{
-					new("x", posInfo.PosX),
-					new("y", posInfo.PosY),
-					new("z", posInfo.PosZ),
-					new("rotX", posInfo.RotationX),
-					new("rotY", posInfo.RotationY),
-					new("rotZ", posInfo.RotationZ),
-					new("timestamp", posInfo.Timestamp),
-					new("lastUpdate", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
-				};
+				Dictionary<string, string> positionData = ToDict(posInfo);
 
 				// 배치 실행으로 성능 최적화
-				IBatch batch = _redis.CreateBatch();
+				IRedisBatch batch = _redis.CreateBatch();
 
 				// 위치 정보 저장
-				_ = batch.HashSetAsync( key, positionData );
+				batch.HashSet( key, positionData );
 
 				// 만료 시간 설정
-				_ = batch.KeyExpireAsync( key, TimeSpan.FromMinutes( POSITION_EXPIRE_MINUTES ) );
+				batch.KeyExpire( key, TimeSpan.FromMinutes( POSITION_EXPIRE_MINUTES ) );
 
 				// 활성 플레이어 목록에 추가
-				_ = batch.SetAddAsync( ACTIVE_PLAYERS_SET, playerId );
+				batch.SetAdd( ACTIVE_PLAYERS_SET, playerId.ToString() );
 
 				// 배치 실행 - 위의 내용 일괄 적용.
-				batch.Execute();
+				await batch.ExecuteAsync();
 
 				_logger.LogDebug( "플레이어 위치 업데이트 {PlayerId}: ({X}, {Y}, {Z} )",
 					playerId, posInfo.PosX, posInfo.PosY, posInfo.PosZ );
@@ -77,21 +65,12 @@ namespace Server.Services
 			try
 			{
 				string key = $"{POSITION_KEY_PREFIX}{playerId}";
-				HashEntry[] positionData = await _redis.HashGetAllAsync(key);
+				IReadOnlyDictionary<string, string> positionData = await _redis.HashGetAllAsync(key);
 
-				if(positionData.Length == 0)
+				if(positionData.Count == 0)
 					return null;
 
-				return new PosInfo
-				{
-					PosX = positionData.GetFloat( "x" ),
-					PosY = positionData.GetFloat( "y" ),
-					PosZ = positionData.GetFloat( "z" ),
-					RotationX = positionData.GetFloat( "rotX" ),
-					RotationY = positionData.GetFloat( "rotY" ),
-					RotationZ = positionData.GetFloat( "rotZ" ),
-					Timestamp = positionData.GetLong( "timestamp" )
-				};
+				return ToPosInfo(positionData);
 			}
 			catch(Exception ex)
 			{
@@ -112,35 +91,26 @@ namespace Server.Services
 
 				// 배치로 모든 플레이어 위치 조회 (성능 최적화)
 				var batch = _redis.CreateBatch();
-				var positionTasks = new Dictionary<long, Task<HashEntry[]>>();
+				var positionTasks = new Dictionary<long, Task<IReadOnlyDictionary<string, string>>>();
 
 				foreach(var playerIdValue in activePlayerIds)
 				{
-					if(playerIdValue.TryParse( out long playerId ))
+					if(long.TryParse( playerIdValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var playerId ))
 					{
 						var key = $"{POSITION_KEY_PREFIX}{playerId}";
 						positionTasks[ playerId ] = batch.HashGetAllAsync( key );
 					}
 				}
 
-				batch.Execute();
+				await batch.ExecuteAsync();
 
 				// 3D 거리 계산 및 반경 내 플레이어 필터링
 				foreach(var kvp in positionTasks)
 				{
 					var positionData = await kvp.Value;
-					if(positionData.Length == 0) continue;
+					if(positionData.Count == 0) continue;
 
-					var playerPos = new PosInfo
-					{
-						PosX = positionData.GetFloat( "x" ),
-						PosY = positionData.GetFloat( "y" ),
-						PosZ = positionData.GetFloat( "z" ),
-						RotationX = positionData.GetFloat( "rotX" ),
-						RotationY = positionData.GetFloat( "rotY" ),
-						RotationZ = positionData.GetFloat( "rotZ" ),
-						Timestamp = positionData.GetLong( "timestamp" )
-					};
+					var playerPos = ToPosInfo(positionData);
 
 					// 3D 거리 계산
 					var distance = (float)Math.Sqrt(
@@ -172,9 +142,9 @@ namespace Server.Services
 				var key = $"{POSITION_KEY_PREFIX}{playerId}";
 
 				var batch = _redis.CreateBatch();
-				_ = batch.KeyDeleteAsync( key );
-				_ = batch.SetRemoveAsync( ACTIVE_PLAYERS_SET, playerId );
-				batch.Execute();
+				batch.KeyDelete( key );
+				batch.SetRemove( ACTIVE_PLAYERS_SET, playerId.ToString() );
+				await batch.ExecuteAsync();
 
 				_logger.LogDebug( "플레이어 위치 삭제 {PlayerId}", playerId );
 			}
@@ -266,5 +236,34 @@ namespace Server.Services
 				return new List<(long PlayerId, PosInfo Position)>();
 			}
 		}
+
+		private static Dictionary<string, string> ToDict( PosInfo posInfo ) => new()
+		{
+			[ "x" ] = posInfo.PosX.ToString( CultureInfo.InvariantCulture ),
+			[ "y" ] = posInfo.PosY.ToString( CultureInfo.InvariantCulture ),
+			[ "z" ] = posInfo.PosZ.ToString( CultureInfo.InvariantCulture ),
+			[ "rotX" ] = posInfo.RotationX.ToString( CultureInfo.InvariantCulture ),
+			[ "rotY" ] = posInfo.RotationY.ToString( CultureInfo.InvariantCulture ),
+			[ "rotZ" ] = posInfo.RotationZ.ToString( CultureInfo.InvariantCulture ),
+			[ "timestamp" ] = posInfo.Timestamp.ToString( CultureInfo.InvariantCulture ),
+			[ "lastUpdate" ] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString( CultureInfo.InvariantCulture ),
+		};
+
+		private static PosInfo ToPosInfo( IReadOnlyDictionary<string, string> dict ) => new()
+		{
+			PosX = GetFloat( dict, "x" ),
+			PosY = GetFloat( dict, "y" ),
+			PosZ = GetFloat( dict, "z" ),
+			RotationX = GetFloat( dict, "rotX" ),
+			RotationY = GetFloat( dict, "rotY" ),
+			RotationZ = GetFloat( dict, "rotZ" ),
+			Timestamp = GetLong( dict, "timestamp" ),
+		};
+
+		private static float GetFloat( IReadOnlyDictionary<string, string> dict, string key )
+			=> dict.TryGetValue( key, out var v ) && float.TryParse( v, NumberStyles.Float, CultureInfo.InvariantCulture, out var result ) ? result : 0f;
+
+		private static long GetLong( IReadOnlyDictionary<string, string> dict, string key )
+			=> dict.TryGetValue( key, out var s ) && long.TryParse( s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v ) ? v : 0L;
 	}
 }

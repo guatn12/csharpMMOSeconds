@@ -257,7 +257,7 @@ namespace Server.Game.Monsters
 						Monster respawnedMonster = SpawnMonster(spawnPoint);
 						if((respawnedMonster != null))
 						{
-							OnMonsterSpawned.Invoke( respawnedMonster );
+							OnMonsterSpawned?.Invoke( respawnedMonster );
 						}
 					}, respawnMs );
 				}
