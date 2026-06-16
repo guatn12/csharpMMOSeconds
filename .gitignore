@@ -145,3 +145,4 @@ Common/Generated/*.cs
 Common/Generated/*.h
 Priority.txt
 *.md
+/Server/DatabaseLib/dbcontext.designtime.json
