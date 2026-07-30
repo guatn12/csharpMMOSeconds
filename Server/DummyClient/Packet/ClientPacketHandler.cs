@@ -17,6 +17,47 @@ namespace DummyClient.Packet
 			_logger = logger;
 		}
 
+		public override ValueTask On_S_Login( NetworkSession session, S_Login packet ) 
+		{
+			if(packet.Success == false)
+			{
+				_logger.LogWarning( "[Client] S_Login 실패 - Message:{Message}", packet.Message );
+				return ValueTask.CompletedTask;
+			}
+
+			var serverSession = session as ServerSession;
+
+			if( 0 < packet.Players.Count)
+			{
+				// 기존 캐릭터 입장 - 첫 캐릭터(무조건)
+				serverSession.Send( new Protocol.C_EnterGame
+				{
+					PlayerId = packet.Players[ 0 ].PlayerId,
+				} );
+				return ValueTask.CompletedTask;
+			}
+			else
+			{
+				// 캐릭터 없음 -> 생성
+				serverSession.Send( new Protocol.C_CreatePlayer
+				{
+					PlayerName = $"Dummy{serverSession.SessionId}",
+				} );
+				return ValueTask.CompletedTask;
+			}
+		}
+
+		public override ValueTask On_S_CreatePlayer( NetworkSession session, S_CreatePlayer packet ) 
+		{ 
+			var serverSession = session as ServerSession;
+			if(packet.Success)
+				serverSession.Send( new Protocol.C_EnterGame { PlayerId = packet.Player.PlayerId } );
+			else
+				_logger.LogWarning( "[Client] 캐릭터 생성 실패 - {Reason}", packet.FailReason );
+
+			return ValueTask.CompletedTask; 
+		}
+
 		public override ValueTask On_S_EnterGame( NetworkSession session, S_EnterGame packet )
 		{
 			var ctx = ((ServerSession)session).Context;
@@ -399,6 +440,9 @@ namespace DummyClient.Packet
 			_logger.LogInformation( "인벤토리 용량: {Count}/{MaxSlots}", packet.Items.Count, packet.MaxSlots );
 			_logger.LogInformation( "골드: {Gold}", packet.Gold );
 
+			ctx.MyPlayer.Gold = packet.Gold;
+			ctx.MyPlayer.Inventory.Clear();
+
 			if(0 < packet.Items.Count)
 			{
 				_logger.LogInformation( "보유 아이템:" );
@@ -410,6 +454,7 @@ namespace DummyClient.Packet
 						itemInfo += $" +{item.EnhancementLevel}";
 					}
 					_logger.LogInformation( itemInfo );
+					ctx.MyPlayer.Inventory.TryAdd( item.InstanceId, item );
 				}
 			}
 			else
@@ -423,17 +468,46 @@ namespace DummyClient.Packet
 			var healthPotion = packet.Items.FirstOrDefault(i => i.ItemId == Program.HealthPotionItemId);
 			if(healthPotion != null)
 			{
-				ctx.HealthPotionSlot = healthPotion.Slot;
-				_logger.LogInformation( "[Potion] HP 포션 감지: 슬롯 {Slot}, 수량 x{Quantity}",
-					healthPotion.Slot, healthPotion.Quantity );
+				ctx.HealthPotionInstanceId = healthPotion.InstanceId;
+				_logger.LogInformation( "[Potion] HP 포션 감지: InstanceId {InstanceId}, 수량 x{Quantity}",
+					healthPotion.InstanceId, healthPotion.Quantity );
 			}
 			else
 			{
-				ctx.HealthPotionSlot = -1;
+				ctx.HealthPotionInstanceId = -1;
 				_logger.LogDebug( "[Potion] HP 포션 없음" );
 			}
 			
 			return ValueTask.CompletedTask;
+		}
+
+		public override ValueTask On_S_EquipmentData( NetworkSession session, S_EquipmentData packet ) 
+		{
+			var ctx = ((ServerSession)session).Context;
+
+			_logger.LogInformation( "========================================" );
+			_logger.LogInformation( "[Client] S_EquipmentData - 장비 조회" );
+			_logger.LogInformation( "========================================" );
+			ctx.MyPlayer.EquipInfo.Clear();
+
+			if(0 < packet.Slots.Count)
+			{
+				_logger.LogInformation( "장착 장비:" );
+				foreach(var equip in packet.Slots)
+				{
+					string equipName = GetEquipSlotName( equip.EquipSlot );
+					_logger.LogInformation( "ㄴ 장비이름: {Name}, 슬롯번호:{EquipSlot}, InstanceID={InstanceId}", equipName, equip.EquipSlot, equip.InstanceId );
+					ctx.MyPlayer.EquipInfo.TryAdd( equip.EquipSlot, equip.InstanceId );
+				}
+			}
+			else
+			{
+				_logger.LogInformation( "장착 아이템: 없음" );
+			}
+
+			_logger.LogInformation( "========================================" );
+
+			return ValueTask.CompletedTask; 
 		}
 
 		public override ValueTask On_S_UseItem( NetworkSession session, S_UseItem packet ) 
@@ -444,65 +518,8 @@ namespace DummyClient.Packet
 			_logger.LogInformation( "[Client] S_UseItem - 아이템 사용" );
 			_logger.LogInformation( "========================================" );
 
-			if(packet.Success)
-			{
-				_logger.LogInformation( "[성공] 아이템 사용 완료" );
-				_logger.LogInformation( "  슬롯: {Slot}", packet.Slot );
-				_logger.LogInformation( "  남은 수량: x{RemainingQuantity}",
-					packet.RemainingQuantity );
-
-				// 서버 메시지 표시
-				if(!string.IsNullOrEmpty( packet.Message ))
-				{
-					_logger.LogInformation( "  메시지: {Message}", packet.Message );
-				}
-			}
-			else
-			{
-				_logger.LogWarning( "[실패] 아이템 사용 실패" );
-				_logger.LogWarning( "  사유: {Reason}", packet.Message ?? "알 수 없음" );
-			}
-
-			_logger.LogInformation( "========================================" );
-			return ValueTask.CompletedTask; 
-		}
-		public override ValueTask On_S_ItemEquipped( NetworkSession session, S_ItemEquipped packet )
-		{
-			var ctx = ((ServerSession)session).Context;
-
-			_logger.LogInformation( "========================================" );
-			_logger.LogInformation( "[Client] S_ItemEquipped - 아이템 장착" );
-			_logger.LogInformation( "========================================" );
-
-			if(packet.Success)
-			{
-				_logger.LogInformation( "[성공] 장착 완료" );
-				_logger.LogInformation( "  인벤토리 슬롯: {InventorySlot} -> 장착 슬롯: {EquipSlot} ({EquipSlotName})",
-					packet.InventorySlot, packet.EquipSlot, GetEquipSlotName( packet.EquipSlot ) );
-
-				// 현재 장착 장비 전체 표시
-				_logger.LogInformation( "현재 장착 장비:" );
-				_logger.LogInformation( "  무기: {Weapon}", packet.UpdatedEquipment.WeaponItemId == 0 ? "없음" : $"아이템 {packet.UpdatedEquipment.WeaponItemId}" );
-				_logger.LogInformation( "  갑옷: {Armor}", packet.UpdatedEquipment.ArmorItemId == 0 ? "없음" : $"아이템 {packet.UpdatedEquipment.ArmorItemId}" );
-				_logger.LogInformation( "  헬멧: {Helmet}", packet.UpdatedEquipment.HelmetItemId == 0 ? "없음" : $"아이템 {packet.UpdatedEquipment.HelmetItemId}" );
-				_logger.LogInformation( "  장갑: {Gloves}", packet.UpdatedEquipment.GlovesItemId == 0 ? "없음" : $"아이템 {packet.UpdatedEquipment.GlovesItemId}" );
-
-				// 현재 스탯 전체 표시
-				_logger.LogInformation( "현재 스탯:" );
-				_logger.LogInformation( "  공격력: {Attack}", packet.UpdatedStats.Attack );
-				_logger.LogInformation( "  방어력: {Defense}", packet.UpdatedStats.Defense );
-				_logger.LogInformation( "  HP: {CurrentHP}/{MaxHP}", packet.UpdatedStats.CurrentHP, packet.UpdatedStats.MaxHP );
-				_logger.LogInformation( "  MP: {CurrentMP}/{MaxMP}", packet.UpdatedStats.CurrentMP, packet.UpdatedStats.MaxMP );
-
-				// 내 플레이어 정보 업데이트
-				ctx.MyPlayer.Stats = packet.UpdatedStats.Clone();
-			}
-			else
-			{
-				_logger.LogWarning( "[실패] 장착 실패" );
-				_logger.LogWarning( "  인벤토리 슬롯: {InventorySlot}, 장착 슬롯: {EquipSlot}",
-					packet.InventorySlot, packet.EquipSlot );
-			}
+			_logger.LogWarning( "[실패] 아이템 사용 실패" );
+			_logger.LogWarning( "  사유: {Reason}", packet.Message ?? "알 수 없음" );
 
 			_logger.LogInformation( "========================================" );
 			return ValueTask.CompletedTask;
@@ -513,41 +530,89 @@ namespace DummyClient.Packet
 		{
 			return slotNumber switch
 			{
-				0 => "무기",
-				1 => "갑옷",
-				2 => "헬멧",
-				3 => "장갑",
+				1 => "무기",
+				2 => "방패",
+				3 => "헬멧",
+				4 => "갑옷",
+				5 => "장갑",
+				6 => "신발",
+				7 => "반지1",
+				8 => "반지2",
+				9 => "목걸이",
+				10 => "귀걸이",
 				_ => "알 수 없음"
 			};
 		}
-		public override ValueTask On_S_ItemUnequipped( NetworkSession session, S_ItemUnequipped packet ) 
-		{
-			var ctx = ((ServerSession)session).Context;
 
-			_logger.LogInformation( "Received but not handled: S_ItemUnequipped" );
-
-			return ValueTask.CompletedTask; 
-		}
-		public override ValueTask On_S_ItemAdded( NetworkSession session, S_ItemAdded packet )
-		{
-			var ctx = ((ServerSession)session).Context;
-
-			_logger.LogInformation( "========================================" );
-			_logger.LogInformation( "[Client] S_ItemAdded - 아이템 획득!" );
-			_logger.LogInformation( "========================================" );
-			_logger.LogInformation( "아이템 ID: {itemId}", packet.Item.ItemId );
-			_logger.LogInformation( "수량: x{Count}", packet.Item.Quantity );
-			_logger.LogInformation( "인벤토리 슬롯: {Slot}", packet.Item.Slot );
-			_logger.LogInformation( "획득처: {Source}", packet.Source );
-			_logger.LogInformation( "========================================" );
-
-			return ValueTask.CompletedTask;
-		}
 		public override ValueTask On_S_InventoryUpdate( NetworkSession session, S_InventoryUpdate packet ) 
 		{
 			var ctx = ((ServerSession)session).Context;
 
-			_logger.LogInformation( "Received but not handled: S_InventoryUpdate" ); 
+			_logger.LogInformation( "========================================" );
+			_logger.LogInformation( "[Client] S_InventoryUpdate - 인벤토리 업데이트" );
+			_logger.LogInformation( "========================================" );
+
+			if(packet.RemovedItemInstanceIds.Any())
+			{
+				_logger.LogInformation( "[Client] RemovedItemInstanceIds - Count={Count}개 제거", packet.RemovedItemInstanceIds.Count );
+				foreach(var itemInstanceId in packet.RemovedItemInstanceIds)
+				{
+					ctx.MyPlayer.Inventory.Remove( itemInstanceId );
+					if(ctx.HealthPotionInstanceId == itemInstanceId)
+						ctx.HealthPotionInstanceId = -1;
+				}
+			}
+
+			_logger.LogInformation( "[Client] ChangedItems - Count={Count}개 업데이트", packet.ChangedItems.Count );
+			foreach(var changeItem in packet.ChangedItems)
+			{
+				if(ctx.MyPlayer.Inventory.TryGetValue(changeItem.InstanceId, out var item) == false)
+				{
+					_logger.LogInformation( "[Client] Update 대상 아이템이 존재하지 않아 추가" );
+					_logger.LogInformation( "[Client] InstanceId={InstanceId}, ItemId={ItemId}", changeItem.InstanceId, changeItem.ItemId );
+					ctx.MyPlayer.Inventory.TryAdd( changeItem.InstanceId, changeItem );
+					continue;
+				}
+
+				_logger.LogInformation( "[Client] BeforeItem: ItemId={ItemId} / Qauntity={Quantity}", item.ItemId, item.Quantity );
+				_logger.LogInformation( "[Client] AfterItem: ItemId={ItemId} / Qauntity={Quantity}", changeItem.ItemId, changeItem.Quantity );
+				ctx.MyPlayer.Inventory[ changeItem.InstanceId ] = changeItem;
+			}
+
+			// 골드 업데이트
+			if(packet.HasNewGold)
+				ctx.MyPlayer.Gold = packet.NewGold;
+
+			return ValueTask.CompletedTask; 
+		}
+
+		public override ValueTask On_S_EquipmentUpdate( NetworkSession session, S_EquipmentUpdate packet ) 
+		{
+			var ctx = ((ServerSession)session).Context;
+
+			_logger.LogInformation( "========================================" );
+			_logger.LogInformation( "[Client] S_EquipmentUpdate - 장비 업데이트" );
+			_logger.LogInformation( "========================================" );
+
+			if(!packet.Success)
+			{
+				_logger.LogWarning( "[실패] 장비 업데이트 실패" );
+				_logger.LogWarning( "  사유: {Reason}", packet.Reason ?? "알 수 없음" );
+				_logger.LogInformation( "========================================" );
+				return ValueTask.CompletedTask;
+			}
+
+			ctx.MyPlayer.EquipInfo.Clear();
+			ctx.MyPlayer.Stats = packet.UpdatedStats.Clone();
+
+			foreach(var equip in packet.Slots)
+			{
+				ctx.MyPlayer.EquipInfo.TryAdd( equip.EquipSlot, equip.InstanceId );
+			}
+
+			_logger.LogInformation( "[Client] 장비 업데이트 완료, PlayerId={PlayerId}", ctx.MyPlayer.PlayerId);
+			_logger.LogInformation( "========================================" );
+
 			return ValueTask.CompletedTask; 
 		}
 

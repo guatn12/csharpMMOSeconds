@@ -27,6 +27,8 @@ namespace Server.Packet.Handlers
 
 			Handlers.Add(typeof(C_InventoryRequest), async (s, p) => await HandleC_InventoryRequestAsync( s, (C_InventoryRequest)p));
 			_onRecv.Add((ushort)PacketID.C_InventoryRequest, HandleC_InventoryRequestAsync);
+			Handlers.Add(typeof(C_EquipmentRequest), async (s, p) => await HandleC_EquipmentRequestAsync( s, (C_EquipmentRequest)p));
+			_onRecv.Add((ushort)PacketID.C_EquipmentRequest, HandleC_EquipmentRequestAsync);
 			Handlers.Add(typeof(C_UseItem), async (s, p) => await HandleC_UseItemAsync( s, (C_UseItem)p));
 			_onRecv.Add((ushort)PacketID.C_UseItem, HandleC_UseItemAsync);
 			Handlers.Add(typeof(C_EquipItem), async (s, p) => await HandleC_EquipItemAsync( s, (C_EquipItem)p));
@@ -57,6 +59,18 @@ namespace Server.Packet.Handlers
 			var packet = new C_InventoryRequest();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_InventoryRequestAsync(session, packet);
+		}
+
+		private async ValueTask HandleC_EquipmentRequestAsync(IClientSession session, ArraySegment<byte> buffer)
+		{
+			if(session.State != SessionState.InRoom)
+			{
+				_logger.LogDebug("Packet dropped in handler: SessionId={SessionId}, State={State}", session.SessionId, session.State);
+				return;
+			}
+			var packet = new C_EquipmentRequest();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_EquipmentRequestAsync(session, packet);
 		}
 
 		private async ValueTask HandleC_UseItemAsync(IClientSession session, ArraySegment<byte> buffer)

@@ -11,6 +11,7 @@ namespace Server.Core.Session
 
 		#region 세션 등록/해제
 		bool RegisterSession( IClientSession session );
+		bool BindPlayerToSession( long sessionId );
 		bool UnregisterSession( long sessionId );
 		#endregion
 

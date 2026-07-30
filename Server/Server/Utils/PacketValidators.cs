@@ -80,5 +80,29 @@ namespace Server.Utils
 
 			return ValidationResult.Success();
 		}
+
+		public static ValidationResult ValidatePlayerName(string name)
+		{
+			if(string.IsNullOrWhiteSpace( name ))
+				return ValidationResult.Failure( "이름이 비어 있습니다." );
+			if(name.Length < 2 || 16 < name.Length)
+				return ValidationResult.Failure( "이름은 2 ~ 16자여야 합니다." );
+			if(System.Text.RegularExpressions.Regex.IsMatch( name, @"^[가-힣a-zA-Z0-9]+$" ) == false)
+				return ValidationResult.Failure( "한글/영문/숫자만 사용할 수 있습니다." );
+			if(ContainsForbiddenWord( name ))
+				return ValidationResult.Failure( "금지어가 포함되어 있습니다" );
+			return ValidationResult.Success();
+		}
+
+		private static readonly HashSet<string> _forbiddenWords = new()
+		{
+			"운영자", "관리자", "Admin", "GM", "Operator",
+		};
+
+		private static bool ContainsForbiddenWord(string name)
+		{
+			string lowerd = name.ToLowerInvariant();
+			return _forbiddenWords.Any( w => lowerd.Contains( w.ToLowerInvariant() ) );
+		}
 	}
 }

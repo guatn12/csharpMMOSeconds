@@ -54,6 +54,25 @@ namespace Server.Packet.Handlers
 			_logger.LogDebug( "Player {PlayerId} requested inventory data", session.PlayerId );
 		}
 
+		public async Task HandleC_EquipmentRequestAsync( IClientSession session, C_EquipmentRequest packet )
+		{
+			// 1. 기본 검증
+			var validation = PacketValidators.ValidateBasic(session, _room);
+			if(!validation.IsValid)
+			{
+				_logger.LogWarning( "EquipmentRequest validation failed: {Error}", validation.ErrorMessage );
+				return;
+			}
+
+			// 2. 응답
+			var response = new S_EquipmentData();
+			response.Slots.AddRange( session.Player.ToEquipmentRefs() );
+
+			_room.SendToPlayer( session, response );
+
+			_logger.LogDebug( "Player {PlayerId} requested equipment data", session.PlayerId );
+		}
+
 		/// <summary>
 		/// C_UseItem 패킷 처리
 		/// 소비 아이템 사용 (HP/MP 회복 등)
@@ -68,34 +87,16 @@ namespace Server.Packet.Handlers
 				return;
 			}
 
-			// 2. 슬롯 검증
-			var slotValidation = PacketValidators.ValidateItemSlot(packet.Slot);
-			if(!slotValidation.IsValid)
+			// 3. 아이템 사용
+			bool success = session.Player.UseItem(packet.InstanceId, packet.Quantity);
+			if ( !success )
 			{
-				_logger.LogWarning( "UseItem slot validation failed: {Error}", slotValidation.ErrorMessage );
-
-				var errorResponse = new S_UseItem { Success = false };
-				_room.SendToPlayer( session, errorResponse );
-				return;
+				// 4. 실패 응답
+				_room.SendToPlayer( session, new S_UseItem { Success = success, Message = "아이템 사용 실패" } );
 			}
 
-			// 3. 아이템 사용
-			bool success = session.Player.UseItem(packet.Slot, packet.Quantity);
-
-			// 4. 응답
-			var item = session.Player.Inventory.GetItem(packet.Slot);
-			var response = new S_UseItem
-			{
-				Success = success,
-				Slot = packet.Slot,
-				RemainingQuantity = success ? (item?.Quantity ?? 0) : 0,
-				Message = success ? "아이템 사용 성공" : "아이템 사용 실패"
-			};
-
-			_room.SendToPlayer( session, response );
-
-			_logger.LogDebug( "Player {PlayerId} used item at slot {Slot}, Success={Success}",
-				session.PlayerId, packet.Slot, success );
+			_logger.LogDebug( "Player {PlayerId} used item at InstanceId {InstanceId}, Success={Success}",
+				session.PlayerId, packet.InstanceId, success );
 		}
 
 		/// <summary>
@@ -112,25 +113,15 @@ namespace Server.Packet.Handlers
 				return;
 			}
 
-			// 2. 슬롯 검증
-			var slotValidation = PacketValidators.ValidateItemSlot(packet.InventorySlot);
-			if(!slotValidation.IsValid)
-			{
-				_logger.LogWarning( "EquipItem slot validation failed: {Error}", slotValidation.ErrorMessage );
-
-				_room.SendToPlayer( session, new S_ItemEquipped { Success = false } );
-				return;
-			}
-
-			// 3. 장비 착용 (이벤트 발생: OnItemEquipped → S_ItemEquipped 자동 전송)
-			bool success = session.Player.EquipItemFromInventory(packet.InventorySlot);
+			// 3. 장비 착용 (이벤트 발생: OnItemEquipped → s_equipmentUpdate 자동 전송)
+			bool success = session.Player.EquipItemFromInventory(packet.InstanceId, packet.EquipSlot);
 
 			// 4. 실패 시에만 에러 응답 (성공은 이벤트에서 처리)
 			if(!success)
 			{
-				_room.SendToPlayer( session, new S_ItemEquipped { Success = false } );
-				_logger.LogWarning( "Player {PlayerId} failed to equip item at slot {Slot}",
-					session.PlayerId, packet.InventorySlot );
+				_room.SendToPlayer( session, new S_EquipmentUpdate { Success = false, Reason = "장비 장착에 실패했습니다." } );
+				_logger.LogWarning( "Player {PlayerId} failed to equip item at InstanceId {InstanceId}",
+					session.PlayerId, packet.InstanceId );
 			}
 		}
 
@@ -148,24 +139,14 @@ namespace Server.Packet.Handlers
 				return;
 			}
 
-			// 2. 장비 슬롯 검증
-			var slotValidation = PacketValidators.ValidateEquipSlot(packet.EquipSlot);
-			if(!slotValidation.IsValid)
-			{
-				_logger.LogWarning( "UnequipItem slot validation failed: {Error}", slotValidation.ErrorMessage );
-
-				_room.SendToPlayer( session, new S_ItemUnequipped { Success = false } );
-				return;
-			}
-
-			// 3. 장비 해제 (이벤트 발생: OnItemUnequipped → S_ItemUnequipped 자동 전송)
+			// 3. 장비 해제 (이벤트 발생: OnItemUnequipped → S_EquipmentUpdate 자동 전송)
 			var equipSlot = (Server.Game.PlayerEquipment.EquipSlot)packet.EquipSlot;
 			bool success = session.Player.UnequipItemToInventory(equipSlot);
 
 			// 4. 실패 시에만 에러 응답 (성공은 이벤트에서 처리)
 			if(!success)
 			{
-				_room.SendToPlayer( session, new S_ItemUnequipped { Success = false } );
+				_room.SendToPlayer( session, new S_EquipmentUpdate { Success = false, Reason = "장비 해제에 실패했습니다." } );
 				_logger.LogWarning( "Player {PlayerId} failed to unequip item at slot {Slot}",
 					session.PlayerId, packet.EquipSlot );
 			}

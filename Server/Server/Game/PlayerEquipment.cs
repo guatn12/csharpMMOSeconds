@@ -50,10 +50,10 @@ namespace Server.Game
 		}
 
 		// 이벤트
-		public event Action<PlayerEquipment, EquipSlot, InventoryItem> OnItemEquipped;			// 장착
-		public event Action<PlayerEquipment, EquipSlot, InventoryItem> OnItemUnEquipped;        // 해제
-		public event Action<PlayerEquipment, Dictionary<StatType, int>> OnStatsChanged;			// 스탯 변경
-		public event Action<PlayerEquipment> OnEquipmentChanged;								// 전체 변경
+		//public event Action<PlayerEquipment, EquipSlot, InventoryItem> OnItemEquipped;			// 장착
+		//public event Action<PlayerEquipment, EquipSlot, InventoryItem> OnItemUnEquipped;        // 해제
+		//public event Action<PlayerEquipment, Dictionary<StatType, int>> OnStatsChanged;			// 스탯 변경
+		public event Action<PlayerEquipment> OnEquipmentChanged;						// 전체 변경
 
 		public PlayerEquipment(long playerRawId)
 		{
@@ -85,6 +85,22 @@ namespace Server.Game
 			return _equippedItems.Values.ToList();
 		}
 
+		// 데이터 동기화
+		public Dictionary<EquipSlot, InventoryItem> ToEquipmentDictionary()
+		{
+			return new Dictionary<EquipSlot, InventoryItem>( _equippedItems );
+		}
+
+		public Dictionary<int, long> GetEquipmentRefs()
+		{
+			return _equippedItems.ToDictionary( kv => (int)kv.Key, kv => kv.Value.InstanceId );
+		}
+
+		public Dictionary<EquipSlot, long> GetEquipmentDict()
+		{
+			return _equippedItems.ToDictionary( kv => kv.Key, kv => kv.Value.InstanceId );
+		}
+
 		public bool IsSlotEquipped(EquipSlot slot)
 		{
 			return _equippedItems.ContainsKey( slot );
@@ -95,58 +111,73 @@ namespace Server.Game
 			return IsSlotEquipped(EquipSlot.Weapon);
 		}
 
-		public int GetTotalStat(StatType statType)
+		public int GetEquipStat(StatType statType)
 		{
 			return _equipmentStats.TryGetValue( statType, out var Value ) ? Value : 0;
 		}
 
-		public int GetTotalAttack() => GetTotalStat(StatType.Attack);
-		public int GetTotalDefense() => GetTotalStat(StatType.Defense);
-		public int GetTotalHP() => GetTotalStat(StatType.HP);
-		public int GetTotalMP() => GetTotalStat(StatType.MP);
-		public float GetCriticalRate() => GetTotalStat( StatType.CriticalRate ) / 100.0f; // 백분율
-		public int GetSpeed() => GetTotalStat(StatType.Speed);
+		public int GetTotalAttack() => GetEquipStat( StatType.Attack);
+		public int GetTotalDefense() => GetEquipStat( StatType.Defense);
+		public int GetTotalHP() => GetEquipStat( StatType.HP);
+		public int GetTotalMP() => GetEquipStat( StatType.MP);
+		public float GetCriticalRate() => GetEquipStat( StatType.CriticalRate ) / 100.0f; // 백분율
+		public int GetSpeed() => GetEquipStat( StatType.Speed);
 
 		// 장비 착용 메서드들
 		public bool EquipItem( InventoryItem item )
 		{
-			if(item == null) return false;
+			if(item == null) 
+				return false;
 
-			// 아이템이 장비 가능한지 체크
+			// TODO: 아이템이 장비 가능한지 체크 - 임시 itemID를 활용한 장비 슬롯 검색
 			EquipSlot targetSlot = GetItemEquipSlot(item.ItemId);
-			if(targetSlot == EquipSlot.None) return false;
+			if(targetSlot == EquipSlot.None)
+				return false;
+
+			// 장비형 아이템은 스택되지 않음을 이용한 방어.
+			if(item.Quantity != 1)
+				return false;
 
 			// 기존 장비가 있다면 해제
 			if(_equippedItems.TryGetValue( targetSlot, out var existingItem ))
 			{
-				UnequipItem( targetSlot );
+				UnEquipItem( targetSlot );
 			}
 
 			// 새 장비 착용
 			_equippedItems[ targetSlot ] = item;
+			item.IsEquipped = true;
 			ApplyItemStats( item, true );   // 스탯 적용.
 
 			MarkDirty();
 
 			// 이벤트 발생.
-			OnItemEquipped?.Invoke( this, targetSlot, item );
 			OnEquipmentChanged?.Invoke( this );
 
 			return true;
 		}
 
-		public bool UnequipItem(EquipSlot slot)
+		private bool UnEquipItem(EquipSlot slot)
 		{
-			if(!_equippedItems.TryGetValue(slot, out var item)) return false;
+			if(!_equippedItems.TryGetValue( slot, out var item ))
+				return false;
 
 			// 장비 해제
 			_equippedItems.Remove( slot );
+			item.IsEquipped = false;
 			ApplyItemStats( item, false );
 
 			MarkDirty();
 
+			return true;
+		}
+
+		public bool UnequipItemAndBoolReturn( EquipSlot slot )
+		{
+			if(!UnEquipItem( slot ))
+				return false;
+
 			// 이벤트 발생.
-			OnItemUnEquipped?.Invoke(this, slot, item );
 			OnEquipmentChanged?.Invoke( this );
 
 			return true;
@@ -154,16 +185,21 @@ namespace Server.Game
 
 		public InventoryItem UnequipItemAndReturn(EquipSlot slot)
 		{
-			if(!_equippedItems.TryGetValue(slot, out var item)) return null;
+			if(!_equippedItems.TryGetValue(slot, out var item)) 
+				return null;
 
-			UnequipItem( slot );
+			if(!UnEquipItem( slot ))
+				return null;
+
+			OnEquipmentChanged?.Invoke( this );
 			return item;
 		}
 
 		// 스탯 적용
 		private void ApplyItemStats(InventoryItem item, bool apply)
 		{
-			if(item?.Options == null) return;
+			if(item?.Options == null) 
+				return;
 
 			var oldStats = new Dictionary<StatType, int>(_equipmentStats);
 			int multiplier = apply ? 1 : -1; // 적용시 +1, 해제시 -1
@@ -185,10 +221,10 @@ namespace Server.Game
 			}
 
 			// 스탯이 변경되었으면 이벤트 발생
-			if(!AreDictionariesEqual(oldStats, _equipmentStats))
-			{
-				OnStatsChanged?.Invoke(this, new Dictionary<StatType, int>(_equipmentStats));
-			}
+			//if(!AreDictionariesEqual(oldStats, _equipmentStats))
+			//{
+			//	OnStatsChanged?.Invoke(this, new Dictionary<StatType, int>(_equipmentStats));
+			//}
 		}
 
 		private void ApplyEnhancementBonus(InventoryItem item, bool apply)
@@ -232,16 +268,16 @@ namespace Server.Game
 			// ItemId 범위로 장비 슬롯 판별 (임시)
 			return itemId switch
 			{
-			>= 1000 and < 2000 => EquipSlot.Weapon,    // 무기: 1000~1999
-			>= 2000 and < 3000 => EquipSlot.Shield,    // 방패: 2000~2999
-			>= 3000 and < 4000 => EquipSlot.Helmet,    // 투구: 3000~3999
-			>= 4000 and < 5000 => EquipSlot.Armor,     // 갑옷: 4000~4999
-			>= 5000 and < 6000 => EquipSlot.Gloves,    // 장갑: 5000~5999
-			>= 6000 and < 7000 => EquipSlot.Boots,     // 부츠: 6000~6999
-			>= 7000 and < 8000 => EquipSlot.Ring1,     // 반지: 7000~7999 (Ring 우선)
-			>= 8000 and < 9000 => EquipSlot.Necklace,  // 목걸이: 8000~8999
-			>= 9000 and < 10000 => EquipSlot.Earring,  // 귀걸이: 9000~9999
-            _ => EquipSlot.None
+				>= 1000 and < 2000 => EquipSlot.Weapon,    // 무기: 1000~1999
+				>= 2000 and < 3000 => EquipSlot.Shield,    // 방패: 2000~2999
+				>= 3000 and < 4000 => EquipSlot.Helmet,    // 투구: 3000~3999
+				>= 4000 and < 5000 => EquipSlot.Armor,     // 갑옷: 4000~4999
+				>= 5000 and < 6000 => EquipSlot.Gloves,    // 장갑: 5000~5999
+				>= 6000 and < 7000 => EquipSlot.Boots,     // 부츠: 6000~6999
+				>= 7000 and < 8000 => EquipSlot.Ring1,     // 반지: 7000~7999 (Ring 우선)
+				>= 8000 and < 9000 => EquipSlot.Necklace,  // 목걸이: 8000~8999
+				>= 9000 and < 10000 => EquipSlot.Earring,  // 귀걸이: 9000~9999
+				_ => EquipSlot.None
 			  };
 		}
 
@@ -277,14 +313,15 @@ namespace Server.Game
 
 			if(_equippedItems.ContainsKey( availableSlot ))
 			{
-				UnequipItem( availableSlot );
+				UnEquipItem( availableSlot );
 			}
 
 			_equippedItems[ availableSlot ] = ringItem;
+			ringItem.IsEquipped = true;
 			ApplyItemStats( ringItem, true );
 
 			MarkDirty();
-			OnItemEquipped?.Invoke( this, availableSlot, ringItem );
+			//OnItemEquipped?.Invoke( this, availableSlot, ringItem );
 			OnEquipmentChanged?.Invoke( this );
 
 			return true;
@@ -307,15 +344,12 @@ namespace Server.Game
 			return unequippedItems;
 		}
 
-		// 데이터 동기화
-		public Dictionary<EquipSlot, InventoryItem> ToEquipmentDictionary()
-		{
-			return new Dictionary<EquipSlot, InventoryItem>( _equippedItems );
-		}
 
-		public void LoadFromEquipmentData(Dictionary<EquipSlot, InventoryItem> equipmentData)
+
+		public void LoadFromEquipmentData(Dictionary<EquipSlot, InventoryItem> equipmentData, bool needRepair)
 		{
-			if(equipmentData == null) return;
+			if(equipmentData == null) 
+				return;
 
 			_equippedItems.Clear();
 			ResetAllStats();
@@ -326,7 +360,7 @@ namespace Server.Game
 				ApplyItemStats(kvp.Value, true );
 			}
 
-			_isDirty = false;
+			_isDirty = needRepair;
 		}
 
 		public void MarkClean()

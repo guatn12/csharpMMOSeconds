@@ -9,7 +9,8 @@ namespace Server.Core.Session
 	public enum SessionState
 	{
 		Connected = 0,
-		// 1, 2 예약 (Phase 4: Authenticating, Authenticated)
+		Authenticating = 1,
+		Authenticated = 2,
 		EnteringGame = 10,
 		InRoom = 20,
 		Transferring = 30,

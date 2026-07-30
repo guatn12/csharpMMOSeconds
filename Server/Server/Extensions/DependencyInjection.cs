@@ -31,14 +31,17 @@ namespace Server.Extensions
 			// 핵심 서비스 등록
 			services.AddCoreServices( configuration );
 
+			// DB 라이브러리를 이용해 DB / Redis / 일부 서비스 등록
+			services.AddDatabaseLib( configuration );
+
 			// 게임 로직 서비스 등록
 			services.AddGameServices();
 
 			// 데이터 서비스 등록
 			services.AddDataServices();
 
-			// DB 라이브러리를 이용해 DB / Redis / 일부 서비스 등록
-			services.AddDatabaseLib( configuration );
+			// 정적 데이터 서비스 등록
+			services.AddStaticDataServices();
 
 			// Health Check 추가 (DB 연결 상태 모니터링)
 			services.AddHealthChecks()
@@ -108,9 +111,17 @@ namespace Server.Extensions
 		}
 
 		/// <summary>
-		/// 데이터 관리 서비스 등록
+		/// 데이터 관리 서비스 등록(DB, Redis 캐싱, 데이터 관리 등)
 		/// </summary>
 		private static IServiceCollection AddDataServices( this IServiceCollection services )
+		{
+			// 게임 데이터 서비스 등록 - db / redis 캐싱 / 데이터 관리
+			services.AddSingleton<IGameDataService, GameDataService>();
+
+			return services;
+		}
+
+		private static IServiceCollection AddStaticDataServices( this IServiceCollection services )
 		{
 			// 기본 데이터 관리
 			services.AddSingleton<IDataManager, DataManager>();

@@ -46,10 +46,10 @@ namespace DummyClient
 			SessionId = GenerateNextSessionId();
 			_logger.LogInformation( "OnConnected: {endPoint}", endPoint );
 
-			// C_EnterGame 패킷 전송
-			Protocol.C_EnterGame enterGamePacket = new Protocol.C_EnterGame();
-			Send(enterGamePacket);
-			_logger.LogInformation("C_EnterGame 패킷 전송 완료");
+			// C_Login 패킷 전송
+			Protocol.C_Login loginPacket = new Protocol.C_Login {Token = "test-token-1" };
+			Send( loginPacket );
+			_logger.LogInformation( "C_Login 패킷 전송 완료" );
 		}
 
 		public override void OnDisConnected( EndPoint endPoint )
@@ -68,6 +68,8 @@ namespace DummyClient
 				Context.SkillCooldowns.Clear();
 			}
 		}
+
+
 
 		public override void OnRecvPacket( ArraySegment<byte> buffer )
 		{

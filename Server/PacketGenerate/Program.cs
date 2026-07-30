@@ -371,7 +371,9 @@ namespace PacketGenerator
 
 				string allowed = categoryName switch
 				{
-					"SYSTEM" when messageName == "C_EnterGame" => "SessionState.Connected",
+					"SYSTEM" when messageName == "C_Login" => "SessionState.Connected",
+					"SYSTEM" when messageName == "C_CreatePlayer" => "SessionState.Authenticated",
+					"SYSTEM" when messageName == "C_EnterGame" => "SessionState.Authenticated",
 					"SYSTEM" when messageName == "C_ChangeRoom" => "SessionState.InRoom",
 					"SYSTEM" when messageName == "C_Ping" => null, // 생략
 					"SYSTEM" => null, // 신규 SYSTEM은 주석 + TODO

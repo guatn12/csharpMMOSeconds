@@ -125,7 +125,7 @@ namespace Server.Tests.Session
             {
                 eventRaised = true;
                 capturedSessionId = args.SessionId;
-                capturedPlayerId = args.PlayerId;
+                //capturedPlayerId = args.PlayerId;
             };
 
             // Act

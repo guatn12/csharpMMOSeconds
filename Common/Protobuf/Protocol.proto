@@ -38,11 +38,12 @@ enum MsgId {
 	S_INVENTORY_DATA = 17;		// 인벤토리 데이터 전송
 	C_USE_ITEM = 18;			// 아이템 사용
 	S_USE_ITEM = 19;			// 아이템 사용 결과
+	C_EQUIPMENT_REQUEST = 37;	// 장비 조회 요청
+	S_EQUIPMENT_DATA = 38;		// 장비 데이터 전송
 	C_EQUIP_ITEM = 20;			// 아이템(장비) 장착
-	S_ITEM_EQUIPPED = 21;		// 아이템(장비) 장착 결과
+	S_EQUIPMENT_UPDATE = 21;	// 아이템(장비) 업데이트
 	C_UNEQUIP_ITEM = 22;		// 아이템(장비) 해제
-	S_ITEM_UNEQUIPPED = 23;		// 아이템(장비) 해제 결과
-	S_ITEM_ADDED = 24;			// 아이템 획득 알림
+	reserved 23, 24;			// 기존 번호 재활용 안함.
 	S_INVENTORY_UPDATE = 25;	// 인벤토리 변경 알림
 
 	// 몬스터
@@ -57,13 +58,34 @@ enum MsgId {
 	C_AUTO_MOVE = 30;			// 자동 이동 목적지 요청
 	S_PATH_INFO = 31;			// 서버가 계산한 경로 반환
 
+	C_LOGIN = 32;				// 로그인 요청 (클라이언트 -> 서버)
+	S_LOGIN = 33;				// 로그인 결과 (서버 -> 클라이언트)
+	S_FORCE_KICK = 34;			// 서버가 강제 퇴장 시킴 (서버 → 클라이언트)
+
+	C_CREATE_PLAYER = 35;		// 캐릭터 생성 요청 (클라이언트 → 서버)
+	S_CREATE_PLAYER = 36;		// 캐릭터 생성 결과 (서버 → 클라이언트)
+
 	// 핑퐁
 	C_PING = 10000;				// 클라이언트 → 서버
 	S_PONG = 10001;				// 서버 → 클라이언트
 }
 
+message C_Login {
+	option (category) = SYSTEM;
+	string token = 1;
+}
+
+message S_Login {
+	option (category) = SYSTEM;
+	bool success = 1;
+	string message = 2;
+	int64 accountId = 3;						// 계정 ID
+	repeated PlayerInfo players = 4;			// 보유 캐릭터 목록 (신규는 빈 리스트)
+}
+
 message C_EnterGame {
 	option (category) = SYSTEM;
+	int64 playerId = 1;		// 입장할 캐릭터 ID
 }
 
 // 서버 -> 클라이언트
@@ -188,33 +210,31 @@ message S_InventoryData {
 	int32 maxSlots = 3;
 }
 
+message C_EquipmentRequest {
+	option (category) = INVENTORY;
+}
+
+message S_EquipmentData {
+	option (category) = INVENTORY;
+	repeated EquipmentSlotRef slots = 1;			// 장착한 장비 리스트
+}
+
 message C_UseItem {
 	option (category) = INVENTORY;
-	int32 slot = 1;				// 인벤 슬롯
-	int32 quantity = 2;			// 사용할 수량 (기본 1)
+	int64 instanceId = 1;				// 인벤 고유 번호
+	int32 quantity = 2;					// 사용할 수량 (기본 1)
 }
 
 message S_UseItem {
 	option (category) = INVENTORY;
 	bool success = 1;
-	int32 slot = 2;
-	int32 remainingQuantity = 3;
-	string message = 4;
+	string message = 2;
 }
 
 message C_EquipItem {
 	option (category) = INVENTORY;
-	int32 inventorySlot = 1;		// 인벤토리 슬롯
+	int64 instanceId = 1;			// 인벤 고유 번호
 	int32 equipSlot = 2;			// 장착 슬롯 (0 = 무기, 1 = 갑옷)
-}
-
-message S_ItemEquipped {
-	option (category) = INVENTORY;
-	bool success = 1;
-	int32 inventorySlot = 2;
-	int32 equipSlot = 3;
-	EquipmentInfo updatedEquipment = 4;
-	StatInfo updatedStats = 5;
 }
 
 message C_UnequipItem {
@@ -222,25 +242,19 @@ message C_UnequipItem {
 	int32 equipSlot = 1;		// 해제할 장착 슬롯
 }
 
-message S_ItemUnequipped {
-	option (category) = INVENTORY;
-	bool success = 1;
-	int32 equipSlot = 2;
-	int32 returnedToSlot = 3;			// 인벤토리로 돌아간 슬롯?
-	EquipmentInfo updatedEquipment = 4;
-	StatInfo updatedStats = 5;
-}
-
-message S_ItemAdded {
-	option (category) = INVENTORY;
-	InventoryItemInfo item = 1;
-	string source = 2;			// 획득 경로
-}
-
 message S_InventoryUpdate {
 	option (category) = INVENTORY;
 	repeated InventoryItemInfo changedItems = 1;
-	int64 newGold = 2;
+	optional int64 newGold = 2;
+	repeated int64 removedItemInstanceIds = 3;
+}
+
+message S_EquipmentUpdate {
+	option (category) = INVENTORY;
+	bool success = 1;								// 성공 여부
+	string reason = 2;								// 실패 시 이유
+	repeated EquipmentSlotRef slots = 3;			// 성공 시 변경 완료 후의 장비 전체 상태
+	StatInfo updatedStats = 4;						// 성공 시 최종 스탯
 }
 
 // 몬스터
@@ -268,6 +282,23 @@ message S_PathInfo {
 	option (category) = ROOM;
 	repeated PosInfo waypoints = 1;		// 이동할 웨이포인트 순서 목록
 	bool reachable = 2;					// 목적지 완전 도달 가능 여부
+}
+
+message S_ForceKick {
+	option (category) = SYSTEM;
+	string reason = 1;
+}
+
+message C_CreatePlayer {
+	option (category) = SYSTEM;
+	string PlayerName = 1;
+}
+
+message S_CreatePlayer {
+	option (category) = SYSTEM;
+	bool success = 1;
+	string fail_reason = 2;				// 실패 사유 - 이미 사용중인 이름 / 금지어 / 길이 제한 등
+	PlayerInfo player = 3;			// 성공 시 생성된 캐릭터 정보
 }
 
 // 핑퐁
@@ -312,6 +343,13 @@ message ObjectInfo {
 		PlayerDetailInfo playerDetailInfo = 7;
 		MonsterDetailInfo monsterDetailInfo = 8;
 	}
+}
+
+message PlayerInfo {
+	int64 playerId = 1;				// 캐릭터 ID
+	string playerName = 2;
+	int32 level = 3;
+	int64 createdAt = 4;			// Unix timestamp
 }
 
 // 데미지 처리 임시. 다시 수정 필요.
@@ -364,20 +402,19 @@ message PlayerDetailInfo {
 }
 
 message InventoryItemInfo{
-	int32 itemId = 1;
-	int32 quantity = 2;
-	int32 slot = 3;
-	int32 enhancementLevel = 4;
-	map<string, double> options = 5;
-	string customName = 6;
-	int64 acquiredAt = 7;				// Unix timestamp
+	int64 instanceId = 1;
+	int32 itemId = 2;
+	int32 quantity = 3;
+	int32 slot = 4;
+	int32 enhancementLevel = 5;
+	map<string, double> options = 6;
+	string customName = 7;
+	int64 acquiredAt = 8;				// Unix timestamp
 }
 
-message EquipmentInfo {
-	int32 weaponItemId = 1;		// 무기 아이템 ID (0이면 없음)
-	int32 armorItemId = 2;		// 갑옷 아이템 ID (0이면 없음)
-	int32 helmetItemId = 3;		// 헬멧
-	int32 glovesItemId = 4;		// 장갑
+message EquipmentSlotRef {
+	int32 equipSlot = 1;
+	int64 instanceId = 2;
 }
 
 message MonsterDetailInfo {

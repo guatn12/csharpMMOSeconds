@@ -13,49 +13,34 @@ namespace Server.Extensions
 		#region Equipment 변환
 
 		/// <summary>
-		/// Player의 장비 정보를 Protocol EquipmentInfo로 변환
+		/// Player의 장비 정보를 Protocol List<EquipmentSlotRef>로 변환
 		/// </summary>
-		public static EquipmentInfo ToEquipmentInfo(this Player player)
+		public static List<EquipmentSlotRef> ToEquipmentRefs(this Player player)
 		{
 			if(player == null)
 				ArgumentNullException.ThrowIfNull( player );
 
-			var equipmentData = player.GetEquipmentData();
-			var result = new EquipmentInfo();
+			var equipmentDatas = player.Equipment.GetEquipmentRefs();
+			var result = new List<EquipmentSlotRef>();
 
-			// 장착된 장비를 Protocol 메시지로 변환
-			foreach( var equipment in equipmentData )
+			foreach( var equipmentData in equipmentDatas)
 			{
-				switch(equipment.Key)
+				result.Add( new EquipmentSlotRef
 				{
-				case PlayerEquipment.EquipSlot.Weapon:
-					result.WeaponItemId = equipment.Value?.ItemId ?? 0;
-					break;
-				case PlayerEquipment.EquipSlot.Armor:
-					result.ArmorItemId = equipment.Value?.ItemId ?? 0;
-					break;
-
-				case PlayerEquipment.EquipSlot.Helmet:
-					result.HelmetItemId = equipment.Value?.ItemId ?? 0;
-					break;
-
-				case PlayerEquipment.EquipSlot.Gloves:
-					result.GlovesItemId = equipment.Value?.ItemId ?? 0;
-					break;
-
-					// 추가적인 슬롯이 있을 경우 여기에 추가.
-				}
+					EquipSlot = equipmentData.Key,
+					InstanceId = equipmentData.Value,
+				} );
 			}
 
 			return result;
 		}
-		
+
 		/// <summary>
-		/// Player의 장비 정보를 Protocol EquipmentInfo로 변환 (Null-Safe)
+		/// Player의 장비 정보를 Protocol List<EquipmentSlotRef>로 변환 (Null-Safe)
 		/// </summary>
-		public static EquipmentInfo ToEquipmentInfoOrEmpty(this Player player)
+		public static List<EquipmentSlotRef> ToEquipmentRefsOrEmpty(this Player player)
 		{
-			return player == null ? new EquipmentInfo() : player.ToEquipmentInfo();
+			return player == null ? new List<EquipmentSlotRef>() : player.ToEquipmentRefs();
 		}
 
 		#endregion

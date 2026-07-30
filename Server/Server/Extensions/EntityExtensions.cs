@@ -20,6 +20,7 @@ namespace Server.Extensions
 
 			var proto = new InventoryItemInfo
 			{
+				InstanceId = item.InstanceId,
 				ItemId = item.ItemId,
 				Quantity = item.Quantity,
 				Slot = item.Slot,

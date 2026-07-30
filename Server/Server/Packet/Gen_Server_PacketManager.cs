@@ -55,18 +55,22 @@ namespace Server.Packet
             _packetTypeToId.Add(typeof(S_LevelUp), PacketID.S_LevelUp);
             _packetTypeToId.Add(typeof(S_InventoryData), PacketID.S_InventoryData);
             _packetTypeToId.Add(typeof(S_UseItem), PacketID.S_UseItem);
-            _packetTypeToId.Add(typeof(S_ItemEquipped), PacketID.S_ItemEquipped);
-            _packetTypeToId.Add(typeof(S_ItemUnequipped), PacketID.S_ItemUnequipped);
-            _packetTypeToId.Add(typeof(S_ItemAdded), PacketID.S_ItemAdded);
+            _packetTypeToId.Add(typeof(S_EquipmentData), PacketID.S_EquipmentData);
+            _packetTypeToId.Add(typeof(S_EquipmentUpdate), PacketID.S_EquipmentUpdate);
             _packetTypeToId.Add(typeof(S_InventoryUpdate), PacketID.S_InventoryUpdate);
             _packetTypeToId.Add(typeof(S_MonsterDie), PacketID.S_MonsterDie);
             _packetTypeToId.Add(typeof(S_MonsterUpdate), PacketID.S_MonsterUpdate);
             _packetTypeToId.Add(typeof(S_ChangeRoom), PacketID.S_ChangeRoom);
             _packetTypeToId.Add(typeof(S_PathInfo), PacketID.S_PathInfo);
+            _packetTypeToId.Add(typeof(S_Login), PacketID.S_Login);
+            _packetTypeToId.Add(typeof(S_ForceKick), PacketID.S_ForceKick);
+            _packetTypeToId.Add(typeof(S_CreatePlayer), PacketID.S_CreatePlayer);
             _packetTypeToId.Add(typeof(S_Pong), PacketID.S_Pong);
             // System 카테고리
+            _packetCategoryCache.Add(PacketID.C_Login, PacketCategory.System);
             _packetCategoryCache.Add(PacketID.C_EnterGame, PacketCategory.System);
             _packetCategoryCache.Add(PacketID.C_ChangeRoom, PacketCategory.System);
+            _packetCategoryCache.Add(PacketID.C_CreatePlayer, PacketCategory.System);
             _packetCategoryCache.Add(PacketID.C_Ping, PacketCategory.System);
             // Room 카테고리
             _packetCategoryCache.Add(PacketID.C_Move, PacketCategory.Room);
@@ -77,6 +81,7 @@ namespace Server.Packet
             _packetCategoryCache.Add(PacketID.C_UseSkill, PacketCategory.Combat);
             // Inventory 카테고리
             _packetCategoryCache.Add(PacketID.C_InventoryRequest, PacketCategory.Inventory);
+            _packetCategoryCache.Add(PacketID.C_EquipmentRequest, PacketCategory.Inventory);
             _packetCategoryCache.Add(PacketID.C_UseItem, PacketCategory.Inventory);
             _packetCategoryCache.Add(PacketID.C_EquipItem, PacketCategory.Inventory);
             _packetCategoryCache.Add(PacketID.C_UnequipItem, PacketCategory.Inventory);
@@ -178,17 +183,20 @@ namespace Server.Packet
 
 		private void RegisterStateFilter()
 		{
-			_packetAllowedStates[PacketID.C_EnterGame] = new[] {SessionState.Connected };
+			_packetAllowedStates[PacketID.C_Login] = new[] {SessionState.Connected };
+			_packetAllowedStates[PacketID.C_EnterGame] = new[] {SessionState.Authenticated };
 			_packetAllowedStates[PacketID.C_ChangeRoom] = new[] {SessionState.InRoom };
 			_packetAllowedStates[PacketID.C_Move] = new[] {SessionState.InRoom };
 			_packetAllowedStates[PacketID.C_Chat] = new[] {SessionState.InRoom };
 			_packetAllowedStates[PacketID.C_PlayerInfo] = new[] {SessionState.InRoom };
 			_packetAllowedStates[PacketID.C_UseSkill] = new[] {SessionState.InRoom };
 			_packetAllowedStates[PacketID.C_InventoryRequest] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_EquipmentRequest] = new[] {SessionState.InRoom };
 			_packetAllowedStates[PacketID.C_UseItem] = new[] {SessionState.InRoom };
 			_packetAllowedStates[PacketID.C_EquipItem] = new[] {SessionState.InRoom };
 			_packetAllowedStates[PacketID.C_UnequipItem] = new[] {SessionState.InRoom };
 			_packetAllowedStates[PacketID.C_AutoMove] = new[] {SessionState.InRoom };
+			_packetAllowedStates[PacketID.C_CreatePlayer] = new[] {SessionState.Authenticated };
 		}
 	}
 }

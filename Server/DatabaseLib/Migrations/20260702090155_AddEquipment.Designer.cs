@@ -3,6 +3,7 @@ using System;
 using DatabaseLib;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DatabaseLib.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260702090155_AddEquipment")]
+    partial class AddEquipment
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -189,12 +192,6 @@ namespace DatabaseLib.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("PlayerId"));
 
-                    b.Property<long>("AccountId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasDefaultValue(0L)
-                        .HasColumnName("account_id");
-
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -247,9 +244,6 @@ namespace DatabaseLib.Migrations
                         .HasDefaultValueSql("NOW()");
 
                     b.HasKey("PlayerId");
-
-                    b.HasIndex("AccountId")
-                        .HasDatabaseName("ix_players_account_id");
 
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("ix_players_created_at");

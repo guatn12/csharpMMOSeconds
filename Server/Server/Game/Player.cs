@@ -4,6 +4,7 @@ using Server.Game.Objects;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Server.Data;
 
 namespace Server.Game
 {
@@ -26,13 +27,18 @@ namespace Server.Game
 		public event Action<Player, int, int> OnManaChanged;   // (Player, oldMP, newMP)
 
 		// 인벤, 장비 관련 이벤트
-		public event Action<Player, int, InventoryItem> OnItemAdded;									// 아이템 획득
-		public event Action<Player, int, InventoryItem> OnItemRemoved;                                  // 아이템 제거
-		public event Action<Player, PlayerEquipment.EquipSlot, InventoryItem> OnItemEquipped;			// 장비 착용
-		public event Action<Player, PlayerEquipment.EquipSlot, InventoryItem> OnItemUnequipped;			// 장비 해제
-		public event Action<Player, Dictionary<PlayerEquipment.StatType, int>> OnEquipmentStatsChanged; // 장비 스탯 변경
-		
-		public Player( long playerRawId, string playerName )
+		//public event Action<Player, long, InventoryItem> OnItemAdded;												// 아이템 획득
+		//public event Action<Player, long, InventoryItem> OnItemRemoved;												// 아이템 제거
+		//public event Action<Player, long, InventoryItem> OnItemQuantityChanged;												// 아이템 수량 변경
+		//public event Action<Player, PlayerEquipment.EquipSlot, InventoryItem> OnItemEquipped;						// 장비 착용
+		//public event Action<Player, PlayerEquipment.EquipSlot, InventoryItem> OnItemUnequipped;						// 장비 해제
+		//public event Action<Player, Dictionary<PlayerEquipment.StatType, int>> OnEquipmentStatsChanged;				// 장비 스탯 변경
+		public event Action<Player> OnEquipmentChanged;                                                             // 장비 변경
+		public event Action<Player, InventoryUpdateEventArgs> OnInventoryUpdated;                                   // 인벤토리 변경
+		public event Action<Player, long, long> OnGoldChanged;														// 골드 변경
+
+
+		public Player( IDataManager dataManager, long playerRawId, string playerName )
 			:base(GameObjectId.Generate(ObjectType.ObjectPlayer, playerRawId ), ObjectType.ObjectPlayer)
 		{
 			_name = playerName ?? $"Player_{playerRawId}";
@@ -51,7 +57,7 @@ namespace Server.Game
 			_lastUpdateTime = DateTime.UtcNow;
 			_combatTargetId = 0;
 
-			Inventory = new PlayerInventory( playerRawId );
+			Inventory = new PlayerInventory( dataManager, playerRawId );
 			Equipment = new PlayerEquipment( playerRawId );
 
 			// 이벤트 구독 설정
@@ -63,6 +69,32 @@ namespace Server.Game
 		public float MPPercentage => 0 < Stats.MaxMP ? (float)Stats.CurrentMP / MaxMP : 0f;
 		public long RequiredExp => Stats.Level * 100; // 임시 레벨업 필요 경험치.
 		public long CombatTargetId => _combatTargetId;
+
+		public List<long> ApplyLoadedData(PlayerEntity playerEntity, InventoryEntity inventoryEntity, EquipmentEntity equipmentEntity)
+		{
+			var missingEquipInstances = new List<long>();
+			_name = playerEntity.PlayerName;
+			_statInfo.Level = playerEntity.Level;
+			_statInfo.Experience = playerEntity.Experience;
+
+			// 장비 데이터보다 무조건 우선
+			if(inventoryEntity?.InventoryData != null)
+			{
+				LoadInventoryData( inventoryEntity.InventoryData );
+			}
+
+			if(equipmentEntity?.EquipmentData != null)
+			{
+				var equipmentDict = equipmentEntity.EquipmentData.ToDictionary(kv => (PlayerEquipment.EquipSlot)kv.Key, kv => kv.Value);
+				missingEquipInstances = LoadEquipmentFromRefs( equipmentDict );
+			}
+			else
+			{
+				RecalculatePlayerStats();
+			}
+
+			return missingEquipInstances;
+		}
 
 		public void InitPosition(PosInfo newPosInfo)
 		{
@@ -284,75 +316,36 @@ namespace Server.Game
 			}
 		}
 
-		// 인벤토리 관련 메서드
-		public bool AddItem(int itemId, int quantity = 1, Dictionary<string, double> options = null)
+		public bool UseItem(long instanceId, int quantity = 1)
 		{
+			InventoryItem item = Inventory.GetItemByInstanceId( instanceId );
+			if(item == null) 
+				return false;
 
-			return Inventory.AddItem( itemId, quantity, options );
-		}
-
-		public bool RemoveItem(int itemId, int quantity = 1)
-		{
-			return Inventory.RemoveItem( itemId, quantity );
-		}
-
-		public bool UseItem(int slot, int quantity = 1)
-		{
-			InventoryItem item = Inventory.GetItem( slot );
-			if(item == null) return false;
+			if(quantity <= 0 || item.Quantity < quantity || item.IsEquipped)
+				return false;
 
 			// 아이템 사용 효과 적용
 			bool effectApplied = ApplyItemEffect(item, quantity);
-			if(!effectApplied) return false;
+			if(!effectApplied) 
+				return false;
 
 			// 인벤토리에서 아이템 소모
-			return Inventory.UseItem(slot, quantity);
-		}
-
-		public bool HasItem(int itemId, int quantity = 1)
-		{
-			return Inventory.HasItem( itemId, quantity );
-		}
-
-		public bool AddGold(long amount)
-		{
-			return Inventory.AddGold( amount );
-		}
-
-		public bool RemoveGold(long amount)
-		{
-			return Inventory.RemoveGold( amount );
-		}
-
-		public long GetGold()
-		{
-			return Inventory.Gold;
+			return Inventory.UseItem(instanceId, quantity);
 		}
 
 		// 장비 관련
-		public bool EquipItemFromInventory(int inventorySlot)
+		public bool EquipItemFromInventory(long instanceId, int equipSlot)
 		{
-			InventoryItem item = Inventory.GetItem(inventorySlot);
-			if(item == null) return false;
-			if(!Equipment.CanEquipItem( item.ItemId )) return false;
+			InventoryItem item = Inventory.GetItemByInstanceId(instanceId);
+			if(item == null) 
+				return false;
 
-			// 인벤토리에서 아이템 제거
-			if(!Inventory.RemoveItemFromSlot(item.Slot)) return false;
+			if(Equipment.GetEquipmentDict().Values.Contains( instanceId ))
+				return false;
 
-			// 기존 장비가 있다면 인벤토리로 이동
-			var targetSlot = GetItemEquipSlot(item.ItemId);
-			InventoryItem existingItem = Equipment.GetEquippedItem(targetSlot);
-			if(existingItem != null)
-			{
-				if(!Inventory.HasSpace())
-				{
-					// 인벤토리 공간 부족 - 원래 아이템 복구
-					Inventory.AddItem( item.ItemId, item.Quantity, item.Options );
-					return false;
-				}
-				Equipment.UnequipItem( targetSlot );
-				Inventory.AddItem( existingItem.ItemId, existingItem.Quantity, existingItem.Options );
-			}
+			if(!Equipment.CanEquipItem( item.ItemId )) 
+				return false;
 
 			// 새 장비 착용
 			return Equipment.EquipItem( item );
@@ -361,15 +354,15 @@ namespace Server.Game
 		public bool UnequipItemToInventory(PlayerEquipment.EquipSlot slot)
 		{
 			InventoryItem item = Equipment.GetEquippedItem(slot);
-			if(item == null) return false;
-			if(!Inventory.HasSpace()) return false;
-
+			if(item == null) 
+				return false;
+			
 			// 장비 해제
 			var unequippedItem = Equipment.UnequipItemAndReturn(slot);
-			if(unequippedItem == null) return false;
+			if(unequippedItem == null) 
+				return false;
 
-			// 인벤토리에 추가
-			return Inventory.AddItem( unequippedItem.ItemId, unequippedItem.Quantity, unequippedItem.Options );
+			return true;
 		}
 
 		// 장비 스탯 조회 메서드들
@@ -404,8 +397,8 @@ namespace Server.Game
 				Defense = _statInfo.Defense + Equipment.GetTotalDefense(),
 				CurrentHP = _statInfo.CurrentHP,
 				CurrentMP = _statInfo.CurrentMP,
-				MaxHP = _statInfo.MaxHP + Equipment.GetTotalHP(),
-				MaxMP = _statInfo.MaxMP + Equipment.GetTotalMP(),
+				MaxHP = _statInfo.MaxHP,
+				MaxMP = _statInfo.MaxMP,
 			};
 		}
 
@@ -427,10 +420,28 @@ namespace Server.Game
 			Inventory.LoadFromInventoryModel(inventoryModel);
 		}
 
-		public void LoadEquipmentData(Dictionary<PlayerEquipment.EquipSlot, InventoryItem> equipmentData)
+		public List<long> LoadEquipmentFromRefs(Dictionary<PlayerEquipment.EquipSlot, long> equipmentData)
 		{
-			Equipment.LoadFromEquipmentData(equipmentData);
+			List<long> missingEquipInstanceIds = new List<long>();
+			Dictionary<PlayerEquipment.EquipSlot, InventoryItem> equipInfoDict = new Dictionary<PlayerEquipment.EquipSlot, InventoryItem>();
+			var inventoryItems = Inventory.GetAllItems();
+			foreach(var equip in equipmentData)
+			{
+				var item = inventoryItems.Where( item => item.InstanceId == equip.Value ).FirstOrDefault();
+				if(item == null)
+				{
+					missingEquipInstanceIds.Add( equip.Value );
+					continue;
+				}
+
+				equipInfoDict[ equip.Key ] = item;
+				item.IsEquipped = true;
+			}
+
+			Equipment.LoadFromEquipmentData(equipInfoDict, 0 < missingEquipInstanceIds.Count);
 			RecalculatePlayerStats();
+
+			return missingEquipInstanceIds;
 		}
 
 		// 인벤 / 장비 저장(DB / Redis)
@@ -447,35 +458,27 @@ namespace Server.Game
 		private void SetupCompositionEvents()
 		{
 			// 인벤토리 이벤트 구독
-			Inventory.OnItemAdded += ( inv, slot, item ) => OnItemAdded?.Invoke( this, slot, item );
-			Inventory.OnItemRemoved += ( inv, slot, item ) => OnItemRemoved?.Invoke( this, slot, item );
-			Inventory.OnGoldChanged += OnInventoryGoldChanged;
-			Inventory.OnInventoryChanged += OnInventoryChanged;
+			//Inventory.OnItemAdded += ( inv, instanceId, item ) => OnItemAdded?.Invoke( this, instanceId, item );
+			//Inventory.OnItemRemoved += ( inv, instanceId, item ) => OnItemRemoved?.Invoke( this, instanceId, item );
+			//Inventory.OnItemQuantityChanged += ( inv, instanceId, item ) => OnItemQuantityChanged?.Invoke( this, instanceId, item );
+			//Inventory.OnGoldChanged += OnInventoryGoldChanged;
+			Inventory.OnInventoryUpdated += ( inv, eventArgs ) => OnInventoryUpdated?.Invoke( this, eventArgs );
+			Inventory.OnGoldChanged += ( inv, oldGold, newGold ) => OnGoldChanged?.Invoke( this, oldGold, newGold );
 
 			// 장비 이벤트 구독
-			Equipment.OnItemEquipped += ( eq, slot, item ) => OnItemEquipped?.Invoke( this, slot, item );
-			Equipment.OnItemUnEquipped += ( eq, slot, item ) => OnItemUnequipped?.Invoke( this, slot, item );
-			Equipment.OnStatsChanged += ( eq, stats ) =>
+			Equipment.OnEquipmentChanged += ( eq ) =>
 			{
-				OnEquipmentStatsChanged?.Invoke( this, stats );
 				RecalculatePlayerStats();
+				OnEquipmentChanged?.Invoke( this );
 			};
-			Equipment.OnEquipmentChanged += OnEquipmentChanged;
-		}
+			//Equipment.OnItemEquipped += ( eq, slot, item ) => OnItemEquipped?.Invoke( this, slot, item );
+			//Equipment.OnItemUnEquipped += ( eq, slot, item ) => OnItemUnequipped?.Invoke( this, slot, item );
+			//Equipment.OnStatsChanged += ( eq, stats ) =>
+			//{
+			//	OnEquipmentStatsChanged?.Invoke( this, stats );
+			//	RecalculatePlayerStats();
+			//};
 
-		private void OnInventoryGoldChanged(PlayerInventory inventory, long oldGold, long newGold )
-		{
-			// TODO : 골드 변경 처리 (UI, 로그 등)
-		}
-
-		private void OnInventoryChanged(PlayerInventory inventory)
-		{
-			// TODO : 인벤토리 변경 처리
-		}
-
-		private void OnEquipmentChanged(PlayerEquipment equipment)
-		{
-			// TODO : 장비 변경 처리.
 		}
 
 		private void RecalculatePlayerStats()

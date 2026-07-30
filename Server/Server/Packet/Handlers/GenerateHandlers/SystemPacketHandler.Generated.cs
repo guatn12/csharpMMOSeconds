@@ -25,10 +25,14 @@ namespace Server.Packet.Handlers
 			Handlers = new Dictionary<Type, Func<IClientSession, IMessage, Task>>();
 			_onRecv = new Dictionary<ushort, Func<IClientSession, ArraySegment<byte>, ValueTask>>();
 
+			Handlers.Add(typeof(C_Login), async (s, p) => await HandleC_LoginAsync( s, (C_Login)p));
+			_onRecv.Add((ushort)PacketID.C_Login, HandleC_LoginAsync);
 			Handlers.Add(typeof(C_EnterGame), async (s, p) => await HandleC_EnterGameAsync( s, (C_EnterGame)p));
 			_onRecv.Add((ushort)PacketID.C_EnterGame, HandleC_EnterGameAsync);
 			Handlers.Add(typeof(C_ChangeRoom), async (s, p) => await HandleC_ChangeRoomAsync( s, (C_ChangeRoom)p));
 			_onRecv.Add((ushort)PacketID.C_ChangeRoom, HandleC_ChangeRoomAsync);
+			Handlers.Add(typeof(C_CreatePlayer), async (s, p) => await HandleC_CreatePlayerAsync( s, (C_CreatePlayer)p));
+			_onRecv.Add((ushort)PacketID.C_CreatePlayer, HandleC_CreatePlayerAsync);
 			Handlers.Add(typeof(C_Ping), async (s, p) => await HandleC_PingAsync( s, (C_Ping)p));
 			_onRecv.Add((ushort)PacketID.C_Ping, HandleC_PingAsync);
 		}
@@ -45,6 +49,13 @@ namespace Server.Packet.Handlers
 			}
 		}
 
+		private async ValueTask HandleC_LoginAsync(IClientSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_Login();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_LoginAsync(session, packet);
+		}
+
 		private async ValueTask HandleC_EnterGameAsync(IClientSession session, ArraySegment<byte> buffer)
 		{
 			var packet = new C_EnterGame();
@@ -57,6 +68,13 @@ namespace Server.Packet.Handlers
 			var packet = new C_ChangeRoom();
 			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
 			await HandleC_ChangeRoomAsync(session, packet);
+		}
+
+		private async ValueTask HandleC_CreatePlayerAsync(IClientSession session, ArraySegment<byte> buffer)
+		{
+			var packet = new C_CreatePlayer();
+			packet.MergeFrom(buffer.Array, buffer.Offset, buffer.Count);
+			await HandleC_CreatePlayerAsync(session, packet);
 		}
 
 		private async ValueTask HandleC_PingAsync(IClientSession session, ArraySegment<byte> buffer)

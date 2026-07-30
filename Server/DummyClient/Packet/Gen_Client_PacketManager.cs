@@ -26,14 +26,16 @@ namespace DummyClient.Packet
         public virtual ValueTask On_S_LevelUp(NetworkSession session, S_LevelUp packet) { Console.WriteLine("Received but not handled: S_LevelUp"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_InventoryData(NetworkSession session, S_InventoryData packet) { Console.WriteLine("Received but not handled: S_InventoryData"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_UseItem(NetworkSession session, S_UseItem packet) { Console.WriteLine("Received but not handled: S_UseItem"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_ItemEquipped(NetworkSession session, S_ItemEquipped packet) { Console.WriteLine("Received but not handled: S_ItemEquipped"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_ItemUnequipped(NetworkSession session, S_ItemUnequipped packet) { Console.WriteLine("Received but not handled: S_ItemUnequipped"); return ValueTask.CompletedTask; }
-        public virtual ValueTask On_S_ItemAdded(NetworkSession session, S_ItemAdded packet) { Console.WriteLine("Received but not handled: S_ItemAdded"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_EquipmentData(NetworkSession session, S_EquipmentData packet) { Console.WriteLine("Received but not handled: S_EquipmentData"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_EquipmentUpdate(NetworkSession session, S_EquipmentUpdate packet) { Console.WriteLine("Received but not handled: S_EquipmentUpdate"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_InventoryUpdate(NetworkSession session, S_InventoryUpdate packet) { Console.WriteLine("Received but not handled: S_InventoryUpdate"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_MonsterDie(NetworkSession session, S_MonsterDie packet) { Console.WriteLine("Received but not handled: S_MonsterDie"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_MonsterUpdate(NetworkSession session, S_MonsterUpdate packet) { Console.WriteLine("Received but not handled: S_MonsterUpdate"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_ChangeRoom(NetworkSession session, S_ChangeRoom packet) { Console.WriteLine("Received but not handled: S_ChangeRoom"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_PathInfo(NetworkSession session, S_PathInfo packet) { Console.WriteLine("Received but not handled: S_PathInfo"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_Login(NetworkSession session, S_Login packet) { Console.WriteLine("Received but not handled: S_Login"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_ForceKick(NetworkSession session, S_ForceKick packet) { Console.WriteLine("Received but not handled: S_ForceKick"); return ValueTask.CompletedTask; }
+        public virtual ValueTask On_S_CreatePlayer(NetworkSession session, S_CreatePlayer packet) { Console.WriteLine("Received but not handled: S_CreatePlayer"); return ValueTask.CompletedTask; }
         public virtual ValueTask On_S_Pong(NetworkSession session, S_Pong packet) { Console.WriteLine("Received but not handled: S_Pong"); return ValueTask.CompletedTask; }
     }
 
@@ -75,11 +77,11 @@ namespace DummyClient.Packet
             _onRecv.Add((ushort)PacketID.S_InventoryData, HandlePacket<S_InventoryData>(_handler.On_S_InventoryData));
             _packetTypeToId.Add(typeof(Protocol.C_UseItem), PacketID.C_UseItem);
             _onRecv.Add((ushort)PacketID.S_UseItem, HandlePacket<S_UseItem>(_handler.On_S_UseItem));
+            _packetTypeToId.Add(typeof(Protocol.C_EquipmentRequest), PacketID.C_EquipmentRequest);
+            _onRecv.Add((ushort)PacketID.S_EquipmentData, HandlePacket<S_EquipmentData>(_handler.On_S_EquipmentData));
             _packetTypeToId.Add(typeof(Protocol.C_EquipItem), PacketID.C_EquipItem);
-            _onRecv.Add((ushort)PacketID.S_ItemEquipped, HandlePacket<S_ItemEquipped>(_handler.On_S_ItemEquipped));
+            _onRecv.Add((ushort)PacketID.S_EquipmentUpdate, HandlePacket<S_EquipmentUpdate>(_handler.On_S_EquipmentUpdate));
             _packetTypeToId.Add(typeof(Protocol.C_UnequipItem), PacketID.C_UnequipItem);
-            _onRecv.Add((ushort)PacketID.S_ItemUnequipped, HandlePacket<S_ItemUnequipped>(_handler.On_S_ItemUnequipped));
-            _onRecv.Add((ushort)PacketID.S_ItemAdded, HandlePacket<S_ItemAdded>(_handler.On_S_ItemAdded));
             _onRecv.Add((ushort)PacketID.S_InventoryUpdate, HandlePacket<S_InventoryUpdate>(_handler.On_S_InventoryUpdate));
             _onRecv.Add((ushort)PacketID.S_MonsterDie, HandlePacket<S_MonsterDie>(_handler.On_S_MonsterDie));
             _onRecv.Add((ushort)PacketID.S_MonsterUpdate, HandlePacket<S_MonsterUpdate>(_handler.On_S_MonsterUpdate));
@@ -87,6 +89,11 @@ namespace DummyClient.Packet
             _onRecv.Add((ushort)PacketID.S_ChangeRoom, HandlePacket<S_ChangeRoom>(_handler.On_S_ChangeRoom));
             _packetTypeToId.Add(typeof(Protocol.C_AutoMove), PacketID.C_AutoMove);
             _onRecv.Add((ushort)PacketID.S_PathInfo, HandlePacket<S_PathInfo>(_handler.On_S_PathInfo));
+            _packetTypeToId.Add(typeof(Protocol.C_Login), PacketID.C_Login);
+            _onRecv.Add((ushort)PacketID.S_Login, HandlePacket<S_Login>(_handler.On_S_Login));
+            _onRecv.Add((ushort)PacketID.S_ForceKick, HandlePacket<S_ForceKick>(_handler.On_S_ForceKick));
+            _packetTypeToId.Add(typeof(Protocol.C_CreatePlayer), PacketID.C_CreatePlayer);
+            _onRecv.Add((ushort)PacketID.S_CreatePlayer, HandlePacket<S_CreatePlayer>(_handler.On_S_CreatePlayer));
             _packetTypeToId.Add(typeof(Protocol.C_Ping), PacketID.C_Ping);
             _onRecv.Add((ushort)PacketID.S_Pong, HandlePacket<S_Pong>(_handler.On_S_Pong));
         }

@@ -35,6 +35,11 @@ namespace DummyClient
 
 		public long MaxExp { get; set; } = 100;
 		public long Gold {  get; set; } = 0;
+		
+		// 인벤토리
+		public Dictionary<long, InventoryItemInfo> Inventory { get; set; } = new();
+		// 장비
+		public Dictionary<int, long> EquipInfo { get; set; } = new();
 
 		public PosInfo Position { get; set; }
 
@@ -99,6 +104,9 @@ namespace DummyClient
 			Position.RotationY = 0;
 			Position.RotationZ = 0;
 			CurrentMapId = 0;
+
+			Inventory.Clear();
+			EquipInfo.Clear();
 		}
 
 		public float DistanceTo(PosInfo target)
@@ -614,6 +622,11 @@ namespace DummyClient
 						ctx.LastInventoryRequestTime = DateTime.UtcNow;
 
 						logger.LogInformation( "[Client {ClientId}] [Send] C_InventoryRequest - 초기 인벤토리 조회", clientId );
+
+						C_EquipmentRequest equipmentPacket = new C_EquipmentRequest();
+						session.Send( equipmentPacket );
+						logger.LogInformation( "[Client {ClientId}] [Send] C_EquipmentRequest - 초기 장비 조회", clientId );
+
 					}
 
 					// 2. 주기적 재조회 (30초마다)
@@ -624,6 +637,10 @@ namespace DummyClient
 						ctx.LastInventoryRequestTime = DateTime.UtcNow;
 
 						logger.LogInformation( "[Client {ClientId}] [Send] C_InventoryRequest - 주기적 조회 (30초)", clientId );
+
+						C_EquipmentRequest equipmentPacket = new C_EquipmentRequest();
+						session.Send( equipmentPacket );
+						logger.LogInformation( "[Client {ClientId}] [Send] C_EquipmentRequest - 주기적 조회 (30초)", clientId );
 					}
 					// ===== 인벤토리 자동 조회 끝 =====
 
@@ -637,7 +654,7 @@ namespace DummyClient
 					// ===== Ping 자동 전송 끝 =====
 
 					// ===== 포션 자동 사용 =====
-					if(AutoPotionEnabled && 0 <= ctx.HealthPotionSlot)
+					if(AutoPotionEnabled && 0 <= ctx.HealthPotionInstanceId)
 					{
 						float hpPercent = ctx.MyPlayer.HPPercent;
 						bool cooldownReady = PotionCooldown <= (DateTime.UtcNow - ctx.LastPotionUseTime);
@@ -646,7 +663,7 @@ namespace DummyClient
 						{
 							C_UseItem useItemPacket = new C_UseItem
 							{
-								Slot = ctx.HealthPotionSlot,
+								InstanceId = ctx.HealthPotionInstanceId,
 								Quantity = 1
 							};
 

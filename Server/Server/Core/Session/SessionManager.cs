@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using Server.Config;
 using ServerCore;
 using DatabaseLib.Redis;
+using Protocol;
 
 namespace Server.Core.Session
 {
@@ -71,7 +72,7 @@ namespace Server.Core.Session
 			var jobQueueManager = _serviceProvider.GetRequiredService<IJobQueueManager>();
 
 			// GameSession  생성
-			var session = new ClientSession(logger, packetManager, this, jobQueueManager, sessionId );
+			var session = new ClientSession(logger, packetManager, this, jobQueueManager, _redisService, sessionId );
 
 			_logger.LogInformation( "Session created: SessionId={SessionId}", sessionId );
 
@@ -88,6 +89,7 @@ namespace Server.Core.Session
 				_logger.LogWarning( "RegisterSession: session is null" );
 				return false;
 			}
+
 			lock ( _lock )
 			{
 				// 중복 체크
@@ -97,36 +99,18 @@ namespace Server.Core.Session
 					return false;
 				}
 
-				if(_sessionByPlayerId.ContainsKey(session.PlayerId))
-				{
-					_logger.LogWarning("RegisterSession: PlayerId={PlayerId} already registered", session.PlayerId );
-					return false;
-				}
-
 				bool addedById = _sessionById.TryAdd(session.SessionId, session);
-				bool addedByPlayerId = _sessionByPlayerId.TryAdd(session.PlayerId, session);
 
-				if(!addedById || !addedByPlayerId)
+				if(!addedById)
 				{
 					// 등록 실패
-					_sessionById.TryRemove( session.SessionId, out _ );
-					_sessionByPlayerId.TryRemove( session.PlayerId, out _ );
 					_logger.LogError( "RegisterSession: Failed to add session atomically" );
 					return false;
 				}
 			}
 
-			// lock 밖에서 이벤트 발생 (이벤트 핸들러에서 deadlock 방지)
-			_logger.LogInformation( "Session registered: SessionId={SessionId}, PlayerId={PlayerId}",
-					session.SessionId, session.PlayerId );
 
-			// 이벤트 발생
-			SessionRegistered?.Invoke( this, new SessionRegisteredEventArgs
-			{
-				SessionId = session.SessionId,
-				PlayerId = session.PlayerId,
-				RegisteredAt = DateTime.UtcNow
-			} );
+			_logger.LogInformation( "Session registered: SessionId={SessionId}", session.SessionId );
 
 			// Redis에 세션 정보 저장
 			_ = Task.Run( async () =>
@@ -136,7 +120,7 @@ namespace Server.Core.Session
 					var sessionInfo = new
 					{
 						SessionId = session.SessionId,
-						PlayerId = session.PlayerId,
+						//PlayerId = session.PlayerId,
 						RegisteredAt = DateTime.UtcNow
 					};
 
@@ -153,6 +137,57 @@ namespace Server.Core.Session
 			return true;
 		}
 
+		public bool BindPlayerToSession( long sessionId )
+		{
+			// sessionId에 해당하는 세션이 존재하는지 확인
+			if(!_sessionById.TryGetValue( sessionId, out var newSession))
+			{
+				_logger.LogWarning( "BindPlayerToSession: SessionId={SessionId} not found", sessionId );
+				return false;
+			}
+
+			if(newSession.Player == null)
+			{
+				_logger.LogWarning( "BindPlayerToSession: Player is null for SessionId={SessionId}", sessionId );
+				return false;
+			}
+
+			long playerId = newSession.PlayerId;
+			IClientSession evicted = null;
+			lock(_lock)
+			{
+				_sessionByPlayerId.AddOrUpdate( playerId, newSession, ( _, old ) => { evicted = old; return newSession; } );
+			}
+
+			if(evicted != null && evicted.SessionId != sessionId)
+			{
+				try
+				{
+					evicted.Send( new S_ForceKick { Reason = "다른 곳에서 로그인되었습니다." } );
+				}
+				catch(Exception ex)
+				{
+					_logger.LogWarning( ex, "S_ForceKick send failed. SessionId={SessionId}", evicted.SessionId );
+				}
+
+				evicted.Disconnect();
+			}
+
+			// lock 밖에서 이벤트 발생 (이벤트 핸들러에서 deadlock 방지)
+			_logger.LogInformation( "Player bound to session: SessionId={SessionId}, PlayerId={PlayerId}",
+				sessionId, playerId );
+
+			// 이벤트 발생
+			SessionRegistered?.Invoke( this, new SessionRegisteredEventArgs
+			{
+				SessionId = sessionId,
+				PlayerId = playerId,
+				RegisteredAt = DateTime.UtcNow
+			} );
+
+			return true;
+		}
+
 		public bool UnregisterSession(long sessionId)
 		{
 			IClientSession session = null;
@@ -164,20 +199,12 @@ namespace Server.Core.Session
 					return false;
 				}
 
-				// PlayerId 매핑 제거
-				bool removedByPlayerId = _sessionByPlayerId.TryRemove( session.PlayerId, out _ );
-
-				if(!removedByPlayerId)
+				if(session.Player != null)
 				{
-					_logger.LogError("UnregisterSession: PlayerId={PlayerId} mapping not found", session.PlayerId );
-
-					if(!_sessionById.TryAdd(sessionId, session))
-				{
-					_logger.LogCritical(
-						"CRITICAL: Rollback failed! SessionId={SessionId}, PlayerId={PlayerId}",
-						sessionId, session.PlayerId);
-				}
-					return false;
+					// PlayerId 매핑 제거
+					// 키+값이 내 세션과 일치할때만 원자적 제거 - 스왑으로 이미 새 세션이 차지한 맵핑을 구세션이 되돌아와 지워버리는 것을 방지
+					((ICollection<KeyValuePair<long, IClientSession>>)_sessionByPlayerId)
+						.Remove( new KeyValuePair<long, IClientSession>( session.PlayerId, session ) );
 				}
 			}
 
@@ -188,7 +215,7 @@ namespace Server.Core.Session
 			SessionUnregistered?.Invoke( this, new SessionUnregisteredEventArgs
 			{
 				SessionId = sessionId,
-				PlayerId = session.PlayerId,
+				PlayerId = session.Player?.ObjectId ?? 0,
 				UnregisteredAt = DateTime.UtcNow,
 				Reason = "Disconnected"
 			} );
@@ -202,9 +229,12 @@ namespace Server.Core.Session
 					await _redisService.DeleteAsync( $"session:{sessionId}" );
 					_logger.LogDebug( "Redis에서 세션 정보 삭제 완료: SessionId={SessionId}", sessionId );
 
-					// 플레이어 위치 정보 제거
-					await _playerPositionService.RemovePositionAsync( session.PlayerId );
-					_logger.LogDebug( "플레이어 위치 정보 삭제 완료: PlayerId={PlayerId}", session.PlayerId );
+					if(session.Player != null)
+					{
+						// 플레이어 위치 정보 제거
+						await _playerPositionService.RemovePositionAsync( session.PlayerId );
+						_logger.LogDebug( "플레이어 위치 정보 삭제 완료: PlayerId={PlayerId}", session.PlayerId );
+					}
 				}
 				catch(Exception ex)
 				{
@@ -300,8 +330,8 @@ namespace Server.Core.Session
 				long elapsed = now - session.LastActiveTime;
 				if( _sessionTimoutMs < elapsed)
 				{
-					_logger.LogWarning( "Session timeout. SessionId={SessionId}, PlayerId={PlayerId}, Elapsed={Elapsed}ms",
-						session.SessionId, session.PlayerId, elapsed );
+					_logger.LogWarning( "Session timeout. SessionId={SessionId}, Elapsed={Elapsed}ms",
+						session.SessionId, elapsed );
 					session.Disconnect();
 				}
 			}

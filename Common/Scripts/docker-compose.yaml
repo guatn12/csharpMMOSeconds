@@ -40,8 +40,20 @@ services:
     depends_on:
       - postgres_db
 
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: redisinsight
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight-data:/data
+    restart: always
+    depends_on:
+      - redis_cache
+
 volumes:
   postgres-data:
   pgadmin-data:
+  redisinsight-data:
   # ❌ 최상위 redis-data 정의도 제거
   # redis-data:

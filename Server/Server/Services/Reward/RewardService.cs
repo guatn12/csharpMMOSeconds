@@ -71,17 +71,14 @@ namespace Server.Services.Reward
 			}
 
 			// 골드 지급
-			player.AddGold( reward.Gold );
+			player.Inventory.AddGold( reward.Gold );
 
 			// 아이템 지급
-			foreach( var item in reward.DroppedItem )
+			bool added = player.Inventory.AddItems(reward.DroppedItem);
+			if(!added)
 			{
-				bool added = player.AddItem(item.ItemId, item.Quantity);
-				if(!added)
-				{
-					_logger.LogWarning( "Failed to add item {ItemId} to player {PlayerId} inventory( full )",
-						item.ItemId, player.ObjectId );
-				}
+				_logger.LogWarning( "Failed to add items to player {PlayerId} inventory( full )",
+					player.ObjectId );
 			}
 
 			_logger.LogInformation( "Gave reward to Player {PlayerId}: Exp={Exp}, Gold={Gold}, LevelUp={LevelUp}",

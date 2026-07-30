@@ -13,19 +13,26 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using DatabaseLib.Redis;
+using Server.Data;
+using Server.Extensions;
 
 namespace Server.Core.Session
 {
     public class ClientSession : NetworkSession, IClientSession
     {
-        //private readonly ILogger<ClientSession> _logger;
         private readonly PacketManager _packetManager;
         private readonly ISessionManager _sessionManager;
 		private readonly SessionJobQueue _sessionQueue;
+		private readonly IRedisService _redisService;
         private IRoom _currentRoom;
+
         private readonly object _roomLock = new object();
 		private long _lastActiveTime = Environment.TickCount64;
 		private int _state = (int)SessionState.Connected;
+		private long _lastTokenRefreshTick = Environment.TickCount64;
+
+		private const long TokenRefreshDebounceMs = 300000;
 
         public IRoom CurrentRoom
         {
@@ -42,16 +49,22 @@ namespace Server.Core.Session
 		public bool IsInRoom => _currentRoom != null;
 
 		public long SessionId { get; private set; }
+		public long AccountId { get; private set; }
+		public string LoginToken { get; private set; }
 		public long LastActiveTime => _lastActiveTime;
 		public Player Player { get; private set; }
-        public string PlayerName => Player.Name ?? $"Player_{Player.ObjectId}";
-        public long PlayerId => Player.ObjectId;
+        public string PlayerName => Player?.Name ?? $"Session_{SessionId}";
+        public long PlayerId => Player?.ObjectId ?? 0;		
 		public SessionState State => (SessionState)Volatile.Read( ref _state );
+
+		public bool IsAuthenticated => SessionState.Authenticated <= State && State < SessionState.Disconnecting;
 
 		private static readonly Dictionary<SessionState, HashSet<SessionState>> _validTransitions = new()
 		{
-			[SessionState.Connected] = new() {SessionState.EnteringGame, SessionState.Disconnecting },
-			[SessionState.EnteringGame] = new() {SessionState.InRoom, SessionState.Connected, SessionState.Disconnecting },
+			[SessionState.Connected] = new() {SessionState.Authenticating, SessionState.Disconnecting },
+			[SessionState.Authenticating] = new () {SessionState.Authenticated, SessionState.Connected, SessionState.Disconnecting},
+			[SessionState.Authenticated] = new () {SessionState.EnteringGame, SessionState.Disconnecting },
+			[SessionState.EnteringGame] = new() {SessionState.InRoom, SessionState.Authenticated, SessionState.Disconnecting },
 			[SessionState.InRoom] = new() { SessionState.Transferring, SessionState.Disconnecting },
 			[SessionState.Transferring] = new() {SessionState.InRoom, SessionState.Disconnecting },
 			[SessionState.Disconnecting] = new() {SessionState.Disconnected },
@@ -59,15 +72,18 @@ namespace Server.Core.Session
 		};
 
         public ClientSession( ILogger<ClientSession> logger, PacketManager packetManager, ISessionManager sessionManager, 
-			IJobQueueManager jobQueueManager, long sessionId)
+			IJobQueueManager jobQueueManager, IRedisService redisService, long sessionId)
 			:base( logger )
 		{
-            //_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
             _packetManager = packetManager;
             _sessionManager = sessionManager;
+			_redisService = redisService;
             SessionId = sessionId;
-			_sessionQueue = new SessionJobQueue( jobQueueManager, this );
+			_sessionQueue = new SessionJobQueue( jobQueueManager, this, logger );
         }
+
+		public void SetLoginToken( string token ) => LoginToken = token;
+		public void BindAccountId(long accountId) => AccountId = accountId;
 
 		public void EnqueueSystemJob( IJob job ) => _sessionQueue.Push( job );
 
@@ -91,6 +107,15 @@ namespace Server.Core.Session
 			}
 
 			Interlocked.Exchange( ref _lastActiveTime, Environment.TickCount64 );
+			if(IsAuthenticated && string.IsNullOrEmpty(LoginToken) == false)
+			{
+				long now = Environment.TickCount64;
+				long prev = Interlocked.Read(ref _lastTokenRefreshTick);
+				if(TokenRefreshDebounceMs < now - prev && Interlocked.CompareExchange(ref _lastTokenRefreshTick, now, prev) == prev)
+				{
+					_ = _redisService.KeyExpireAsync( RedisKeys.TokenUserId( LoginToken ), TimeSpan.FromHours( 1 ) );
+				}
+			}
 			PacketRoute packetRoute = _packetManager.RouteIncoming(this, buffer);
 
 			_logger.LogDebug( "Packet Received. SessionId: {SessionId}, Size: {Size}", SessionId, buffer.Count );
@@ -124,9 +149,6 @@ namespace Server.Core.Session
 		public override void OnConnected( EndPoint endPoint )
 		{
             _logger.LogInformation( "Client Connected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
-
-            // 플레이어 정보 초기화.
-            InitializePlayer();
 
             // 세션 매니저에 세션 등록
             _sessionManager.RegisterSession( this );
@@ -171,15 +193,18 @@ namespace Server.Core.Session
 			return true;
 		}
 
-		// 플레이어 초기화
-		private void InitializePlayer()
-        {
-			Player = new Player( SessionId, null );
+		// 플레이어 생성
+		public void CreatePlayer( IDataManager dataManager, long playerId, string playerName)
+		{
+			if(Player != null)
+			{
+				_logger.LogWarning( "이미 Player가 존재합니다: SessionId={SessionId}", SessionId );
+				return;
+			}
 
+			Player = new Player( dataManager, playerId, playerName );
 			SubscribePlayerEvents();
-
-			_logger.LogInformation( "Player initialized: {PlayerInfo}", Player.ToString() );
-        }
+		}
 
 		private void SubscribePlayerEvents()
 		{
@@ -189,11 +214,16 @@ namespace Server.Core.Session
 				Player.OnManaChanged += OnPlayerManaChanged;
 				Player.OnLevelUp += OnPlayerLevelUp;
 
-				Player.OnItemAdded += OnPlayerItemAdded;
-				Player.OnItemEquipped += OnPlayerItemEquipped;
-				Player.OnItemUnequipped += OnPlayerItemUnequipped;
-				Player.OnItemRemoved += OnPlayerItemRemoved;
-				Player.OnEquipmentStatsChanged += OnEquipmentStatsChanged;
+				//Player.OnItemAdded += OnPlayerItemAdded;
+				//Player.OnItemRemoved += OnPlayerItemRemoved;
+				//Player.OnItemQuantityChanged += OnPlayerItemQuantityChanged;
+				Player.OnInventoryUpdated += OnPlayerInventoryUpdated;
+
+				//Player.OnItemEquipped += OnPlayerItemEquipped;
+				//Player.OnItemUnequipped += OnPlayerItemUnequipped;
+				//Player.OnEquipmentStatsChanged += OnEquipmentStatsChanged;
+				Player.OnEquipmentChanged += OnPlayerEquipmentChanged;
+
 				Player.OnDeath += OnPlayerDeath;
 				Player.OnStateChanged += OnPlayerStateChanged;
 			}
@@ -206,11 +236,16 @@ namespace Server.Core.Session
 				Player.OnHealthChanged -= OnPlayerHealthChanged;
 				Player.OnManaChanged -= OnPlayerManaChanged;
 				Player.OnLevelUp -= OnPlayerLevelUp;
-				Player.OnItemAdded -= OnPlayerItemAdded;
-				Player.OnItemRemoved -= OnPlayerItemRemoved;
-				Player.OnItemUnequipped -= OnPlayerItemUnequipped;
-				Player.OnItemEquipped -= OnPlayerItemEquipped;
-				Player.OnEquipmentStatsChanged -= OnEquipmentStatsChanged;
+
+				//Player.OnItemAdded -= OnPlayerItemAdded;
+				//Player.OnItemRemoved -= OnPlayerItemRemoved;
+				//Player.OnItemQuantityChanged -= OnPlayerItemQuantityChanged;
+				Player.OnInventoryUpdated -= OnPlayerInventoryUpdated;
+				//Player.OnItemUnequipped -= OnPlayerItemUnequipped;
+				//Player.OnItemEquipped -= OnPlayerItemEquipped;
+				//Player.OnEquipmentStatsChanged -= OnEquipmentStatsChanged;
+				Player.OnEquipmentChanged -= OnPlayerEquipmentChanged;
+
 				Player.OnDeath -= OnPlayerDeath;
 				Player.OnStateChanged -= OnPlayerStateChanged;
 			}
@@ -305,173 +340,36 @@ namespace Server.Core.Session
                 player.ObjectId, player.Level, player.MaxHP, player.MaxMP);
 		}
 
-        // 아이템 추가 이벤트 핸들러
-        private void OnPlayerItemAdded(Player player, int slot, InventoryItem item)
-        {
+		private void OnPlayerInventoryUpdated(Player player, InventoryUpdateEventArgs eventArgs)
+		{
 			if(State >= SessionState.Disconnecting)
 				return;
 
-			// InventoryItem -> InventoryItemInfo 변환
-			S_ItemAdded packet = new S_ItemAdded
-            {
-                Item = new InventoryItemInfo
-                {
-                    ItemId = item.ItemId,
-                    Quantity = item.Quantity,
-                    Slot = item.Slot,
-                    EnhancementLevel = item.Enhancement?.Level ?? 0,
-                    CustomName = item.CustomName ?? "",
-                    AcquiredAt = item.AcquiredAt.HasValue
-                    ? ((DateTimeOffset)item.AcquiredAt.Value).ToUnixTimeSeconds() : 0
-                },
-                Source = "Monster Drop"
-            };
-
-            // Options 딕셔너리 복사
-            if(item.Options != null && item.Options.Any())
-            {
-                foreach(var kvp in item.Options)
-                {
-                    packet.Item.Options.Add(kvp.Key, kvp.Value);
-                }
-            }
-
-            Send( packet );
-
-			_logger.LogInformation( "[Event] Item Added: PlayerId={PlayerId}, ItemId={ItemId}, Slot={Slot}, Qty={Quantity}",
-                player.ObjectId, item.ItemId, item.Slot, item.Quantity);
-		}
-
-        // 장비 착용 이벤트 핸들러
-        private void OnPlayerItemEquipped(Player player, PlayerEquipment.EquipSlot slot, InventoryItem item)
-        {
-			if(State >= SessionState.Disconnecting)
-				return;
-
-			// 현재 장비 상태 조회
-			var equipmentData = player.GetEquipmentData();
-
-            S_ItemEquipped packet = new S_ItemEquipped
-            {
-                Success = true,
-                InventorySlot = item?.Slot ?? -1,
-                EquipSlot = (int)slot,
-                UpdatedEquipment = new EquipmentInfo()
-            };
-
-            // dictionary를 순회하면서 EquipmentInfo 채우기
-            foreach(var kvp in equipmentData)
-            {
-                switch(kvp.Key)
-                {
-                case PlayerEquipment.EquipSlot.Weapon:
-                    packet.UpdatedEquipment.WeaponItemId = kvp.Value.ItemId;
-                    break;
-                case PlayerEquipment.EquipSlot.Armor:
-                    packet.UpdatedEquipment.ArmorItemId = kvp.Value.ItemId;
-                    break;
-				case PlayerEquipment.EquipSlot.Helmet:
-					packet.UpdatedEquipment.HelmetItemId = kvp.Value.ItemId;
-					break;
-				case PlayerEquipment.EquipSlot.Gloves:
-					packet.UpdatedEquipment.GlovesItemId = kvp.Value.ItemId;
-					break;
-				}
-            }
-
-			packet.UpdatedStats = player.GetStatInfo();
-
-            Send( packet );
-
-			_logger.LogInformation( "[Event] Item Equipped: PlayerId={PlayerId}, Slot={Slot}, ItemId={ItemId}",
-                player.ObjectId, slot, item?.ItemId ?? 0);
-		}
-
-        private void OnPlayerItemUnequipped(Player player, PlayerEquipment.EquipSlot slot, InventoryItem item)
-        {
-			if(State >= SessionState.Disconnecting)
-				return;
-
-			var equipmentData = player.GetEquipmentData();
-
-            S_ItemUnequipped packet = new S_ItemUnequipped
-            {
-                Success = true,
-                EquipSlot = (int)slot,
-                ReturnedToSlot = item?.Slot ?? -1,
-                UpdatedEquipment = new EquipmentInfo()
-            };
-
-			// EquipmentInfo 채우기 (장착 핸들러와 동일)
-			foreach(var kvp in equipmentData)
-			{
-				switch(kvp.Key)
-				{
-				case PlayerEquipment.EquipSlot.Weapon:
-					packet.UpdatedEquipment.WeaponItemId = kvp.Value.ItemId;
-					break;
-				case PlayerEquipment.EquipSlot.Armor:
-					packet.UpdatedEquipment.ArmorItemId = kvp.Value.ItemId;
-					break;
-				case PlayerEquipment.EquipSlot.Helmet:
-					packet.UpdatedEquipment.HelmetItemId = kvp.Value.ItemId;
-					break;
-				case PlayerEquipment.EquipSlot.Gloves:
-					packet.UpdatedEquipment.GlovesItemId = kvp.Value.ItemId;
-					break;
-				}
-			}
-
-            packet.UpdatedStats = player.GetStatInfo();
-
-            Send( packet );
-
-			_logger.LogInformation( "[Event] Item Unequipped: PlayerId={PlayerId}, Slot={Slot}, ReturnedSlot={ReturnedSlot}",
-                player.ObjectId, slot, item?.Slot ?? -1);
-		}
-
-        // 아이템 제거 이벤트 핸들러
-        private void OnPlayerItemRemoved(Player player, int slot, InventoryItem item)
-        {
-			if(State >= SessionState.Disconnecting)
-				return;
-
-			// 제거된 아이템 정보 변환
-			InventoryItemInfo changedItem = new InventoryItemInfo
-            {
-                ItemId = item.ItemId,
-                Quantity = 0,           // 제거되었으므로 0
-                Slot = slot,
-            };
-
-            S_InventoryUpdate packet = new S_InventoryUpdate
-            {
-                ChangedItems = {changedItem },
-                NewGold = player.Inventory.Gold
-            };
-
-            Send( packet );
-
-			_logger.LogInformation( "[Event] Item Removed: PlayerId={PlayerId}, ItemId={ItemId}, Slot={Slot}",
-                player.ObjectId, item.ItemId, slot);
-		}
-
-        // 장비 스탯 변경 이벤트 핸들러
-		// TODO - 장비 변경 이벤트인데, 플레이어 정보를 보냄, 이는 장비 변경으로 인해 플레이어 스탯 정보를 변경해야한다는 의미 - 현재 구조와 다름.
-        private void OnEquipmentStatsChanged(Player player, Dictionary<PlayerEquipment.StatType, int> stats)
-        {
-			if(State >= SessionState.Disconnecting)
-				return;
-
-			S_PlayerStat packet = new S_PlayerStat
-            {
-                Player = player.ToObjectInfo(),
-            };
+			var packet = new S_InventoryUpdate();
+			if(eventArgs.NewGold.HasValue)
+				packet.NewGold = eventArgs.NewGold.Value;
+			packet.ChangedItems.AddRange( eventArgs.ChangedItems.Select( e => e.ToProto() ).ToList() );
+			packet.RemovedItemInstanceIds.AddRange( eventArgs.RemovedItemInstanceIds );
 
 			Send( packet );
 
-			_logger.LogDebug( "[Event] Equipment Stats Changed: PlayerId={PlayerId}",
-                player.ObjectId );
+			_logger.LogInformation( "[Event] Inventory Changed: Player={PlayerId}", PlayerId );
+		}
+
+		private void OnPlayerEquipmentChanged(Player player)
+		{
+			if(State >= SessionState.Disconnecting)
+				return;
+
+			var packet = new S_EquipmentUpdate();
+			packet.Success = true;
+			packet.Reason = string.Empty;
+			packet.Slots.AddRange( player.ToEquipmentRefs() );
+			packet.UpdatedStats = player.GetStatInfo();
+
+			Send( packet );
+
+			_logger.LogInformation( "[Event] Item EquipChanged: PlayerId={PlayerId}", PlayerId );
 		}
 
         // 플레이어 죽음 이벤트 핸들러

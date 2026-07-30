@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using ServerCore;
 using System;
 using System.Collections.Generic;
@@ -15,8 +16,8 @@ namespace Server.Core.Session
 	{
 		private readonly IClientSession _owner;
 
-		public SessionJobQueue(IJobQueueManager jobQueueManager, IClientSession owner)
-			: base(jobQueueManager)
+		public SessionJobQueue(IJobQueueManager jobQueueManager, IClientSession owner, ILogger logger )
+			: base(jobQueueManager, logger)
 		{
 			_owner = owner;
 		}
@@ -25,6 +26,14 @@ namespace Server.Core.Session
 		protected override bool CanAcceptJob()
 		{
 			return _owner.State < SessionState.Disconnecting;
+		}
+
+		protected override void OnJobFailed( IJob job, Exception ex )
+		{
+			// 도메인 반응 처리 훅
+			// SYSTEM 잡 실패 = 인증/입장 절차가 중간에 끊긴 것 -> 상태 고착 방지를 위해 연결 종료.
+			_logger.LogWarning( "SYSTEM 잡 실패로 세션을 종료합니다. SessionId={SessionId}", _owner.SessionId );
+			_owner.Disconnect();
 		}
 	}
 }

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace DatabaseLib.Entities
 {
@@ -50,12 +51,14 @@ namespace DatabaseLib.Entities
 	{
 		public List<InventoryItem> Items { get; set; } = new List<InventoryItem>();
 		public long Gold { get; set; } = 0;
+		public long NextInstanceId { get; set; } = 1;		// 인스턴스 발급 카운터 (인벤토리가 인스턴스 소유자이므로 발급자도 인스턴스)
 		public DateTime LastSorted { get; set; } = DateTime.UtcNow;
 		public Dictionary<string, object> ExtensionData { get; set; } = new Dictionary<string, object>();
 	}
 
 	public class InventoryItem
 	{
+		public long InstanceId { get; set; }    // 인벤토리 내에서 유일한 인스턴스 ID
 		public int ItemId { get; set; }
 		public int Quantity { get; set; } = 1;
 		public int Slot {  get; set; }
@@ -63,6 +66,8 @@ namespace DatabaseLib.Entities
 		public Dictionary<string, double> Options { get; set; } = new Dictionary<string, double>();
 		public DateTime? AcquiredAt { get; set; } = DateTime.UtcNow;
 		public string CustomName { get; set; }
+		[JsonIgnore]
+		public bool IsEquipped { get; set; }
 	}
 
 	public class EnhancementData

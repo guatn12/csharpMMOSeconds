@@ -35,7 +35,7 @@ namespace DummyClient
 
 		// 포션
 		public DateTime LastPotionUseTime { get; set; } = DateTime.MinValue;
-		public int HealthPotionSlot { get; set; } = -1;
+		public long HealthPotionInstanceId { get; set; } = -1;
 
 		// 스킬 쿨타임
 		public Dictionary<int, DateTime> SkillCooldowns { get; set; } = new();

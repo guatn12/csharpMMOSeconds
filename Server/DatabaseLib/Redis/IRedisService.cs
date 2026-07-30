@@ -17,10 +17,12 @@ namespace DatabaseLib.Redis
 		Task<String> GetStringAsync( string key );
 		Task<bool> DeleteAsync( string key );
 		Task HashSetAsync( string key, IReadOnlyDictionary<string, string> fields, TimeSpan? expiry = null );
+		Task<T> HashGetAsync<T>( string key, string fieldKey ) where T : class;
 		Task<IReadOnlyDictionary<string, string>> HashGetAllAsync( string key );
 		Task SetAddAsync( string key, string member );
 		Task SetRemoveAsync( string key, string member );
 		Task<IReadOnlyCollection<string>> SetMembersAsync( string key );
 		Task<bool> KeyExistsAsync( string key );
+		Task<bool> KeyExpireAsync( string key, TimeSpan expiry );
 	}
 }

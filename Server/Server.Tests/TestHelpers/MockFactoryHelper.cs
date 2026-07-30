@@ -21,6 +21,9 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using DatabaseLib.Redis;
+using Server.Services;
+using Server.Data;
 
 namespace Server.Tests.TestHelpers
 {
@@ -63,6 +66,10 @@ namespace Server.Tests.TestHelpers
 		public static SystemPacketHandler CreateSystemPacketHandler(Mock<IRoomManager> roomManager, Mock<IRoomTransitionCoordinator> coordinator, int maxPlayers = 4)
 		{
 			Mock<ILogger<SystemPacketHandler>> mockLogger = new Mock<ILogger<SystemPacketHandler>>();
+			var mockRedisService = new Mock<IRedisService>();
+			var mockGameDataService = new Mock<IGameDataService>();
+			var mockSessionManager = new Mock<ISessionManager>();
+			var mockDataManager = new Mock<IDataManager>();
 			var settings = Options.Create( new ServerSettings
 			{
 				Room = new RoomConfig
@@ -83,7 +90,8 @@ namespace Server.Tests.TestHelpers
 				}
 			} );
 
-			return new SystemPacketHandler( mockLogger.Object, roomManager.Object, settings, coordinator.Object );
+			return new SystemPacketHandler( mockLogger.Object, roomManager.Object, settings, coordinator.Object, mockGameDataService.Object,
+				mockRedisService.Object, mockSessionManager.Object, mockDataManager.Object);
 		}
 
 		/// <summary>
@@ -93,7 +101,8 @@ namespace Server.Tests.TestHelpers
 		{
 			var sentPackets = new List<IMessage>();
 			IRoom currentRoom = initialRoom;
-			var player = new Player(playerId, $"TestPlayer{playerId}");
+			var mockDataManager = new Mock<IDataManager>();
+			var player = new Player( mockDataManager.Object, playerId, $"TestPlayer{playerId}");
 
 			var mockSession = new Mock<IClientSession>();
 			mockSession.Setup( s => s.Player ).Returns( player );
@@ -118,12 +127,13 @@ namespace Server.Tests.TestHelpers
 		{
 			var mockLogger = new Mock<ILogger<ClientSession>>();
 			var mockSessionManager = new Mock<ISessionManager>();
+			var mockRedisService = new Mock<IRedisService>();
 
 
 			var (tempPacketManager, jobQueueManager) = CreateMinimalPacketManager();
 			packetManager ??= tempPacketManager;
 
-			var session = new ClientSession(mockLogger.Object, packetManager, mockSessionManager.Object, jobQueueManager, sessionId);
+			var session = new ClientSession(mockLogger.Object, packetManager, mockSessionManager.Object, jobQueueManager, mockRedisService.Object, sessionId);
 			
 			if (connected)
 			{
@@ -139,7 +149,8 @@ namespace Server.Tests.TestHelpers
 		/// </summary>
 		public static ClientSession CreateRealClientSessionWithQueue(PacketManager packetManager, JobQueueManager jq, long sessionId = 1, bool connected = false)
 		{
-			var session = new ClientSession(NullLogger<ClientSession>.Instance, packetManager, new Mock<ISessionManager>().Object, jq, sessionId);
+			var session = new ClientSession(NullLogger<ClientSession>.Instance, packetManager, new Mock<ISessionManager>().Object, jq, new Mock<IRedisService>().Object,
+				sessionId);
 
 			if(connected)
 				session.OnConnected( new IPEndPoint( IPAddress.Loopback, 12345 ) );
@@ -218,6 +229,9 @@ namespace Server.Tests.TestHelpers
 			var jq = new JobQueueManager(NullLogger<JobQueueManager>.Instance);
 			//var mockRoomManager = new Mock<IRoomManager>();
 			var (coordinator, mockRoomManager, mockSessionManager) = CreateCoordinator();
+			var mockRedisService = new Mock<IRedisService>();
+			var mockGameDataService = new Mock<IGameDataService>();
+			var mockDataManager = new Mock<IDataManager>();
 
 			var settings = Options.Create( new ServerSettings
 			{
@@ -236,7 +250,8 @@ namespace Server.Tests.TestHelpers
 				},
 				Tick = new TickConfig { BaseTickMs = 100 }
 			} );
-			var systemHandler = new SystemPacketHandler( NullLogger<SystemPacketHandler>.Instance, mockRoomManager.Object, settings, coordinator );
+			var systemHandler = new SystemPacketHandler( NullLogger<SystemPacketHandler>.Instance, mockRoomManager.Object, settings, coordinator,
+				mockGameDataService.Object, mockRedisService.Object, mockSessionManager.Object, mockDataManager.Object);
 			return (new PacketManager( NullLogger<PacketManager>.Instance, jq, systemHandler ), jq);
 		}
 

@@ -26,7 +26,6 @@ namespace Server.Room
 {
 	public abstract class BaseRoom : JobSerializer, IRoom, IDisposable
 	{
-		protected readonly ILogger _logger;
 		protected readonly ILoggerFactory _loggerFactory;
 		protected readonly ConcurrentDictionary<long, IClientSession> _players;
 		public ObjectManager ObjectManager { get; private set; }
@@ -166,9 +165,8 @@ namespace Server.Room
 			IPlayerPositionService playerPositionService,
 			Func<IRoom, IDataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> monsterManagerFactory = null,
 			int mapId = 1 )
-			: base( jobQueueManager )
+			: base( jobQueueManager, logger )
 		{
-			_logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
 			_loggerFactory = loggerFactory;
 			_dataManager = dataManager;
 

@@ -17,6 +17,9 @@ namespace DatabaseLib.Entities
 		[Column("player_name")]
 		public string PlayerName { get; set; }
 
+		[Column( "account_id" )]
+		public long AccountId { get; set; }
+
 		[Column("level")]
 		public int Level { get; set; } = 1;
 

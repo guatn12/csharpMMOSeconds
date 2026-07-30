@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
@@ -9,13 +11,15 @@ namespace ServerCore
 	public class JobSerializer : IJobOwner
 	{
 		protected readonly IJobQueueManager _jobQueueManager;
+		protected readonly ILogger _logger;
 		private ConcurrentQueue<IJob> _jobQueue = new ConcurrentQueue<IJob>();
 		private readonly JobTimer _jobTimer = new JobTimer();
 		private int _isProcessing = 0;
 
-		public JobSerializer( IJobQueueManager jobQueueManager )
+		public JobSerializer( IJobQueueManager jobQueueManager, ILogger logger = null )
 		{
 			_jobQueueManager = jobQueueManager;
+			_logger = logger ?? NullLogger.Instance;	// Null 체크 없이 안전하게 호출
 		}
 
 		public void Push(IJob job)
@@ -172,7 +176,7 @@ namespace ServerCore
 		protected virtual void OnJobFailed(IJob job, Exception ex)
 		{
 			// 기본 동작 없음 - 파생 클래스에서 로깅/세션 정리 등을 오버라이드
-			// JobQueueManager catch가 최후 방어선으로 로그를 남김
+			// 로깅은 ProcessJobsAsync의 catch가 보장.
 		}
 
 		protected virtual void OnLifecycleHookFailed(string hookName, Exception ex )
@@ -219,15 +223,16 @@ namespace ServerCore
 				}
 				catch(Exception ex) when(ExceptionPolicy.IsCritical( ex ) == false)
 				{
+					// 봉쇄 경계의 최후 방어선 - 파생 클래스 오버라이드 여부와 무관하게 항상 기록
+					_logger.LogError( ex, "Job failed. Owner={OwnerType}", GetType().Name );
+
 					try
 					{
 						OnJobFailed( job, ex );
 					}
 					catch(Exception hookEx)
 					{
-						// OnJobFailed 자체의 예외로 인해 Owner 루프가 정지하는 것을 방지
-						// 원본 예외(ex)는 이미 when 필터에서 non-critical로 판정된 상태.
-						// hookEx는 삼키되, 상위 워커의 포괄 catch가 최후 방어선
+						_logger.LogError( hookEx, "OnJobFailed hook threw. Owner={OwnerType}", GetType().Name );
 					}
 				}
 				finally

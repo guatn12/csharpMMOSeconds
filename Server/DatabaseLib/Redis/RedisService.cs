@@ -106,6 +106,21 @@ namespace DatabaseLib.Redis
 				await _database.KeyExpireAsync( redisKey, expiry.Value );
 		}
 
+		public async Task<T> HashGetAsync<T>(string key, string fieldKey) where T : class
+		{
+			string redisKey = GetKey(key);
+			RedisValue value = await _database.HashGetAsync(redisKey, fieldKey);
+			if(!value.HasValue)
+			{
+				_logger.LogDebug( "Redis HashGet - 키/필드 없음: Key={Key}/Field={Field}", key, fieldKey );
+				return null;
+			}
+
+			var deserializedValue = JsonSerializer.Deserialize<T>(value);
+			_logger.LogDebug( "Redis HashGet 성공: Key={Key} / fieldKey={fieldKey}", key, fieldKey );
+			return deserializedValue;
+		}
+
 		public async Task<IReadOnlyDictionary<string, string>> HashGetAllAsync(string key)
 		{
 			HashEntry[] entries = await _database.HashGetAllAsync(GetKey(key));
@@ -133,6 +148,8 @@ namespace DatabaseLib.Redis
 		}
 
 		public Task<bool> KeyExistsAsync( string key ) => _database.KeyExistsAsync( GetKey( key ) );
+
+		public Task<bool> KeyExpireAsync( string key, TimeSpan expiry ) => _database.KeyExpireAsync( GetKey( key ), expiry );
 
 		public IRedisBatch CreateBatch() => new RedisBatch( _database.CreateBatch(), GetKey, _logger );
 

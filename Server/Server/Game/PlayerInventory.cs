@@ -1,9 +1,12 @@
 using DatabaseLib.Entities;
+using Microsoft.Extensions.Options;
+using Protocol;
+using Server.Data;
+using Server.Data.Models;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Tracing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Server.Game
 {
@@ -16,56 +19,59 @@ namespace Server.Game
 	public class PlayerInventory
 	{
 		private readonly long _playerRawId;
-		private readonly Dictionary<int, InventoryItem> _items;	// Slot -> Item 매핑
-		private readonly HashSet<int> _dirtySlots;  // 변경된 슬롯 추적
+		private readonly Dictionary<long, InventoryItem> _instanceItems;		// InstanceId -> Item 매핑
+		private readonly HashSet<long> _dirtyInstanceIds;  // 변경된 슬롯 추적
+		private readonly IDataManager _dataManager;
+
 		private long _gold = 0;
 		private int _maxSlots = 50;
 		private bool _isDirty = false;
 		private DateTime _lastSorted = DateTime.UtcNow;
+		private long _nextInstanceId = 1;
 
 		// 이벤트 시스템 - 인벤토리 변경 알림
-		public event Action<PlayerInventory, int, InventoryItem> OnItemAdded;
-		public event Action<PlayerInventory, int, InventoryItem> OnItemRemoved;
-		public event Action<PlayerInventory, int, int> OnItemQuantityChanged;
+		//public event Action<PlayerInventory, long, InventoryItem> OnItemAdded;
+		//public event Action<PlayerInventory, long, InventoryItem> OnItemRemoved;
+		//public event Action<PlayerInventory, long, InventoryItem> OnItemQuantityChanged;
 		public event Action<PlayerInventory, long, long> OnGoldChanged;
-		public event Action<PlayerInventory> OnInventoryChanged;
+		public event Action<PlayerInventory, InventoryUpdateEventArgs> OnInventoryUpdated;
 
-		public PlayerInventory(long playerRawId, int maxSlots=50)
+		public PlayerInventory( IDataManager dataManager, long playerRawId, int maxSlots=50)
 		{
+			_dataManager = dataManager;
 			_playerRawId = playerRawId;
 			_maxSlots = maxSlots;
-			_items = new Dictionary<int, InventoryItem>();
-			_dirtySlots = new HashSet<int>();
+			_instanceItems = new Dictionary<long, InventoryItem>();
+			_dirtyInstanceIds = new HashSet<long>();
 		}
 
 		// 기본 속성
 		public long PlayerRawId => _playerRawId;
 		public long Gold => _gold;
 		public int MaxSlots => _maxSlots;
-		public int UsedSlots => _items.Count;
+		public int UsedSlots => _instanceItems.Count;
 		public int FreeSlots => _maxSlots - UsedSlots;
-		public bool IsDirty => _isDirty || _dirtySlots.Any();
+		public bool IsDirty => _isDirty || _dirtyInstanceIds.Any();
 		public DateTime LastSorted => _lastSorted;
 
 		// 아이템 조회 메서드들
-		public InventoryItem GetItem(int slot)
-		{
-			return _items.TryGetValue( slot, out var item ) ? item : null;
-		}
-
 		public List<InventoryItem> GetAllItems()
 		{
-			return _items.Values.ToList();
+			return _instanceItems.Values.ToList();
 		}
 
 		public List<InventoryItem> GetItemsByType(int itemId)
 		{
-			return _items.Values.Where(i => i.ItemId == itemId).ToList();
+			return _instanceItems.Values.Where(i => i.ItemId == itemId).ToList();
+		}
+		public InventoryItem GetItemByInstanceId( long instanceId )
+		{
+			return _instanceItems.TryGetValue( instanceId, out var item ) ? item : null;
 		}
 
 		public int GetItemQuantity(int itemId)
 		{
-			return _items.Values
+			return _instanceItems.Values
 				.Where( i => i.ItemId == itemId )
 				.Sum( i => i.Quantity );
 		}
@@ -81,151 +87,266 @@ namespace Server.Game
 		}
 
 		// 아이템 추가/제거 메서드들
-		public bool AddItem(int itemId, int quantity = 1, Dictionary<string, double> options = null)
-		{
-			if(itemId <= 0 || quantity <= 0) return false;
+		/// <summary>
+		/// 내부에서 이벤트 처리를 하지 않고 스택만 쌓도록 처리되어 있음.
+		/// </summary>
+		//public bool AddItem( InventoryUpdateEventArgs eventArgs, int itemId, int quantity = 1, Dictionary<string, double> options = null)
+		//{
+		//	if(itemId <= 0 || quantity <= 0) 
+		//		return false;
 
-			// 스택 가능한 아이템인지 체크
-			InventoryItem existingItem = _items.Values.FirstOrDefault(i => i.ItemId == itemId);
-			if(existingItem != null)
+		//	// 스택 가능한 아이템인지 체크
+		//	InventoryItem existingItem = _instanceItems.Values.FirstOrDefault(i => i.ItemId == itemId);
+		//	var itemStaticData = _dataManager.GetItem(itemId);
+		//	if(itemStaticData == null)
+		//		return false;
+
+		//	if( itemStaticData.IsStackable && existingItem != null && !existingItem.IsEquipped)
+		//	{
+		//		// 기존 아이템 수량 증가
+		//		return IncreaseQuantityInternal( eventArgs, existingItem, quantity );
+		//	}
+
+		//	// 새 슬롯에 아이템 추가
+		//	int emptySlot = FindEmptySlot();
+		//	if(emptySlot == -1) 
+		//		return false;   // 인벤토리 가득 참
+
+		//	// 아이템 생성 및 InstanceId 생성
+		//	var newItem = new InventoryItem
+		//	{
+		//		InstanceId = _nextInstanceId++,
+		//		ItemId = itemId,
+		//		Slot = emptySlot,
+		//		Quantity = quantity,
+		//		Options = options ?? new Dictionary<string, double>(),
+		//		AcquiredAt = DateTime.UtcNow
+		//	};
+
+		//	_instanceItems[newItem.InstanceId] = newItem;
+		//	MarkInstanceDirty( newItem.InstanceId );
+
+		//	return true;
+		//}
+
+		/// <summary>
+		/// 다수의 아이템 일괄 처리
+		/// </summary>
+		/// <returns></returns>
+		public bool AddItems( IEnumerable<InventoryItemInfo> items )
+		{
+			var itemList = items?.ToList();
+			if(itemList == null || itemList.Count == 0)
+				return false;
+
+			var eventArgs = new InventoryUpdateEventArgs();
+			var newItems = new List<InventoryItem>();
+			var stackItems = new Dictionary<int, (InventoryItem, int)>();
+			var bookSlots = new List<int>();
+			long calcNextInstanceId = _nextInstanceId;
+			// 리스트에서 문제가 없는지 체크
+			foreach(var item in itemList)
 			{
-				// 기존 아이템 수량 증가
-				return IncreaseItemQuantity( existingItem.Slot, quantity );
+				if(item.Quantity <= 0)
+					return false;
+
+				InventoryItem existingItem = _instanceItems.Values.FirstOrDefault(i => i.ItemId == item.ItemId);
+				var itemStaticData = _dataManager.GetItem(item.ItemId);
+				if(itemStaticData == null)
+					return false;
+
+				// 해당 아이템이 스택형일 경우 스택 리스트에 추가.
+				if(itemStaticData.IsStackable && existingItem != null && !existingItem.IsEquipped)
+				{
+					if(stackItems.TryGetValue( item.ItemId, out var stackItem ))
+					{
+						long quantity = stackItems[ item.ItemId ].Item2 + item.Quantity;
+						if(int.MaxValue - existingItem.Quantity < quantity)
+							return false;
+						stackItems[ item.ItemId ] = (existingItem, (int)quantity);
+					}
+					else
+						stackItems.Add( item.ItemId, (existingItem, item.Quantity) );
+
+					// 스택 가능 수량 체크
+					if(!IsIncreaseQuantityInternal( existingItem, stackItem.Item2 == 0 ? item.Quantity : stackItem.Item2 + item.Quantity ))
+						return false;
+
+					continue;
+				}
+
+				// 새 슬롯에 아이템 추가
+				int emptySlot = FindEmptySlot(bookSlots);
+				if(emptySlot == -1)
+					return false;   // 인벤토리 가득 참
+
+				newItems.Add( new InventoryItem
+				{
+					InstanceId = calcNextInstanceId++,
+					ItemId = item.ItemId,
+					Slot = emptySlot,
+					Quantity = item.Quantity,
+					Options = item.Options.ToDictionary(),
+					AcquiredAt = DateTime.UtcNow
+				} );
+				bookSlots.Add( emptySlot );
 			}
 
-			// 새 슬롯에 아이템 추가
-			int emptySlot = FindEmptySlot();
-			if(emptySlot == -1) return false;   // 인벤토리 가득 참
-
-			var newItem = new InventoryItem
+			// 스택형 아이템 추가
+			foreach(var item in stackItems.Values)
 			{
-				ItemId = itemId,
-				Slot = emptySlot,
-				Quantity = quantity,
-				Options = options ?? new Dictionary<string, double>(),
-				AcquiredAt = DateTime.UtcNow
-			};
+				IncreaseQuantityInternal( eventArgs, item.Item1, item.Item2 );
+			}
 
-			_items[emptySlot] = newItem;
-			MarkSlotDirty( emptySlot );
+			// 신규 아이템 추가.
+			foreach(var item in newItems)
+			{
+				_instanceItems[ item.InstanceId ] = item;
+				MarkInstanceDirty( item.InstanceId );
+				eventArgs.ChangedItems.Add( item );
+			}
+			_nextInstanceId = calcNextInstanceId;
 
 			// 이벤트 발생.
-			OnItemAdded?.Invoke( this, emptySlot, newItem );
-			OnInventoryChanged?.Invoke( this );
+			if(eventArgs.HasChanges)
+				OnInventoryUpdated?.Invoke( this, eventArgs );
 
 			return true;
 		}
 
-		public bool RemoveItem(int itemId, int quantity = 1)
+		public bool RemoveItems( IEnumerable<long> instanceIds )
 		{
-			if(itemId <= 0 || quantity <= 0) return false;
-			if(!HasItem( itemId, quantity )) return false;
+			var ids = instanceIds?.Distinct().ToList();
+			if(ids == null || ids.Count == 0)
+				return false;
 
-			int remainingToRemove = quantity;
-			var itemsToRemove = new List<(int slot, InventoryItem item)>();
-
-			// 제거해야 할 아이템 찾기
-			foreach(var kvp in _items)
+			var eventArgs = new InventoryUpdateEventArgs();
+			var removeItems = new List<InventoryItem>();
+			// 사전 검증
+			foreach(var id in ids)
 			{
-				if(kvp.Value.ItemId == itemId)
-				{
-					// 계수가 0개 이하일 경우 예외...
-					if(remainingToRemove <= 0) break;
+				// 소지 여부 확인
+				if(!_instanceItems.TryGetValue( id, out var item ))
+					return false;
 
-					int removeFromThis = Math.Min(remainingToRemove, kvp.Value.Quantity);
-					remainingToRemove -= removeFromThis;
-					itemsToRemove.Add( (kvp.Key, kvp.Value) );
-				}
+				// 장착중
+				if(item.IsEquipped)
+					return false;
+
+				removeItems.Add( item );
 			}
 
-			// 실제 제거 수행
-			foreach(var (slot, item) in itemsToRemove)
+			foreach(var item in removeItems)
 			{
-				int removeQuantity = Math.Min(quantity, item.Quantity);
-				if(item.Quantity <= removeQuantity)
-				{
-					// 아이템 완전 제거
-					_items.Remove( slot );
-					OnItemRemoved?.Invoke( this, slot, item );
-				}
-				else
-				{
-					// 수량만 감소
-					item.Quantity -= removeQuantity;
-					OnItemQuantityChanged?.Invoke( this, slot, item.Quantity );
-				}
-
-				MarkSlotDirty( slot );
-				quantity -= removeQuantity;
-
-				if(quantity <= 0) break;
+				if(RemoveInstanceInternal( eventArgs, item ) == false)
+					return false;
 			}
 
-			OnInventoryChanged?.Invoke( this );
-			return remainingToRemove == 0;
-		}
-
-		public bool RemoveItemFromSlot(int slot)
-		{
-			if(!_items.TryGetValue( slot, out var item )) return false;
-
-			_items.Remove( slot );
-			MarkSlotDirty( slot );
-
-			OnItemRemoved?.Invoke( this, slot, item );
-			OnInventoryChanged?.Invoke( this );
+			if(eventArgs.HasChanges)
+				OnInventoryUpdated?.Invoke( this, eventArgs );
 
 			return true;
 		}
 
-		public bool UseItem(int slot, int quantity = 1)
+		public bool ConsumeItemsByItemId( int itemId, int quantity = 1)
 		{
-			if (!_items.TryGetValue( slot, out var item )) return false;
-			if(item.Quantity < quantity) return false;
+			var eventArgs = new InventoryUpdateEventArgs();
 
-			// 일단 수량 감소
-			if(item.Quantity <= quantity)
+			if(itemId <= 0 || quantity <= 0) 
+				return false;
+
+			int remaining = quantity;
+			var removeItems = new List<(InventoryItem item, int removeQunetity)>();
+			foreach(var item in _instanceItems.Values)
 			{
-				// 아이템 완전 소모
-				_items.Remove( slot );
-				OnItemRemoved?.Invoke( this, slot, item );
+				if(item.ItemId != itemId || item.IsEquipped)
+					continue;
+
+				int removeQunetity = Math.Min(remaining, item.Quantity);
+				removeItems.Add( (item, removeQunetity) );
+				remaining -= removeQunetity;
+				if(remaining == 0)
+					break;
 			}
-			else
+
+			if(0 < remaining)
+				return false;
+
+			foreach(var (item, removeQunetity) in removeItems)
 			{
-				// 수량만 감소
-				item.Quantity -= quantity;
-				OnItemQuantityChanged?.Invoke ( this, slot, item.Quantity );
+				DecreaseQuantityInternal( eventArgs, item, removeQunetity );
 			}
 
-			MarkSlotDirty( slot );
-			OnInventoryChanged?.Invoke( this );
-
+			if(eventArgs.HasChanges)
+				OnInventoryUpdated?.Invoke( this, eventArgs );
 			return true;
+		}
+
+		public bool UseItem(long instanceId, int quantity = 1)
+		{
+			var eventArgs = new InventoryUpdateEventArgs();
+
+			var item = GetItemByInstanceId(instanceId);
+			if(item == null)
+				return false;
+
+			if(item.Quantity < quantity)
+				return false;
+
+			bool success = DecreaseQuantityInternal( eventArgs, item, quantity );
+			if(success)
+			{
+				if(eventArgs.HasChanges)
+					OnInventoryUpdated?.Invoke( this, eventArgs );
+			}
+
+			return success;
 		}
 
 		public bool AddGold(long amount)
 		{
-			if(amount <= 0) return false;
+			var eventArgs = new InventoryUpdateEventArgs();
+
+			if(amount <= 0) 
+				return false;
+
+			long addableAmount = Math.Min(amount, (long.MaxValue - 1000000) - _gold); // 오버 플로우 방지.
+			if(addableAmount <= 0)
+				return false;
 
 			long oldGold = _gold;
-			_gold = Math.Min( long.MaxValue - 1000000, _gold + amount ); // 오버 플로우 방지.
+			_gold += addableAmount;  
 
 			MarkDirty();
-			OnGoldChanged?.Invoke( this, oldGold, _gold );
-			OnInventoryChanged?.Invoke( this );
+			eventArgs.NewGold = _gold;
+
+			if(eventArgs.HasChanges)
+			{
+				OnInventoryUpdated?.Invoke( this, eventArgs );
+				OnGoldChanged?.Invoke( this, oldGold, _gold );
+			}
+				
 
 			return true;
 		}
 
 		public bool RemoveGold(long amount)
 		{
+			var eventArgs = new InventoryUpdateEventArgs();
+
 			if(amount <= 0 || _gold < amount) return false;
 			long oldGold = _gold;
 			_gold -= amount;
 
 			MarkDirty();
-			OnGoldChanged?.Invoke(this, oldGold, _gold );
-			OnInventoryChanged?.Invoke( this );
+			eventArgs.NewGold = _gold;
+
+			if(eventArgs.HasChanges)
+			{
+				OnInventoryUpdated?.Invoke( this, eventArgs );
+				OnGoldChanged?.Invoke( this, oldGold, _gold );
+			}
+				
 
 			return true;
 		}
@@ -233,51 +354,62 @@ namespace Server.Game
 		// 인벤토리 관리 메서드들
 		public bool MoveItem(int fromSlot , int toSlot)
 		{
-			if(fromSlot == toSlot) return false;
-			if(!_items.TryGetValue( fromSlot, out var item )) return false;
-			if(toSlot < 0 || _maxSlots < toSlot) return false;
+			var eventArgs = new InventoryUpdateEventArgs();
 
-			if(!_items.ContainsKey(toSlot))
+			if(fromSlot == toSlot) 
+				return false;
+
+			var fromItem = _instanceItems.Values.Where(i => i.Slot == fromSlot).FirstOrDefault();
+			var toItem = _instanceItems.Values.Where(i => i.Slot == toSlot).FirstOrDefault();
+
+			if(fromItem == null) 
+				return false;
+
+			if(toItem == null && (toSlot < 0 || _maxSlots <= toSlot))
+				return false;
+
+			// 목적지에 아이템 존재 여부
+			if(toItem == null)
 			{
-				_items.Remove( fromSlot );
-				item.Slot = toSlot;
-				_items[ toSlot ] = item;
-
-				MarkSlotDirty( fromSlot );
-				MarkSlotDirty( toSlot );
-				OnInventoryChanged?.Invoke( this );
+				fromItem.Slot = toSlot;
+				MarkInstanceDirty( fromItem.InstanceId );
+				eventArgs.ChangedItems.Add( fromItem );
+				OnInventoryUpdated?.Invoke( this, eventArgs );
 				return true;
 			}
-
-			// 목표 슬롯에 아이템이 있는 경우 - 교체
-			InventoryItem targetItem = _items[toSlot];
-			_items[ fromSlot ] = targetItem;
-			targetItem.Slot = fromSlot;
-			_items[ toSlot ] = item;
-			item.Slot = toSlot;
-
-			MarkSlotDirty( fromSlot );
-			MarkSlotDirty( toSlot );
-			OnInventoryChanged?.Invoke( this );
-			return true;
+			else
+			{
+				fromItem.Slot = toSlot;
+				toItem.Slot = fromSlot;
+				MarkInstanceDirty( fromItem.InstanceId );
+				MarkInstanceDirty( toItem.InstanceId );
+				eventArgs.ChangedItems.Add( fromItem );
+				eventArgs.ChangedItems.Add( toItem );
+				OnInventoryUpdated?.Invoke( this, eventArgs );
+				return true;
+			}
 		}
 
 		public void SortInventory()
 		{
-			// 아이템을 ID 순서로 정렬하여 재배치
-			var items = _items.Values.OrderBy(i => i.ItemId).ToList();
-			_items.Clear();
+			var eventArgs = new InventoryUpdateEventArgs();
+			// 아이템을 instanceId 순서로 정렬하여 재배치
+			var items = _instanceItems.Values.OrderBy(i => i.InstanceId).ToList();
+			_instanceItems.Clear();
 
 			for(int i = 0; i < items.Count; i++)
 			{
 				items[ i ].Slot = i;
-				_items[ i ] = items[ i ];
-				MarkSlotDirty( i );
+				_instanceItems[ items[i].InstanceId ] = items[ i ];
+				MarkInstanceDirty( items[ i ].InstanceId );
 			}
+
+			eventArgs.ChangedItems.AddRange( _instanceItems.Values );
 
 			_lastSorted = DateTime.UtcNow;
 			MarkDirty();
-			OnInventoryChanged?.Invoke( this );
+			if(eventArgs.HasChanges)
+				OnInventoryUpdated?.Invoke( this, eventArgs );
 		}
 
 		// 동기화 메서드들
@@ -285,9 +417,10 @@ namespace Server.Game
 		{
 			return new InventoryModel
 			{
-				Items = _items.Values.ToList(),
+				Items = _instanceItems.Values.ToList(),
 				Gold = _gold,
 				LastSorted = _lastSorted,
+				NextInstanceId = _nextInstanceId,
 				ExtensionData = new Dictionary<string, object>
 				{
 					[ "maxSlots" ] = _maxSlots,
@@ -300,28 +433,29 @@ namespace Server.Game
 		{
 			if(model == null) return;
 
-			_items.Clear();
-			_dirtySlots.Clear();
+			_instanceItems.Clear();
+			_dirtyInstanceIds.Clear();
+
+			// 확장 데이터에서 추가 정보 로드
+			if(model.ExtensionData != null)
+			{
+				if(model.ExtensionData.TryGetValue( "maxSlots", out var maxSlotsObj ) && maxSlotsObj is int maxSlots)
+				{
+					_maxSlots = Math.Max( 10, Math.Min( maxSlots, 200 ) );
+				}
+			}
 
 			foreach(var item in model.Items)
 			{
 				if(0 <= item.Slot && item.Slot < _maxSlots)
 				{
-					_items[ item.Slot ] = item;	
+					_instanceItems[ item.InstanceId ] = item;	
 				}
 			}
 
 			_gold= model.Gold;
 			_lastSorted= model.LastSorted;
-
-			// 확장 데이터에서 추가 정보 로드
-			if (model.ExtensionData != null)
-			{
-				if(model.ExtensionData.TryGetValue("maxSlots", out var maxSlotsObj) && maxSlotsObj is int maxSlots)
-				{
-					_maxSlots = Math.Max( 10, Math.Min( maxSlots, 200 ) );
-				}
-			}
+			_nextInstanceId = model.NextInstanceId;
 
 			_isDirty = false;
 		}
@@ -329,38 +463,84 @@ namespace Server.Game
 		public void MarkClean()
 		{
 			_isDirty = false;
-			_dirtySlots.Clear();
+			_dirtyInstanceIds.Clear();
 		}
 
-		public HashSet<int> GetDirtySlots()
+		public HashSet<long> GetDirtySlots()
 		{
-			return new HashSet<int>(_dirtySlots);
+			return new HashSet<long>(_dirtyInstanceIds);
+		}
+
+		private bool RemoveInstanceInternal( InventoryUpdateEventArgs eventArgs, InventoryItem item )
+		{
+			if(item.IsEquipped)
+				return false;
+
+			if(_instanceItems.Remove( item.InstanceId ) == false)
+				return false;
+
+			MarkInstanceDirty( item.InstanceId );
+			eventArgs.RemovedItemInstanceIds.Add( item.InstanceId );
+
+			return true;
+		}
+
+		private bool DecreaseQuantityInternal( InventoryUpdateEventArgs eventArgs, InventoryItem item, int quantity )
+		{
+			if(quantity <= 0 || item.Quantity < quantity) 
+				return false;
+			
+			if(item.Quantity == quantity) 
+				return RemoveInstanceInternal( eventArgs, item );
+
+			item.Quantity -= quantity;
+			MarkInstanceDirty( item.InstanceId );
+			eventArgs.ChangedItems.Add( item );
+
+			return true;
+		}
+
+		private bool IsIncreaseQuantityInternal(InventoryItem item, int quantity)
+		{
+			int remainingCapa = int.MaxValue - item.Quantity; // 오버 플로우 방지.
+			if(quantity <= 0 || remainingCapa < quantity)
+				return false;
+
+			return true;
+		}
+
+		private bool IncreaseQuantityInternal( InventoryUpdateEventArgs eventArgs, InventoryItem item, int quantity )
+		{
+			int remainingCapa = int.MaxValue - item.Quantity; // 오버 플로우 방지.
+			if(quantity <= 0 || remainingCapa < quantity)
+				return false;
+
+			int oldQuantity = item.Quantity;
+			item.Quantity += quantity;
+
+			MarkInstanceDirty( item.InstanceId );
+			eventArgs.ChangedItems.Add( item );
+
+			return true;
 		}
 
 		// 유틸
-		private int FindEmptySlot()
+		private int FindEmptySlot(List<int> bookSlots = null)
 		{
+			HashSet<int> slotSet = _instanceItems.Values.Select(x => x.Slot).ToHashSet();
+			if(bookSlots != null)
+			{
+				foreach(int slot in bookSlots)
+					slotSet.Add( slot );
+			}
+
 			for(int i = 0; i < _maxSlots; i++)
 			{
-				if(!_items.ContainsKey( i ))
+				if(!slotSet.Contains( i ))
 					return i;
 			}
 
 			return -1;	// 빈 슬롯 없음.
-		}
-
-		private bool IncreaseItemQuantity(int slot, int quantity)
-		{
-			if(!_items.TryGetValue(slot, out var item)) return false;
-
-			int oldQuantity = item.Quantity;
-			item.Quantity = Math.Min( int.MaxValue - 10000, item.Quantity + quantity );
-
-			MarkSlotDirty( slot );
-			OnItemQuantityChanged?.Invoke(this, slot, item.Quantity );
-			OnInventoryChanged?.Invoke( this );
-
-			return true;
 		}
 
 		private void MarkDirty()
@@ -368,22 +548,28 @@ namespace Server.Game
 			_isDirty = true;
 		}
 
-		private void MarkSlotDirty(int slot)
+		private void MarkInstanceDirty(long instanceId)
 		{
-			_dirtySlots.Add( slot );
+			_dirtyInstanceIds.Add( instanceId );
 			_isDirty = true;
 		}
 
 		public bool IsValid()
 		{
-			foreach(var kvp in _items)
+			foreach(var kvp in _instanceItems)
 			{
-				if(kvp.Key < 0 || _maxSlots <= kvp.Key) return false;
-				if(kvp.Value.Slot != kvp.Key) return false;
-				if(kvp.Value.ItemId <= 0 || kvp.Value.Quantity <= 0) return false;
+				if(kvp.Value.Slot < 0 || _maxSlots <= kvp.Value.Slot) 
+					return false;
+
+				if(kvp.Value.ItemId <= 0 || kvp.Value.Quantity <= 0) 
+					return false;
 			}
 
-			if(_gold < 0) return false;
+			if(_gold < 0) 
+				return false;
+
+			if(_nextInstanceId < 0)
+				return false;
 
 			return true;
 		}
@@ -402,10 +588,10 @@ namespace Server.Game
 				["maxSlots"] = _maxSlots,
 				["freeSlots"] = FreeSlots,
 				["gold"] = _gold,
-				["totalItems"] = _items.Values.Sum(item => item.Quantity),
-				["uniqueItems"] = _items.Values.Select(item => item.ItemId).Distinct().Count(),
+				["totalItems"] = _instanceItems.Values.Sum(item => item.Quantity),
+				["uniqueItems"] = _instanceItems.Values.Select(item => item.ItemId).Distinct().Count(),
 				["isDirty"] = IsDirty,
-				["dirtySlots"] = _dirtySlots.Count,
+				["dirtySlots"] = _dirtyInstanceIds.Count,
 				["lastSorted"] = _lastSorted
 			};
 

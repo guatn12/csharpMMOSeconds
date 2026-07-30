@@ -108,7 +108,7 @@ namespace Server.Packet.Handlers
 			// 1. 보상 계산
 			RewardInfo reward = await _rewardService.CalculateMonsterRewardAsync(killerSession.Player, monster);
 
-			// 2. 보상 지급 (이벤트 발생: OnLevelUp → S_LevelUp, OnItemAdded → S_ItemAdded)
+			// 2. 보상 지급 (이벤트 발생: OnLevelUp → S_LevelUp, OnItemAdded → s_inventoryupdate)
 			await _rewardService.GiveRewardAsync( killerSession.Player, reward );
 
 			// 3. S_MonsterDie 브로드캐스트 (보상 정보 포함)

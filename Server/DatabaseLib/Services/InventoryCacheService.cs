@@ -11,7 +11,7 @@ namespace DatabaseLib.Services
 		private readonly IRedisService _redis;
 		private readonly ILogger<InventoryCacheService> _logger;
 
-		private const string INVENTORY_CACHE_PREFIX = "MMO:inventory:";
+		private const string INVENTORY_CACHE_PREFIX = "inventory:";
 		private readonly TimeSpan _cacheTTL = TimeSpan.FromMinutes(30);
 
 		public InventoryCacheService(IDbContextFactory<AppDbContext> contextFactory, IRedisService redis, ILogger<InventoryCacheService> logger )
@@ -53,78 +53,43 @@ namespace DatabaseLib.Services
 			}
 		}
 
-		// 인벤토리 저장 (Write-Through + 낙관적 동시성 제어)
-		public async Task<bool> SaveInventoryAsync(InventoryEntity inventory)
+		public async Task<bool> SaveInventoryToDbAsync( InventoryEntity inventory )
 		{
-			string cacheKey = $"{INVENTORY_CACHE_PREFIX}{inventory.PlayerId}";
-
 			try
 			{
+				using var context = _contextFactory.CreateDbContext();
+				context.Inventory.Update( inventory );
+
 				inventory.LastUpdated = DateTime.UtcNow;
 				inventory.Version++;    // 낙관적 동시성 제어
 
-				using var context = _contextFactory.CreateDbContext();
-				context.Inventory.Update( inventory );
 				await context.SaveChangesAsync();
-
-				await _redis.SetAsync( cacheKey, inventory, _cacheTTL );
-				_logger.LogDebug( "인벤토리 저장: PlayerId={PlayerId}, Version={Version}",
-					inventory.PlayerId, inventory.Version );
 
 				return true;
 			}
 			catch(DbUpdateConcurrencyException ex)
 			{
 				_logger.LogWarning( ex, "인벤토리 동시성 충돌: PlayerId={PlayerId}", inventory.PlayerId );
-				await InvalidateInventoryCacheAsync( inventory.PlayerId );
+				await InvalidateInventoryCacheAsync( inventory );
 				return false;
 			}
 			catch(Exception ex)
 			{
-				_logger.LogError( ex, "인벤토리 저장 실패: PlayerId={PlayerId}", inventory.PlayerId );
+				_logger.LogError( ex, "플레이어 인벤토리 DB 저장 실패 : PlayerId={PlayerId}", inventory.PlayerId );
 				return false;
 			}
 		}
 
-		// 아이템 추가 편의 메서드
-		public async Task<bool> AddItemAsync(long playerId, int itemId, int quantity)
+		public async Task<bool> UpdateInventoryRedisCacheAsync( InventoryEntity inventory )
 		{
-			try
-			{
-				InventoryEntity inventory = await GetPlayerInventoryAsync(playerId);
-				if(inventory == null)
-					return false;
-
-				InventoryModel data = inventory.InventoryData;
-
-				// 빈 슬롯 찾기
-				var usedSlots = data.Items.Select(i => i.Slot).ToHashSet();
-				var emptySlot = Enumerable.Range(0, inventory.MaxSlots)
-					.FirstOrDefault(slot => !usedSlots.Contains(slot));
-
-				InventoryItem newItem = new InventoryItem
-				{
-					ItemId = itemId,
-					Quantity = quantity,
-					Slot = emptySlot,
-					AcquiredAt = DateTime.UtcNow
-				};
-
-				data.Items.Add( newItem );
-				inventory.InventoryData = data;
-
-				return await SaveInventoryAsync( inventory );
-			}
-			catch (Exception ex)
-			{
-				_logger.LogError( ex, "아이템 추가 실패: PlayerId={PlayerId}, ItemId={ItemId}", playerId, itemId );
-				return false;
-			}
+			var cacheKey = $"{INVENTORY_CACHE_PREFIX}{inventory.PlayerId}";
+			return await _redis.SetAsync( cacheKey, inventory, _cacheTTL );
 		}
 
 		// 캐시 무효화
-		public async Task InvalidateInventoryCacheAsync(long playerId)
+		public async Task InvalidateInventoryCacheAsync(InventoryEntity inventory)
 		{
+			var playerId = inventory.PlayerId;
 			string cacheKey = $"{INVENTORY_CACHE_PREFIX}{playerId}";
 			try
 			{

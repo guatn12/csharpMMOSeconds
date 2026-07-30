@@ -55,6 +55,7 @@ namespace DatabaseLib.Extensions
 			services.AddSingleton<IRedisService, RedisService>();
 			services.AddSingleton<PlayerCacheService>();
 			services.AddSingleton<InventoryCacheService>();
+			services.AddSingleton<EquipmentCacheService>();
 
 			return services;
 		}

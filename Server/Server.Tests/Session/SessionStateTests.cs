@@ -1,3 +1,4 @@
+using DatabaseLib.Redis;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Server.Core.Session;
@@ -15,7 +16,8 @@ namespace Server.Tests.Session
 		private ClientSession CreateSession()
 		{
 			return new ClientSession(
-			new Mock<ILogger<ClientSession>>().Object, null, new Mock<ISessionManager>().Object, new Mock<IJobQueueManager>().Object, 1 );
+			new Mock<ILogger<ClientSession>>().Object, null, new Mock<ISessionManager>().Object, new Mock<IJobQueueManager>().Object, 
+			new Mock<IRedisService>().Object, 1 );
 		}
 
 		[Fact]
