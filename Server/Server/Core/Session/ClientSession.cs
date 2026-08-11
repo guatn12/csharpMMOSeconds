@@ -113,7 +113,7 @@ namespace Server.Core.Session
 				long prev = Interlocked.Read(ref _lastTokenRefreshTick);
 				if(TokenRefreshDebounceMs < now - prev && Interlocked.CompareExchange(ref _lastTokenRefreshTick, now, prev) == prev)
 				{
-					_ = _redisService.KeyExpireAsync( RedisKeys.TokenUserId( LoginToken ), TimeSpan.FromHours( 1 ) );
+					_ = RefreshLoginTokenTtlAsync( LoginToken );
 				}
 			}
 			PacketRoute packetRoute = _packetManager.RouteIncoming(this, buffer);
@@ -248,6 +248,24 @@ namespace Server.Core.Session
 
 				Player.OnDeath -= OnPlayerDeath;
 				Player.OnStateChanged -= OnPlayerStateChanged;
+			}
+		}
+
+		private async Task RefreshLoginTokenTtlAsync(string token)
+		{
+			try
+			{
+				bool refreshed = await _redisService.KeyExpireAsync(RedisKeys.TokenUserId(token), TimeSpan.FromHours(1));
+				if(refreshed == false)
+				{
+					_logger.LogWarning( "Login token TTL refresh failed because the Redis key was not found. SessionId={SessionId}, AccountId={AccountId}",
+						SessionId, AccountId );
+				}
+			}
+			catch(Exception ex)
+			{
+				_logger.LogWarning( ex, "Login token TTL refresh failed. SessionId={SessionId}, AccountId={AccountId}",
+					SessionId, AccountId );
 			}
 		}
 

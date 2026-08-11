@@ -140,9 +140,10 @@ namespace Server.Packet.Handlers
 			else
 			{
 				// TODO : 기본 로비 입장 실패 시 로비 생성 및 입장 처리가 필요.
+				// 기존에 작성된 플레이어 생성 / 데이터적용 / 세션+플레이어 바인딩 해제를 위해 disconnect로 일단 처리.
 				_logger.LogWarning( "Player {PlayerId} (Session {SessionId}) failed to join the default lobby.",
 					session.Player.ObjectId, session.SessionId );
-				session.TryTransitionTo(SessionState.Authenticated); // 상태 복구
+				session.Disconnect();
 				return;
 			}
 
