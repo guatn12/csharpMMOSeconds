@@ -69,6 +69,16 @@ namespace Server.Infra
 			_logger.LogInformation( "TickService started. Base tick: {BaseTickMs}ms, subscriptions: {count}", _baseTickMs, _subscription.Count );
 		}
 
+		public async Task StopAsync()
+		{
+			Timer timer = Interlocked.Exchange(ref _timer, null);
+			if(timer == null)
+				return;
+
+			await timer.DisposeAsync();
+			_logger.LogInformation( "TickService stopped" );
+		}
+
 		public void Stop()
 		{
 			_timer.Dispose();

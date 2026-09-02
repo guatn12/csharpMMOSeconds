@@ -5,11 +5,9 @@ using Server.Config;
 using Server.Core.Session;
 using Server.Data;
 using Server.Game.Monsters;
-using Server.Services;
-using Server.Services.Combat;
-using Server.Services.Reward;
+using Server.Room.Dependencies;
+using Server.Room.Requests;
 using ServerCore;
-using System;
 using System.Threading.Tasks;
 
 namespace Server.Room
@@ -20,21 +18,19 @@ namespace Server.Room
 		private readonly ServerSettings _settings;
 		public override RoomType RoomType => RoomType.Dungeon;
 
-		public DungeonRoom(ILogger<DungeonRoom> logger, ILoggerFactory loggerFactory, IOptions<ServerSettings> settings, 
-			IDataManager dataManager, IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
-			IPlayerPositionService playerPositionService, int roomId, string roomName, int maxPlayers)
-			: base(logger, loggerFactory, roomId, roomName, maxPlayers, dataManager, jobQueueManager, combatService, rewardService, 
-				  playerPositionService, mapId: DUNGEON_MAP_ID)
+		public DungeonRoom(ILogger<DungeonRoom> logger, ILoggerFactory loggerFactory, ISessionManager sessionManager, IOptions<ServerSettings> settings, 
+			IDataManager dataManager, IJobQueueManager jobQueueManager, RoomServices roomServices, int roomId, string roomName, int maxPlayers)
+			: base(logger, loggerFactory, sessionManager, roomId, roomName, maxPlayers, dataManager, jobQueueManager, roomServices, mapId: DUNGEON_MAP_ID)
 		{
 			_settings = settings.Value;
 		}
 
-		protected override Task<RoomEnterResult> TryEnterAsync( IClientSession session, bool consumesReservation = false )
+		protected override Task<RoomEnterResult> TryEnterAsync( RoomEnterRequest request, bool consumesReservation = false )
 		{
 			// 던전 전용 입장 조건 검증(level, 인원 제한 등)
 			// ex) if(session.Player.Level < datamanager.dungeon.getlevel(DUNGEON_MAP_ID)) 
 
-			return base.TryEnterAsync( session, consumesReservation );
+			return base.TryEnterAsync( request, consumesReservation );
 		}
 
 		protected override async Task OnPlayerEnterAsync(IClientSession session )
@@ -43,8 +39,10 @@ namespace Server.Room
 			await base.OnPlayerEnterAsync( session );
 		}
 
-		protected override async Task OnInitPlayerPosition( IClientSession session )
+		protected override async Task OnInitPlayerPosition( RoomEnterRequest request )
 		{
+			IClientSession session = request.Session;
+
 			// 방 A 중앙 좌표 (14.0, 0.0, 14.0)로 초기 위치 설정
 			var startPos = new PosInfo{PosX = 14.0f, PosY = 0.0f, PosZ = 14.0f };
 

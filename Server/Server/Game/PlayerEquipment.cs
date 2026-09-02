@@ -20,7 +20,6 @@ namespace Server.Game
 		private readonly long _playerRawId;
 		private readonly Dictionary<EquipSlot, InventoryItem> _equippedItems;   // 착용 중인 장비
 		private readonly Dictionary<StatType, int> _equipmentStats; // 장비로 얻은 스탯
-		private bool _isDirty = false;
 
 		// 장비 슬롯 정의
 		public enum EquipSlot
@@ -70,7 +69,6 @@ namespace Server.Game
 
 		// 기본 속성
 		public long PlayerRawId => _playerRawId;
-		public bool IsDirty => _isDirty;
 		public Dictionary<StatType, int> EquipmentStats => new Dictionary<StatType, int>( _equipmentStats );
 		public int EquippedItemCount => _equippedItems.Count;
 
@@ -149,8 +147,6 @@ namespace Server.Game
 			item.IsEquipped = true;
 			ApplyItemStats( item, true );   // 스탯 적용.
 
-			MarkDirty();
-
 			// 이벤트 발생.
 			OnEquipmentChanged?.Invoke( this );
 
@@ -166,8 +162,6 @@ namespace Server.Game
 			_equippedItems.Remove( slot );
 			item.IsEquipped = false;
 			ApplyItemStats( item, false );
-
-			MarkDirty();
 
 			return true;
 		}
@@ -219,12 +213,6 @@ namespace Server.Game
 			{
 				ApplyEnhancementBonus( item, apply );
 			}
-
-			// 스탯이 변경되었으면 이벤트 발생
-			//if(!AreDictionariesEqual(oldStats, _equipmentStats))
-			//{
-			//	OnStatsChanged?.Invoke(this, new Dictionary<StatType, int>(_equipmentStats));
-			//}
 		}
 
 		private void ApplyEnhancementBonus(InventoryItem item, bool apply)
@@ -320,8 +308,6 @@ namespace Server.Game
 			ringItem.IsEquipped = true;
 			ApplyItemStats( ringItem, true );
 
-			MarkDirty();
-			//OnItemEquipped?.Invoke( this, availableSlot, ringItem );
 			OnEquipmentChanged?.Invoke( this );
 
 			return true;
@@ -344,9 +330,7 @@ namespace Server.Game
 			return unequippedItems;
 		}
 
-
-
-		public void LoadFromEquipmentData(Dictionary<EquipSlot, InventoryItem> equipmentData, bool needRepair)
+		public void LoadFromEquipmentData( Dictionary<EquipSlot, InventoryItem> equipmentData )
 		{
 			if(equipmentData == null) 
 				return;
@@ -359,18 +343,6 @@ namespace Server.Game
 				_equippedItems[kvp.Key] = kvp.Value;
 				ApplyItemStats(kvp.Value, true );
 			}
-
-			_isDirty = needRepair;
-		}
-
-		public void MarkClean()
-		{
-			_isDirty = false;
-		}
-
-		private void MarkDirty()
-		{
-			_isDirty = true;
 		}
 
 		private void ResetAllStats()
@@ -414,7 +386,7 @@ namespace Server.Game
 		public override string ToString()
 		{
 			return $"Equipment[Player:{_playerRawId}] Items:{EquippedItemCount} " +
-				$"ATK:{GetTotalAttack()} DEF:{GetTotalDefense()} HP:{GetTotalHP()} Dirty:{IsDirty}";
+				$"ATK:{GetTotalAttack()} DEF:{GetTotalDefense()} HP:{GetTotalHP()}";
 		  }
 
 		// 장비 세트 효과 (추후 확장용)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Server.Core.Session
 {
@@ -11,13 +12,14 @@ namespace Server.Core.Session
 
 		#region 세션 등록/해제
 		bool RegisterSession( IClientSession session );
-		bool BindPlayerToSession( long sessionId );
-		bool UnregisterSession( long sessionId );
+		IClientSession BindPlayerToSession( long playerRawId, IClientSession session );
+		Task<bool> UnregisterSessionAsync( long sessionId );
 		#endregion
 
 		#region 세션 조회
 		IClientSession GetSession( long sessionId );
-		IClientSession GetSessionByPlayerId( long playerId );
+		IClientSession GetSessionByPlayerRawId( long playerRawId );
+		bool IsCurrentPlayerSession( long playerRawId, IClientSession session );
 		#endregion
 
 		#region 통계 및 전체 조회
@@ -38,6 +40,7 @@ namespace Server.Core.Session
 		/// NetworkSession.OnDisConnected 흐름에서만 호출하며, 일반 게임 로직은 호출 금지
 		/// </summary>
 		void NotifyDisconnecting( IClientSession session, DisconnectReason reason );
+		Task DisconnectAllAsync();
 		#endregion
 
 	}

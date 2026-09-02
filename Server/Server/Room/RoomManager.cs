@@ -11,6 +11,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Protocol;
 using Server.Infra;
+using Server.Services.DTOs;
+using Server.Room.Requests;
 
 namespace Server.Room
 {
@@ -32,6 +34,7 @@ namespace Server.Room
 		private bool _disposed = false;
 		private int _nextRoomId = 1;
 		private IRoom _defaultLobby;
+		private int _isStopping;
 
 		public int TotalRoomCount => _rooms.Count;
 		public int TotalPlayerCount => _rooms.Values.Sum( r => r.CurrentPlayerCount );
@@ -53,6 +56,7 @@ namespace Server.Room
 			_loggerFactory = loggerFactory ?? throw new ArgumentNullException( nameof( loggerFactory ) );
 			_dataManager = dataManager;
 			_tickService = tickService;
+			_isStopping = 0;
 
 			_rooms = new ConcurrentDictionary<int, IRoom>();
 
@@ -72,6 +76,9 @@ namespace Server.Room
 			int cleanupMs = _serverSettings.CurrentValue.Room.EmptyRoomCleanupIntervalMinutes * 60 * 1000;
 			_tickService.Register( "RoomManager.Cleanup", cleanupMs, PerformCleanup );
 
+			int autoSaveMs = _serverSettings.CurrentValue.AutoSaveTime.DefaultIntervalMs;
+			_tickService.Register( "RoomManager.PlayerAutoSave", autoSaveMs, RequestPlayerAutoSave );
+
 			_logger.LogInformation( "RoomManager started successfully with {RoomCount} rooms", _rooms.Count );
 		}
 
@@ -84,12 +91,18 @@ namespace Server.Room
 			_logger.LogInformation( "RoomManager stopped" );
 		}
 
-
+		public void BeginShutdown()
+		{
+			Interlocked.Exchange( ref _isStopping, 1 );
+		}
 
 		public async Task<IRoom> CreateRoomAsync( RoomType roomType, string roomName, int maxPlayers, IClientSession creatorSession = null )
 		{
 			try
 			{
+				if(Volatile.Read( ref _isStopping ) != 0)
+					return null;
+
 				// 룸 수 제한 확인
 				if(_serverSettings.CurrentValue.Room.MaxRooms <= _rooms.Count)
 				{
@@ -300,8 +313,12 @@ namespace Server.Room
 				.ToList ();
 		}
 
-		public async Task<RoomEnterResult> JoinDefaultLobbyAsync( IClientSession session )
+		public async Task<RoomEnterResult> JoinDefaultLobbyAsync( RoomEnterRequest request )
 		{
+			if(request?.Session == null)
+				return RoomEnterResult.InvalidState;
+
+			var session = request.Session;
 			if(_defaultLobby == null)
 			{
 				_logger.LogError( "Default lobby not available for Player {SessionId}", session.SessionId );
@@ -311,7 +328,7 @@ namespace Server.Room
 			if(_defaultLobby is not BaseRoom baseRoom)
 				throw new InvalidOperationException( "Default lobby must inherit BaseRoom." );
 
-			return await baseRoom.EnterViaQueueAsync( session );
+			return await baseRoom.EnterViaQueueAsync( request );
 		}
 
 		public Task<IRoom> FindPlayerCurrentRoomAsync( IClientSession session )
@@ -486,16 +503,22 @@ namespace Server.Room
 			}
 		}
 
-		public void PerformTick()
+		private void PerformTick()
 		{
+			if(Volatile.Read( ref _isStopping ) != 0)
+				return;
+
 			foreach(IRoom room in _rooms.Values)
 			{
 				room.Tick();
 			}
 		}
 
-		public void PerformCleanup()
+		private void PerformCleanup()
 		{
+			if(Volatile.Read( ref _isStopping ) != 0)
+				return;
+
 			if(Interlocked.Exchange( ref _isCleanupRunning, 1 ) == 1)
 				return;
 
@@ -510,6 +533,15 @@ namespace Server.Room
 					Interlocked.Exchange( ref _isCleanupRunning, 0 );
 				}
 			});
+		}
+
+		private void RequestPlayerAutoSave()
+		{
+			foreach(IRoom room in _rooms.Values)
+			{
+				if(room is BaseRoom baseRoom)
+					baseRoom.RequestAutoSave();
+			}
 		}
 
 		private int GenerateNextRoomId()

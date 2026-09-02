@@ -12,6 +12,7 @@ namespace Server.Core.Session
 		long SessionId { get; }
 		long AccountId { get; }
 		long PlayerId { get; }
+		long PlayerRawId { get; }
 		string LoginToken { get; }
 		long LastActiveTime { get; }
 		bool IsAuthenticated { get; }
@@ -21,10 +22,13 @@ namespace Server.Core.Session
 		void CreatePlayer( IDataManager dataManager, long playerId, string playerName );
 		void SetLoginToken( string token );
 		void BindAccountId( long accountId );
+		void BindPlayerRawId( long playerRawId );
 		void EnqueueSystemJob( IJob job );
 		bool TryTransitionTo( SessionState state );
 		void SetCurrentRoom( IRoom room );
 		void Send( IMessage packet );
 		void Disconnect();
+		void DisconnectForShutdown();
+		Task DisconnectCompletion { get; }
 	}
 }

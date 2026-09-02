@@ -1,4 +1,5 @@
 using DatabaseLib.Entities;
+using DatabaseLib.Persistence;
 using DatabaseLib.Redis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -7,11 +8,14 @@ using Server.Config;
 using Server.Core.Session;
 using Server.Data;
 using Server.Room;
+using Server.Room.Requests;
 using Server.Services;
+using Server.Services.Persistence;
 using Server.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Server.Packet.Handlers
@@ -29,10 +33,11 @@ namespace Server.Packet.Handlers
 		private readonly IRedisService _redisService;
 		private readonly ISessionManager _sessionManager;
 		private readonly IDataManager _dataManager;
+		private readonly IPlayerPersistenceService _playerPersistenceService;
 
 		public SystemPacketHandler(ILogger<SystemPacketHandler> logger, IRoomManager roomManager, IOptions<ServerSettings> settings, 
 			IRoomTransitionCoordinator transitionCoordinator, IGameDataService gameDataService, IRedisService redisService, ISessionManager sessionManager,
-			IDataManager dataManager)
+			IDataManager dataManager, IPlayerPersistenceService playerPersistenceService)
 		{
 			_logger = logger;
 			_roomManager = roomManager;
@@ -42,6 +47,7 @@ namespace Server.Packet.Handlers
 			_redisService = redisService;
 			_sessionManager = sessionManager;
 			_dataManager = dataManager;
+			_playerPersistenceService = playerPersistenceService;
 			InitializeHandlers();
 		}
 		private async ValueTask HandleC_LoginAsync( IClientSession session, C_Login packet )
@@ -98,40 +104,82 @@ namespace Server.Packet.Handlers
 			if(session.TryTransitionTo( SessionState.EnteringGame ) == false)
 				return; // 이미 입장 중 또는 다른 상태
 
-			long playerId = packet.PlayerId;
+			long playerRawId = packet.PlayerId;
 
 			// 계정 소유 캐릭터인지 검증
-			bool isOwned = await _gameDataService.IsPlayerOwnedByAccountAsync(session.AccountId, playerId);
+			bool isOwned = await _gameDataService.IsPlayerOwnedByAccountAsync(session.AccountId, playerRawId);
 			if(isOwned == false)
 			{
 				_logger.LogWarning( "타인 캐릭터 진입 시도: AccountId={AccountId}, PlayerId={PlayerId}",
-					session.AccountId, playerId );
+					session.AccountId, playerRawId );
 				session.TryTransitionTo( SessionState.Authenticated );
 				session.Disconnect();
 				return;
 			}
 
+			IClientSession evicted = _sessionManager.BindPlayerToSession(playerRawId, session);
+
+			if(evicted != null)
+			{
+				try
+				{
+					evicted.Send( new S_ForceKick { Reason = "다른 곳에서 로그인되었습니다." } );
+				}
+				catch( Exception ex )
+				{
+					_logger.LogWarning( ex, "ForceKick 전송 실패: SessionId={SessionId}", evicted.SessionId );
+				}
+
+				// Disconnect는 여러 번 불려도 NetworkSession.Close()가 동일 연결을 정리하게 한다.
+				// completion은 ClientSession의 실제 정리 finally에서 완료된다.
+				if(evicted.State < SessionState.Disconnecting)
+					evicted.Disconnect();
+
+				await evicted.DisconnectCompletion;
+			}
+
 			// 데이터 로드
-			var aggregate = await _gameDataService.LoadPlayerAggregateAsync(session.AccountId, playerId);
+			var aggregate = await _gameDataService.LoadPlayerAggregateAsync(session.AccountId, playerRawId);
 			if(aggregate == null )
 			{
-				_logger.LogError( "캐릭터 데이터 로드 실패: PlayerID={PlayerId}", playerId );
+				_logger.LogError( "캐릭터 데이터 로드 실패: PlayerID={PlayerId}", playerRawId );
 				session.TryTransitionTo( SessionState.Authenticated );
+				session.Disconnect();
 				return;
 			}
 
 			// 플레이어 생성 -> 로드 데이터 적용 -> 바인딩
-			session.CreatePlayer( _dataManager, playerId, aggregate.Player.PlayerName );
-			var missingEquipInstances = session.Player.ApplyLoadedData( aggregate.Player, aggregate.Inventory, aggregate.Equipment );
+			session.CreatePlayer( _dataManager, playerRawId, aggregate.Player.PlayerName );
+			if(session.Player.ObjectRawId != session.PlayerRawId)
+				throw new InvalidOperationException( "PlayerRawId binding mismatch." );
+
+			var missingEquipInstances = session.Player.ApplyLoadedData( aggregate.Player, aggregate.PlayerState, aggregate.Inventory, aggregate.Equipment );
 			if( 0 < missingEquipInstances.Count )
 			{
-				_logger.LogWarning( "장비 참조 복구: PlayerId = {PlayerId}, MissingEquipInstances={missingEquipInstances}",
-					playerId, string.Join( ",", missingEquipInstances ) );
+				session.Player.MarkPersistenceDirty();
+				_logger.LogWarning( "장비 참조 복구: PlayerRawId = {PlayerRawId}, MissingEquipInstances={missingEquipInstances}",
+					playerRawId, string.Join( ",", missingEquipInstances ) );
 			}
-			_sessionManager.BindPlayerToSession( session.SessionId );
+			session.Player.ApplyLoadedVitals( aggregate.PlayerState.StateData.CurrentHp, aggregate.PlayerState.StateData.CurrentMp );
+
+			PlayerStateModel state = aggregate.PlayerState.StateData;
+			var enterRequest = new RoomEnterRequest
+			{
+				Session = session,
+				SavedMapId = state.MapId,
+				PreferredPosition = new PosInfo
+				{
+					PosX = state.PosX,
+					PosY = state.PosY,
+					PosZ = state.PosZ,
+					RotationX = state.RotationX,
+					RotationY = state.RotationY,
+					RotationZ = state.RotationZ,
+				}
+			};
 
 			// 자동 로비 입장
-			var result = await _roomManager.JoinDefaultLobbyAsync( session );
+			var result = await _roomManager.JoinDefaultLobbyAsync( enterRequest );
 			if(result == RoomEnterResult.Success)
 			{
 				_logger.LogInformation( "Player {PlayerId} (Session {SessionId}) automatically joined the default lobby.",
@@ -267,7 +315,20 @@ namespace Server.Packet.Handlers
 			}
 
 			// 3. 생성 - playerId는 db - identity 발급 / inventory/equipment row 동시 생성
-			var aggregate = await _gameDataService.CreateNewPlayerAsync(packet.PlayerName, session.AccountId);
+			using var enqueueTimeout = new CancellationTokenSource();
+			DatabaseWriteResult<CreatePlayerCommit> created = await _playerPersistenceService.CreatePlayerAsync(session.AccountId,
+				packet.PlayerName, enqueueTimeout.Token );
+
+			if(created.Status != DatabaseWriteStatus.Committed)
+			{
+				string reason = created.Status == DatabaseWriteStatus.OutcomeUnknown
+					? "생성 결과를 확인할 수 없습니다. 캐릭터 목록을 다시 조회하세요."
+					: created.ErrorCode ?? "캐릭터 생성 실패.";
+				session.Send( new S_CreatePlayer { Success = false, FailReason = reason } );
+				return;
+			}
+
+			var aggregate = await _gameDataService.LoadPlayerAggregateAsync(session.AccountId, created.Value.PlayerRawId);
 			if(aggregate == null)
 			{
 				session.Send( new S_CreatePlayer { Success = false, FailReason = "캐릭터 생성 실패 (재시도 필요)" } );

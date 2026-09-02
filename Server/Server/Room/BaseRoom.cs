@@ -21,17 +21,23 @@ using Server.Game.Map;
 using Server.Utils;
 using Server.Game.Objects;
 using System.Threading;
+using Server.Room.Requests;
+using Server.Services.Persistence;
+using Server.Room.Dependencies;
+using DatabaseLib.Persistence;
 
 namespace Server.Room
 {
 	public abstract class BaseRoom : JobSerializer, IRoom, IDisposable
 	{
 		protected readonly ILoggerFactory _loggerFactory;
+		protected readonly ISessionManager _sessionManager;
 		protected readonly ConcurrentDictionary<long, IClientSession> _players;
 		public ObjectManager ObjectManager { get; private set; }
 		public GameMap RoomMap { get; protected set; }
 		protected readonly object _lock = new object();
 		private bool _dispose = false;
+		private int _autoSaveWakeupPending;         // 자동 저장 
 
 		public int RoomId { get; private set; }
 		public string RoomName { get; protected set; }
@@ -53,7 +59,7 @@ namespace Server.Room
 		#region RoomTransitionCoordinator
 		private int _pendingEnterCount;				// Target 보호: 들어오는 중인 세션 수
 		private int _activeTransitionSourceCount;   // Source 보호: 이 방을 source로 진행 중인 Transition 수 (rollback 대비)
-		private int _respawnPendingCount;			// 부활 대기 카운터 - 사망 후 ScheduleRespawn으로 등록된 잡이 fire될 때까지 _players가 비더라도 룸 파괴를 차단.
+		private int _respawnPendingCount;           // 부활 대기 카운터 - 사망 후 ScheduleRespawn으로 등록된 잡이 fire될 때까지 _players가 비더라도 룸 파괴를 차단.
 		
 		/// <summary> Target: 예약 슬롯 확보. State/Full 검증 + 카운터 증가가 _lock 아래 원자 단위 </summary>
 		internal bool TryReserveEnter()
@@ -85,7 +91,8 @@ namespace Server.Room
 		{
 			try
 			{
-				return await TryEnterAsync( session, consumesReservation: true );
+				var request = new RoomEnterRequest{Session = session };
+				return await TryEnterAsync( request, consumesReservation: true );
 			}
 			finally
 			{
@@ -146,6 +153,7 @@ namespace Server.Room
 		protected readonly ICombatService _combatService;
 		protected readonly IRewardService _rewardService;
 		protected readonly IPlayerPositionService _playerPositionService;
+		protected readonly IPlayerPersistenceService _playerPersistenceService;
 
 		// Category 핸들러
 		protected SystemPacketHandler SystemPacketHandler { get; private set; }
@@ -160,19 +168,20 @@ namespace Server.Room
 		public event EventHandler<PlayerRoomEventArgs> PlayerEntered;
 		public event EventHandler<PlayerRoomEventArgs> PlayerLeft;
 
-		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, int roomId, string roomName, int maxPlayers, IDataManager dataManager,
-			IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
-			IPlayerPositionService playerPositionService,
+		protected BaseRoom( ILogger logger, ILoggerFactory loggerFactory, ISessionManager sessionManager, int roomId, string roomName, int maxPlayers, IDataManager dataManager,
+			IJobQueueManager jobQueueManager, RoomServices roomServices,
 			Func<IRoom, IDataManager, ObjectManager, ILogger, MonsterSpawnPolicy, IMonsterManager> monsterManagerFactory = null,
 			int mapId = 1 )
 			: base( jobQueueManager, logger )
 		{
 			_loggerFactory = loggerFactory;
+			_sessionManager = sessionManager;
 			_dataManager = dataManager;
 
-			_combatService = combatService;
-			_rewardService = rewardService;
-			_playerPositionService = playerPositionService;
+			_combatService = roomServices.CombatService;
+			_rewardService = roomServices.RewardService;
+			_playerPositionService = roomServices.PlayerPositionService;
+			_playerPersistenceService = roomServices.PlayerPersistenceService;
 
 			RoomId = roomId;
 			RoomName = roomName ?? throw new ArgumentNullException( nameof( roomName ) );
@@ -191,7 +200,7 @@ namespace Server.Room
 			_players = new ConcurrentDictionary<long, IClientSession>();
 			ObjectManager = new ObjectManager( _loggerFactory.CreateLogger<ObjectManager>() );
 
-			InitializePacketHandlers( _loggerFactory, combatService, rewardService, playerPositionService );
+			InitializePacketHandlers( _loggerFactory, roomServices.CombatService, roomServices.RewardService, roomServices.PlayerPositionService );
 
 			_monsterManagerFactory = monsterManagerFactory ?? ( ( room, dataMgr, objMgr, logger, policy ) =>
 				new MonsterManager( room, dataMgr, objMgr, logger, policy ) );
@@ -275,10 +284,12 @@ namespace Server.Room
 			return _players.Values.Where( p => p.PlayerId == playerId ).FirstOrDefault();
 		}
 
-		protected virtual async Task<RoomEnterResult> TryEnterAsync( IClientSession session, bool consumesReservation = false )
+		protected virtual async Task<RoomEnterResult> TryEnterAsync( RoomEnterRequest request, bool consumesReservation = false )
 		{
-			if(session == null)
+			if(request?.Session == null)
 				return RoomEnterResult.InvalidState;
+
+			IClientSession session = request.Session;
 
 			// Validate
 			bool reservationMissing = false;
@@ -305,7 +316,7 @@ namespace Server.Room
 
 			// Prepare
 			// 플레이어 위치 초기화
-			await OnInitPlayerPosition( session );
+			await OnInitPlayerPosition( request );
 
 			// Apply
 			bool applied = false;
@@ -370,16 +381,21 @@ namespace Server.Room
 		/// cancellationToken 미사용.
 		/// </summary>
 		public Task<RoomEnterResult> EnterViaQueueAsync(IClientSession session)
-			=> EnterViaQueueAsync( session, CancellationToken.None );
+			=> EnterViaQueueAsync( new RoomEnterRequest { Session = session }, CancellationToken.None );
+
+		public Task<RoomEnterResult> EnterViaQueueAsync(RoomEnterRequest request)
+		{
+			return EnterViaQueueAsync( request, CancellationToken.None );
+		}
 
 		/// <summary>
 		/// 외부에서 Room의 JobQueue를 경유하여 입장 처리
 		/// Room 내부 핸들러에서는 호출 금지 (데드락 위험)
 		/// cancellationToken 사용
 		/// </summary>
-		public Task<RoomEnterResult> EnterViaQueueAsync(IClientSession session, CancellationToken token)
+		public Task<RoomEnterResult> EnterViaQueueAsync(RoomEnterRequest request, CancellationToken token)
 		{
-			return PushAsync<RoomEnterResult>( () => new ValueTask<RoomEnterResult>( TryEnterAsync( session ) ), token );
+			return PushAsync<RoomEnterResult>( () => new ValueTask<RoomEnterResult>( TryEnterAsync( request ) ), token );
 		}
 
 		/// <summary>
@@ -495,7 +511,7 @@ namespace Server.Room
 
 						session.Player.Revive();
 
-						RoomEnterResult result = await TryEnterAsync(session);
+						RoomEnterResult result = await TryEnterAsync(new RoomEnterRequest {Session = session});
 						if(result != RoomEnterResult.Success)
 						{
 							_logger.LogWarning( "Failed to respawn player {SessionId} in room {RoomId} - Enter Result: {Result}",
@@ -561,7 +577,7 @@ namespace Server.Room
 			playerSpawnPacket.Objects.Add( session.Player.ToObjectInfo() );
 			BroadcastInRange( playerSpawnPacket, session.Player.PosInfo, excludeSession: session );
 		}
-		protected abstract Task OnInitPlayerPosition( IClientSession session );
+		protected abstract Task OnInitPlayerPosition( RoomEnterRequest request );
 		protected virtual async Task OnPlayerLeaveAsync( IClientSession session )
 		{
 			// 룸 퇴장 패킷 전달
@@ -714,6 +730,221 @@ namespace Server.Room
 
 			ScheduleTimer( job, 100 );
 		}
+
+		
+		public void RequestAutoSave()
+		{
+			if((Interlocked.CompareExchange( ref _autoSaveWakeupPending, 1, 0 ) != 0))
+				return;
+
+			DelegateJob job = _jobQueueManager.JobPool.Get<DelegateJob>();
+			job.Initialize( RunAutoSaveCheckpoint );
+			Push( job );
+		}
+
+		public void RequestPlayerCheckpoint(Player player, string trigger)
+		{
+			if(player == null)
+				throw new ArgumentNullException( nameof( player ) );
+
+			ObserveCompletedSave( player );
+			if(DisconnectIfReloadRequired( player ))
+				return;
+
+			TryStartPlayerCheckpoint( player, trigger );
+		}
+
+		public async Task<DatabaseWriteResult<PlayerSaveCommit>> AwaitPlayerPendingSaveAsync(Player player)
+		{
+			Task<DatabaseWriteResult<PlayerSaveCommit>> pending = player.Persistence.PendingSave;
+			if(pending == null)
+				return null;
+
+			DatabaseWriteResult<PlayerSaveCommit> result;
+			try
+			{
+				result = await pending;
+			}
+			finally
+			{
+				player.Persistence.ClearPending( pending );
+			}
+
+			if(result.Status == DatabaseWriteStatus.Committed)
+				player.Persistence.ApplyCommitted( result.Value );
+			else if(result.Status == DatabaseWriteStatus.OutcomeUnknown ||
+				result.Status == DatabaseWriteStatus.ConcurrencyConflict ||
+				result.Status == DatabaseWriteStatus.Rejected)
+				player.Persistence.MarkRequiresReload();
+
+			return result;
+		}
+
+		private async Task RunAutoSaveCheckpoint()
+		{
+			try
+			{
+				foreach(IClientSession session in _players.Values)
+				{
+					Player player = session.Player;
+					if(player == null)
+						continue;
+
+					RequestPlayerCheckpoint( player, "AutoSave" );
+				}
+			}
+			finally
+			{
+				Interlocked.Exchange( ref _autoSaveWakeupPending, 0 );
+			}
+		}
+
+		private void TryStartPlayerCheckpoint(Player player, string trigger )
+		{
+			if(player.Persistence.RequiresReload || player.Persistence.PendingSave != null ||
+				player.Persistence.IsDirty == false)
+				return;
+
+			PlayerSaveSnapshot snapshot = player.CreatePersistenceSnapshot(RoomMap.MapId);
+			DatabaseWriteEnqueueStatus status = _playerPersistenceService.TryEnqueueCheckpoint(snapshot, out Task<DatabaseWriteResult<PlayerSaveCommit>> completion);
+
+			if(status != DatabaseWriteEnqueueStatus.Accepted)
+			{
+				_logger.LogWarning( "Player checkpoint enqueue skipped: PlayerId={PlayerId}, Trigger={Trigger}, Status={Status}",
+					player.ObjectRawId, trigger, status );
+				return;
+			}
+
+			player.Persistence.SetPending( completion );
+
+			_ = completion.ContinueWith( _ => QueueCheckpointCompletion( player ), CancellationToken.None, TaskContinuationOptions.None,
+				TaskScheduler.Default );
+		}
+
+		private void QueueCheckpointCompletion(Player player)
+		{
+			try
+			{
+				DelegateJob job = _jobQueueManager.JobPool.Get<DelegateJob>();
+				job.Initialize( () => ObserveCheckpointCompletion( player ) );
+				Push( job );
+			}
+			catch(Exception ex)
+			{
+				_logger.LogError( ex, "Failed to queue checkpoint completion: PlayerId={PlayerId}", player.ObjectRawId );
+			}
+		}
+
+		private void ObserveCheckpointCompletion(Player player)
+		{
+			IClientSession session = FindPlayerToPlayerId(player.ObjectId);
+			if(session == null || ReferenceEquals( session.Player, player ) == false)
+				return;
+
+			bool committed = ObserveCompletedSave(player);
+			if(DisconnectIfReloadRequired( player ))
+				return;
+
+			if(committed && player.Persistence.IsDirty)
+				TryStartPlayerCheckpoint( player, "Coalesced" );
+		}
+
+		private bool DisconnectIfReloadRequired(Player player)
+		{
+			if(player.Persistence.RequiresReload == false)
+				return false;
+
+			IClientSession session = FindPlayerToPlayerId(player.ObjectId);
+			if(session != null && ReferenceEquals( session.Player, player ) && session.State < SessionState.Disconnecting)
+				session.Disconnect();
+
+			return true;
+		}
+
+		private bool ObserveCompletedSave(Player player)
+		{
+			Task<DatabaseWriteResult<PlayerSaveCommit>> pending = player.Persistence.PendingSave;
+			if(pending == null || pending.IsCompleted == false)
+				return false;
+
+			player.Persistence.ClearPending( pending );
+
+			if(pending.Status == TaskStatus.RanToCompletion)
+			{
+				DatabaseWriteResult<PlayerSaveCommit> result = pending.Result;
+				if(result.Status == DatabaseWriteStatus.Committed)
+				{
+					player.Persistence.ApplyCommitted( result.Value );
+					return true;
+				}
+					
+				_logger.LogError( "Player checkpoint failed: PlayerId={PlayerId}, Status={Status}, Error={Error}",
+					player.ObjectRawId, result.Status, result.ErrorCode );
+
+				if(result.Status == DatabaseWriteStatus.OutcomeUnknown || 
+					result.Status == DatabaseWriteStatus.ConcurrencyConflict || 
+					result.Status == DatabaseWriteStatus.Rejected)
+				{
+					player.Persistence.MarkRequiresReload();
+				}
+			}
+			else if(pending.IsFaulted)
+			{
+				_logger.LogError( pending.Exception, "Player checkpoint task faulted: PlayerId={PlayerId}", player.ObjectRawId );
+			}
+			else
+			{
+				_logger.LogError( "Player checkpoint task cancelled unexpectedly: PlayerId={PlayerId}", player.ObjectRawId );
+			}
+
+			return false;
+		}
+
+		public Task<PlayerFlushResult> FlushAndLeaveViaQueueAsync( IClientSession session )
+		{
+			return PushAsync( () => FlushAndLeaveAsync( session ), CancellationToken.None );
+		}
+
+		private async ValueTask<PlayerFlushResult> FlushAndLeaveAsync(IClientSession session)
+		{
+			Player player = session.Player;
+			if(player == null)
+			{
+				bool emptyLeft = await TryLeaveAsync(session);
+				return new PlayerFlushResult( emptyLeft, false, DatabaseWriteStatus.Committed );
+			}
+
+			DatabaseWriteResult<PlayerSaveCommit> pending = await AwaitPlayerPendingSaveAsync(player);
+			if(pending != null && pending.Status != DatabaseWriteStatus.Committed)
+			{
+				_logger.LogError( "Disconnect pending save failed: PlayerId={PlayerId}, Status={Status}",
+					player.ObjectRawId, pending.Status );
+			}
+
+			bool ownsBinding = _sessionManager.IsCurrentPlayerSession(player.ObjectRawId, session);
+			DatabaseWriteStatus finalStatus = pending == null ? DatabaseWriteStatus.Committed : pending.Status;
+
+			if(player.Persistence.RequiresReload)
+			{
+				_logger.LogError( "Disconnect flush skipped because DB state requires reload: PlayerId={PlayerId}", player.ObjectRawId );
+			}
+			else if(ownsBinding && player.Persistence.IsDirty)
+			{
+				PlayerSaveSnapshot snapshot = player.CreatePersistenceSnapshot(RoomMap.MapId);
+				DatabaseWriteResult<PlayerSaveCommit> saved = await _playerPersistenceService.SaveAsync(snapshot, CancellationToken.None );
+				finalStatus = saved.Status;
+				if(saved.Status == DatabaseWriteStatus.Committed)
+					player.Persistence.ApplyCommitted( saved.Value );
+				else
+					_logger.LogError( "Disconnect flush failed: PlayerId={PlayerId}, Status={Status}, Error={Error}",
+						player.ObjectRawId, saved.Status, saved.ErrorCode );
+			}
+
+			bool left = await TryLeaveAsync(session);
+			return new PlayerFlushResult( left, ownsBinding, finalStatus );
+		}
+
+		public sealed record PlayerFlushResult( bool LeftRoom, bool OwnedPlayerBinding, DatabaseWriteStatus SaveStatus );
 
 		private async Task<bool> ForceLeaveAsync( IClientSession session )
 		{

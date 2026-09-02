@@ -8,7 +8,7 @@ namespace Server.Core.Session
 	public class SessionRegisteredEventArgs : EventArgs
 	{
 		public long SessionId { get; init; }
-		public long PlayerId { get; init; }
+		public long PlayerRawId { get; init; }
 		public DateTime RegisteredAt { get; init; }
 	}
 
@@ -18,7 +18,7 @@ namespace Server.Core.Session
 	public class SessionUnregisteredEventArgs : EventArgs
 	{
 		public long SessionId { get; init; }
-		public long PlayerId { get; init; }
+		public long PlayerRawId { get; init; }
 		public DateTime UnregisteredAt { get; init; }
 		public string Reason { get; init; }
 	}
@@ -26,7 +26,8 @@ namespace Server.Core.Session
 	public class SessionDisconnectingEventArgs : EventArgs
 	{
 		public long SessionId { get; init; }
-		public long PlayerId { get; init; }
+		public long PlayerRawId { get; init; }
+		public long PlayerObjectId { get; init; }
 		public DisconnectReason Reason { get; init; }
 		public DateTime DisconnectingAt { get; init; }
 	}

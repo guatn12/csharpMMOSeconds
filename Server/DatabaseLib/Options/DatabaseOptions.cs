@@ -20,5 +20,11 @@ namespace DatabaseLib.Options
 		public int MaxRetryOnFailure { get; set; } = 3;             // 재시도 횟수
 		public bool EnableRetryOnFailure { get; set; } = true;
 		public bool EnableSensitiveDataLogging { get; set; } = false;
+
+		[Range( 32, 8192 )]
+		public int WriteQueueCapacity { get; set; } = 256;
+
+		[Range( 1000, 30000 )]
+		public int WriteQueueCriticalEnqueueTimeoutMs { get; set; } = 5000;
 	}
 }

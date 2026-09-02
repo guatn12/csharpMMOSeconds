@@ -26,6 +26,9 @@ namespace Server.Core.Session
 		private readonly SessionJobQueue _sessionQueue;
 		private readonly IRedisService _redisService;
         private IRoom _currentRoom;
+		private long _playerRawId;
+		private readonly TaskCompletionSource _disconnectCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+		private int _disconnectCleanupStarted;
 
         private readonly object _roomLock = new object();
 		private long _lastActiveTime = Environment.TickCount64;
@@ -54,7 +57,10 @@ namespace Server.Core.Session
 		public long LastActiveTime => _lastActiveTime;
 		public Player Player { get; private set; }
         public string PlayerName => Player?.Name ?? $"Session_{SessionId}";
-        public long PlayerId => Player?.ObjectId ?? 0;		
+        public long PlayerId => Player?.ObjectId ?? 0;
+		public long PlayerRawId => Interlocked.Read( ref _playerRawId );
+		public Task DisconnectCompletion => _disconnectCompletion.Task;
+		
 		public SessionState State => (SessionState)Volatile.Read( ref _state );
 
 		public bool IsAuthenticated => SessionState.Authenticated <= State && State < SessionState.Disconnecting;
@@ -84,6 +90,15 @@ namespace Server.Core.Session
 
 		public void SetLoginToken( string token ) => LoginToken = token;
 		public void BindAccountId(long accountId) => AccountId = accountId;
+		public void BindPlayerRawId(long playerRawId)
+		{
+			if(playerRawId <= 0)
+				throw new ArgumentOutOfRangeException( nameof( playerRawId ) );
+
+			long previous = Interlocked.CompareExchange(ref _playerRawId, playerRawId, 0);
+			if(previous != 0 && previous != playerRawId)
+				throw new InvalidOperationException( "Session is already bound to another player." );
+		}
 
 		public void EnqueueSystemJob( IJob job ) => _sessionQueue.Push( job );
 
@@ -94,6 +109,13 @@ namespace Server.Core.Session
 		}
 		public void Disconnect()
 		{
+			BeginDisconnect( DisconnectReason.Forced, null );
+			base.Close();
+		}
+
+		public void DisconnectForShutdown()
+		{
+			BeginDisconnect( DisconnectReason.ServerShutdown, null );
 			base.Close();
 		}
 
@@ -156,20 +178,21 @@ namespace Server.Core.Session
 
 		public override void OnDisConnected( EndPoint endPoint )
 		{
-			_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
+			BeginDisconnect( DisconnectReason.ClientDisconnect, endPoint );
+			//_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}", SessionId, endPoint );
 
-			// 상태 전이 - 필터 즉시 활성화
-			if(TryTransitionTo(SessionState.Disconnecting) == false)
-			{
-				_logger.LogWarning( "Already disconnecting. SessionId={SessionId}", SessionId );
-				return;
-			}
+			//// 상태 전이 - 필터 즉시 활성화
+			//if(TryTransitionTo(SessionState.Disconnecting) == false)
+			//{
+			//	_logger.LogWarning( "Already disconnecting. SessionId={SessionId}", SessionId );
+			//	return;
+			//}
 
-			_sessionManager.NotifyDisconnecting( this, DisconnectReason.ClientDisconnect );
+			//_sessionManager.NotifyDisconnecting( this, DisconnectReason.ClientDisconnect );
 
-			IRoom room = CurrentRoom;
-			BaseRoom baseRoom = room as BaseRoom;
-			_ = HandleDisconnectAsync( endPoint, baseRoom );
+			//IRoom room = CurrentRoom;
+			//BaseRoom baseRoom = room as BaseRoom;
+			//_ = HandleDisconnectAsync( endPoint, baseRoom );
 		}
 
 		public bool TryTransitionTo( SessionState next )
@@ -205,6 +228,8 @@ namespace Server.Core.Session
 			Player = new Player( dataManager, playerId, playerName );
 			SubscribePlayerEvents();
 		}
+
+
 
 		private void SubscribePlayerEvents()
 		{
@@ -276,25 +301,30 @@ namespace Server.Core.Session
 				_logger.LogInformation( "Client Disconnected. SessionId: {SessionId}, RemoteEndPoint: {RemoteEndPoint}",
 					SessionId, endPoint );
 
-				// Room에서 퇴장 (Queue 경유, await로 완료 보장)
+				// Room에서 퇴장 - (Queue 경유, await로 완료 보장, DB flush 처리 요청 및 완료)
 				if(baseRoom != null)
 				{
-					bool left = await baseRoom.LeaveViaQueueAsync(this);
-					if(left == false)
-						_logger.LogWarning( "Disconnect cleanup leave returned false. SessionId: {SessionId}", SessionId );
+					await baseRoom.FlushAndLeaveViaQueueAsync(this);
 				}
 			}
 			catch(Exception ex)
 			{
-				_logger.LogError( ex, "Failed to leave room during disconnect. SessionId: {SessionId}", SessionId );
+				_logger.LogError( ex, "Disconnect cleanup failed. SessionId={SessionId}", SessionId );
 			}
 			finally
 			{
-				// Leave 완료 후 정리 (순서 보장)
-				UnsubscribePlayerEvents();
-				_sessionManager.UnregisterSession( SessionId );
-				// 상태 전이 - 완료
-				TryTransitionTo( SessionState.Disconnected );
+				try
+				{
+					// Leave 완료 후 정리 (순서 보장)
+					UnsubscribePlayerEvents();
+					await _sessionManager.UnregisterSessionAsync( SessionId );
+					// 상태 전이 - 완료
+					TryTransitionTo( SessionState.Disconnected );
+				}
+				finally
+				{
+					_disconnectCompletion.TrySetResult();
+				}
 			}
 		}
 
@@ -449,6 +479,19 @@ namespace Server.Core.Session
 
 			_logger.LogDebug( "[Event] Player State Changed: PlayerId={PlayerId}, {OldState} → {NewState}",
 				obj.ObjectId, oldState, newState );
+		}
+
+		private void BeginDisconnect(DisconnectReason reason, EndPoint endPoint)
+		{
+			if(State < SessionState.Disconnecting)
+				TryTransitionTo( SessionState.Disconnecting );
+
+			if(Interlocked.Exchange( ref _disconnectCleanupStarted, 1 ) != 0)
+				return;
+
+			_sessionManager.NotifyDisconnecting( this, reason );
+			BaseRoom room = CurrentRoom as BaseRoom;
+			_ = HandleDisconnectAsync( endPoint, room );
 		}
 
 		//public bool TakeDamage( int damage)

@@ -13,6 +13,12 @@ namespace DatabaseLib.Options
 
 			if(options.CommandTimeout <= 0) failList.Add( "CommandTimeout must be > 0" );
 
+			if(options.WriteQueueCapacity < 32 || 8192 < options.WriteQueueCapacity)
+				failList.Add( "WriteQueueCapacity must be between 32 and 8192" );
+
+			if(options.WriteQueueCriticalEnqueueTimeoutMs < 1000 || 30000 < options.WriteQueueCriticalEnqueueTimeoutMs)
+				failList.Add( "WriteQueueCriticalEnqueueTimeoutMs must be between 1000 and 30000" );
+
 			return failList.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail( failList );
 		}
 	}

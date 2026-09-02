@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Server.Data;
+using Server.Services.Persistence;
+using System.Text.Json;
 
 namespace Server.Game
 {
@@ -13,10 +15,15 @@ namespace Server.Game
 		// 플레이어 데이터
 		private long _combatTargetId = 0;
 		private readonly Dictionary<int, DateTime> _skillCooldowns = new Dictionary<int, DateTime>();
+		private readonly PlayerPersistenceState _persistence = new PlayerPersistenceState();
 
 		// 공격 쿨다운 (이동 제한용)
 		private DateTime _lastAttackTime = DateTime.MinValue;
 		private readonly TimeSpan _attackCooldown = TimeSpan.FromSeconds(1); // 공격 후 1초간 이동 불가
+
+		public long TotalPlayTimeMinutes { get; private set; }
+
+		public PlayerSettingsModel PlayerSettings { get; private set; } = new();
 
 		// 인벤, 장비
 		public PlayerInventory Inventory { get; private set; }
@@ -27,16 +34,9 @@ namespace Server.Game
 		public event Action<Player, int, int> OnManaChanged;   // (Player, oldMP, newMP)
 
 		// 인벤, 장비 관련 이벤트
-		//public event Action<Player, long, InventoryItem> OnItemAdded;												// 아이템 획득
-		//public event Action<Player, long, InventoryItem> OnItemRemoved;												// 아이템 제거
-		//public event Action<Player, long, InventoryItem> OnItemQuantityChanged;												// 아이템 수량 변경
-		//public event Action<Player, PlayerEquipment.EquipSlot, InventoryItem> OnItemEquipped;						// 장비 착용
-		//public event Action<Player, PlayerEquipment.EquipSlot, InventoryItem> OnItemUnequipped;						// 장비 해제
-		//public event Action<Player, Dictionary<PlayerEquipment.StatType, int>> OnEquipmentStatsChanged;				// 장비 스탯 변경
 		public event Action<Player> OnEquipmentChanged;                                                             // 장비 변경
 		public event Action<Player, InventoryUpdateEventArgs> OnInventoryUpdated;                                   // 인벤토리 변경
-		public event Action<Player, long, long> OnGoldChanged;														// 골드 변경
-
+		public event Action<Player, long, long> OnGoldChanged;                                                      // 골드 변경
 
 		public Player( IDataManager dataManager, long playerRawId, string playerName )
 			:base(GameObjectId.Generate(ObjectType.ObjectPlayer, playerRawId ), ObjectType.ObjectPlayer)
@@ -70,12 +70,17 @@ namespace Server.Game
 		public long RequiredExp => Stats.Level * 100; // 임시 레벨업 필요 경험치.
 		public long CombatTargetId => _combatTargetId;
 
-		public List<long> ApplyLoadedData(PlayerEntity playerEntity, InventoryEntity inventoryEntity, EquipmentEntity equipmentEntity)
+		
+
+
+		public List<long> ApplyLoadedData(PlayerEntity playerEntity, PlayerStateEntity playerStateEntity, InventoryEntity inventoryEntity, EquipmentEntity equipmentEntity)
 		{
 			var missingEquipInstances = new List<long>();
 			_name = playerEntity.PlayerName;
 			_statInfo.Level = playerEntity.Level;
 			_statInfo.Experience = playerEntity.Experience;
+			TotalPlayTimeMinutes = playerEntity.TotalPlayTimeMinutes;
+			PlayerSettings = playerEntity.PlayerSettings;
 
 			// 장비 데이터보다 무조건 우선
 			if(inventoryEntity?.InventoryData != null)
@@ -93,7 +98,18 @@ namespace Server.Game
 				RecalculatePlayerStats();
 			}
 
+			_persistence.ResetAfterLoad( playerEntity.AccountId, inventoryEntity.InventoryId, inventoryEntity.Version,
+				equipmentEntity.EquipmentId, equipmentEntity.Version, playerStateEntity.PlayerStateId, playerStateEntity.Version );
+
 			return missingEquipInstances;
+		}
+
+		public void ApplyLoadedVitals( int currentHp, int currentMp )
+		{
+			Stats.CurrentHP = currentHp <= 0 ? Stats.MaxHP : currentHp;
+			Stats.CurrentMP = currentMp <= 0 ? Stats.MaxMP : currentMp;
+
+			SetState( State.Idle );
 		}
 
 		public void InitPosition(PosInfo newPosInfo)
@@ -110,6 +126,7 @@ namespace Server.Game
 		{
 			base.UpdatePosition( newPosition );
 			SetState( State.Walking );
+			MarkPersistenceDirty();
 		}
 
 		public override bool TakeDamage( int damage, long attackerId )
@@ -133,6 +150,7 @@ namespace Server.Game
 			}
 			
 			UpdateLastUpdateTime();
+			MarkPersistenceDirty();
 			return true;
 		}
 
@@ -149,8 +167,8 @@ namespace Server.Game
 				RaiseOnHealthChanged(oldHP, CurrentHP );
 			}
 			
-
 			UpdateLastUpdateTime();
+			MarkPersistenceDirty();
 			return true;
 		}
 
@@ -184,6 +202,7 @@ namespace Server.Game
 				OnManaChanged?.Invoke(this, oldMP, CurrentMP );
 			}
 
+			MarkPersistenceDirty();
 			UpdateLastUpdateTime();
 			return levelUp;
 		}
@@ -202,6 +221,7 @@ namespace Server.Game
 			Stats.CurrentHP = MaxHP; // 부활 시 체력 회복
 			Stats.CurrentMP = MaxMP; // 부활 시 마나 회복
 			SetState( State.Idle );
+			MarkPersistenceDirty();
 		}
 
 		//public void Disconnect()
@@ -297,6 +317,7 @@ namespace Server.Game
 			OnManaChanged?.Invoke( this, oldMP, CurrentMP );
 
 			UpdateLastUpdateTime();
+			MarkPersistenceDirty();
 			return true;
 		}
 
@@ -403,15 +424,30 @@ namespace Server.Game
 		}
 
 		// 데이터 동기화 관련
-		public bool HasDirtyData()
-		{
-			return Inventory.IsDirty || Equipment.IsDirty;
-		}
+		public PlayerPersistenceState Persistence => _persistence;
+		public bool HasDirtyData() => _persistence.IsDirty;
+		public void MarkPersistenceDirty() => _persistence.MarkDirty();
 
-		public void MarkDataClean()
+		public PlayerSaveSnapshot CreatePersistenceSnapshot( int mapId )
 		{
-			Inventory.MarkClean();
-			Equipment.MarkClean();
+			var state = new PlayerStateModel
+			{
+				MapId = mapId,
+				PosX = PosInfo.PosX,
+				PosY = PosInfo.PosY,
+				PosZ = PosInfo.PosZ,
+				RotationX = PosInfo.RotationX,
+				RotationY = PosInfo.RotationY,
+				RotationZ = PosInfo.RotationZ,
+				CurrentHp = CurrentHP,
+				CurrentMp = CurrentMP,
+				CreatureState = (int)CreatureState,
+			};
+
+			return new PlayerSaveSnapshot( ObjectRawId, _persistence.AccountId, Persistence.DirtyRevision, Name, Level, Experience,
+				TotalPlayTimeMinutes, JsonSerializer.Serialize( PlayerSettings ), _persistence.InventoryId, _persistence.InventoryDbVersion,
+				Inventory.MaxSlots, JsonSerializer.Serialize( Inventory.ToInventoryModel() ), _persistence.EquipmentId, _persistence.EquipmentDbVersion,
+				JsonSerializer.Serialize( Equipment.GetEquipmentRefs() ), _persistence.PlayerStateId, _persistence.PlayerStateDbVersion, JsonSerializer.Serialize( state ) );
 		}
 
 		// 인벤 / 장비 데이터 로드 (DB / Redis에서 복원용)
@@ -438,7 +474,7 @@ namespace Server.Game
 				item.IsEquipped = true;
 			}
 
-			Equipment.LoadFromEquipmentData(equipInfoDict, 0 < missingEquipInstanceIds.Count);
+			Equipment.LoadFromEquipmentData(equipInfoDict);
 			RecalculatePlayerStats();
 
 			return missingEquipInstanceIds;
@@ -458,27 +494,25 @@ namespace Server.Game
 		private void SetupCompositionEvents()
 		{
 			// 인벤토리 이벤트 구독
-			//Inventory.OnItemAdded += ( inv, instanceId, item ) => OnItemAdded?.Invoke( this, instanceId, item );
-			//Inventory.OnItemRemoved += ( inv, instanceId, item ) => OnItemRemoved?.Invoke( this, instanceId, item );
-			//Inventory.OnItemQuantityChanged += ( inv, instanceId, item ) => OnItemQuantityChanged?.Invoke( this, instanceId, item );
-			//Inventory.OnGoldChanged += OnInventoryGoldChanged;
-			Inventory.OnInventoryUpdated += ( inv, eventArgs ) => OnInventoryUpdated?.Invoke( this, eventArgs );
-			Inventory.OnGoldChanged += ( inv, oldGold, newGold ) => OnGoldChanged?.Invoke( this, oldGold, newGold );
+			Inventory.OnInventoryUpdated += ( inv, eventArgs ) =>
+			{
+				MarkPersistenceDirty();
+				OnInventoryUpdated?.Invoke( this, eventArgs );
+			};
+			Inventory.OnGoldChanged += ( inv, oldGold, newGold ) =>
+			{
+				// TODO : 일단 차단 - Inventory 내부에서 골드 변경시 OnInventoryUpdate / OnGoldChanged 둘다 발생시키고 있어 중복된다.
+				//MarkPersistenceDirty();
+				OnGoldChanged?.Invoke( this, oldGold, newGold );
+			};
 
 			// 장비 이벤트 구독
 			Equipment.OnEquipmentChanged += ( eq ) =>
 			{
 				RecalculatePlayerStats();
+				MarkPersistenceDirty();
 				OnEquipmentChanged?.Invoke( this );
 			};
-			//Equipment.OnItemEquipped += ( eq, slot, item ) => OnItemEquipped?.Invoke( this, slot, item );
-			//Equipment.OnItemUnEquipped += ( eq, slot, item ) => OnItemUnequipped?.Invoke( this, slot, item );
-			//Equipment.OnStatsChanged += ( eq, stats ) =>
-			//{
-			//	OnEquipmentStatsChanged?.Invoke( this, stats );
-			//	RecalculatePlayerStats();
-			//};
-
 		}
 
 		private void RecalculatePlayerStats()
@@ -542,6 +576,7 @@ namespace Server.Game
 
 			OnManaChanged?.Invoke( this, oldMP, CurrentMP );
 			UpdateLastUpdateTime();
+			MarkPersistenceDirty();
 			return true;
 		}
 
@@ -558,6 +593,7 @@ namespace Server.Game
 			RaiseOnHealthChanged( oldHP, CurrentHP );
 			OnManaChanged?.Invoke(this, oldMP, CurrentMP );
 			UpdateLastUpdateTime();
+			MarkPersistenceDirty();
 			return true;
 		}
 

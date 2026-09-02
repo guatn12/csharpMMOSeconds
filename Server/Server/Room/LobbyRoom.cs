@@ -6,13 +6,12 @@ using Server.Core.Session;
 using Server.Data;
 using Server.Extensions;
 using Server.Game.Monsters;
-using Server.Services;
-using Server.Services.Combat;
-using Server.Services.Reward;
+using Server.Room.Dependencies;
+using Server.Room.Requests;
 using Server.Utils;
 using ServerCore;
 using System;
-using System.Threading;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Server.Room
@@ -21,6 +20,8 @@ namespace Server.Room
 	{
 		private readonly ServerSettings _serverSettings;
 		private DateTime _createdAt;
+		private const float MinimumPlayerSpawnDistance = 1.5f;
+		private const int RandomSpawnAttemptCount = 10;
 
 		public override RoomType RoomType => RoomType.Lobby;
 
@@ -28,11 +29,10 @@ namespace Server.Room
 		// 로비가 기본 로비인지 여부
 		public bool IsDefaultLobby { get; private set; }
 
-		public LobbyRoom( ILogger<LobbyRoom> logger, ILoggerFactory loggerFactory, IOptions<ServerSettings> ServerSettings,
-			IDataManager datamanager, IJobQueueManager jobQueueManager, ICombatService combatService, IRewardService rewardService,
-			IPlayerPositionService playerPositionService, int roomId, string roomName = null, bool isDefaultLobby = false ) 
-			: base( logger, loggerFactory, roomId, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
-				  jobQueueManager, combatService, rewardService, playerPositionService)
+		public LobbyRoom( ILogger<LobbyRoom> logger, ILoggerFactory loggerFactory, IOptions<ServerSettings> ServerSettings, ISessionManager sessionManager,
+			IDataManager datamanager, IJobQueueManager jobQueueManager, RoomServices roomServices, int roomId, string roomName = null, bool isDefaultLobby = false ) 
+			: base( logger, loggerFactory, sessionManager, roomId, roomName ?? "Main Lobby", ServerSettings.Value.Room.Lobby.MaxPlayers, datamanager,
+				  jobQueueManager, roomServices)
 		{
 			_serverSettings = ServerSettings.Value ?? throw new ArgumentNullException(nameof( ServerSettings ) );
 			IsDefaultLobby = isDefaultLobby;
@@ -73,8 +73,10 @@ namespace Server.Room
 			await base.OnPlayerEnterAsync( session );
 		}
 
-		protected override async Task OnInitPlayerPosition( IClientSession session )
+		protected override async Task OnInitPlayerPosition( RoomEnterRequest request )
 		{
+			IClientSession session = request.Session;
+
 			// Position3DValidator를 사용해 로비 스폰 위치 계산
 			var spawnPosition = Utils.Position3DValidator.GetSpawnPosition(this, new Random());
 
@@ -190,9 +192,36 @@ namespace Server.Room
 			return Task.CompletedTask;
 		}
 
-		private async Task SetPlayerSpawnPositionAsync(IClientSession session)
+		private PosInfo ResolveLoginSpawnPosition(RoomEnterRequest request)
 		{
-			
+			if(request.HasLoginRecovery && request.SavedMapId == RoomMap.MapId)
+			{
+				PosInfo preferred = request.PreferredPosition.Clone();
+				preferred.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+				if(Position3DValidator.IsValidPosition(preferred, this) && IsSpawnPositionAvailable(preferred))
+				{
+					return preferred;
+				}
+			}
+
+			for(int attempt = 0; attempt < RandomSpawnAttemptCount; attempt++)
+			{
+				PosInfo randomSpawn = Position3DValidator.GetSpawnPosition(this, Random.Shared);
+				if(IsSpawnPositionAvailable( randomSpawn ))
+					return randomSpawn;
+			}
+
+			return Position3DValidator.GetSpawnPosition( this, Random.Shared );
+		}
+
+		private bool IsSpawnPositionAvailable(PosInfo position)
+		{
+			if(position == null)
+				return false;
+
+			return RoomMap.GetNearByPlayers( position.PosX, position.PosZ, 1 )
+				.All( player => MinimumPlayerSpawnDistance <= Position3DValidator.CalculateDistance3D( player.PosInfo, position ) );
 		}
 
 		// 로비 통계 정보 조회

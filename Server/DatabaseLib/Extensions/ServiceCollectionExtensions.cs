@@ -1,4 +1,5 @@
 using DatabaseLib.Options;
+using DatabaseLib.Persistence;
 using DatabaseLib.Redis;
 using DatabaseLib.Services;
 using Microsoft.EntityFrameworkCore;
@@ -52,8 +53,11 @@ namespace DatabaseLib.Extensions
 				return ConnectionMultiplexer.Connect( configurationOptions );
 			} );
 
+			// DBQueue 등록
+			services.AddSingleton<IDatabaseWriteQueue, DatabaseWriteQueue>();
 			services.AddSingleton<IRedisService, RedisService>();
 			services.AddSingleton<PlayerCacheService>();
+			services.AddSingleton<PlayerStateCacheService>();
 			services.AddSingleton<InventoryCacheService>();
 			services.AddSingleton<EquipmentCacheService>();
 

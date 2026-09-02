@@ -4,6 +4,7 @@ using Protocol;
 using Server.Core.Session;
 using Server.Data;
 using Server.Room;
+using Server.Room.Requests;
 using Server.Services;
 using Server.Services.Combat;
 using Server.Services.Reward;
@@ -44,6 +45,6 @@ namespace Server.Tests.TestHelpers
 		public override RoomType RoomType => RoomType.Lobby;
 
 		// Task 반환 - BaseRoom.cs:544의 protected abstract Task OnInitPlayerPosition(IClientSession session) 메서드 구현
-		protected override Task OnInitPlayerPosition( IClientSession session ) => Task.CompletedTask;
+		protected override Task OnInitPlayerPosition( RoomEnterRequest request ) => Task.CompletedTask;
 	}
 }

@@ -38,6 +38,9 @@ namespace Server.Config
 			// Tick 설정 검증 (BaseTickMs + 구독 interval 교차 검증)
 			ValidateTick( options.Tick, options.Room, options.Session, failures );
 
+			// DB 자동 저장 설정 검증
+			ValidateAutoSaveTime( options.AutoSaveTime, failures );
+
 			return failures.Count == 0
 				? ValidateOptionsResult.Success
 				: ValidateOptionsResult.Fail( failures );
@@ -147,6 +150,18 @@ namespace Server.Config
 
 			if(session != null && session.HeartbeatIntervalMs < tick.BaseTickMs)
 				failures.Add( $"Session.HeartbeatIntervalMs ({session.HeartbeatIntervalMs}) must be  >= Tick.BaseTickMs ({tick.BaseTickMs})" );
+		}
+
+		private void ValidateAutoSaveTime(AutoSaveTimeConfig autoSaveTime, List<string> failures)
+		{
+			if(autoSaveTime == null)
+			{
+				failures.Add( "AutoSaveTime configuration is required" );
+				return;
+			}
+
+			if(autoSaveTime.DefaultIntervalMs < 5000 || 600000 < autoSaveTime.DefaultIntervalMs)
+				failures.Add( $"AutoSaveTime.DefaultIntervalMs must be between 5000 and 600000, got: {autoSaveTime.DefaultIntervalMs}" );
 		}
 
 	}

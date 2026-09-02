@@ -40,6 +40,11 @@ namespace Server.Config
 		/// 틱 서비스 설정
 		/// </summary>
 		public TickConfig Tick { get; set; } = new();
+
+		/// <summary>
+		/// DB 자동 저장 타임 설정
+		/// </summary>
+		public AutoSaveTimeConfig AutoSaveTime { get; set; } = new();
 	}
 
 	/// <summary>
@@ -166,5 +171,11 @@ namespace Server.Config
 		/// </summary>
 		[Range( 16, 1000 )]
 		public int BaseTickMs { get; set; } = 100;
+	}
+
+	public class AutoSaveTimeConfig
+	{
+		[Range( 5000, 600000 )]
+		public int DefaultIntervalMs { get; set; } = 60000;
 	}
 }

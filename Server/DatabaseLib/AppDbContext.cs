@@ -6,6 +6,7 @@ namespace DatabaseLib
 	public class AppDbContext : DbContext
 	{
 		public DbSet<PlayerEntity> Players { get; set; }
+		public DbSet<PlayerStateEntity> PlayerState { get; set; }
 		public DbSet<InventoryEntity> Inventory { get; set; }
 		public DbSet<EquipmentEntity> Equipment { get; set; }
 		public DbSet<GameActivityEntity> GameActivity { get; set; }
@@ -33,6 +34,7 @@ namespace DatabaseLib
 			// InventoryEntity 구성
 			// GameActivityEntity 구성
 			// EquipmentEntity 구성
+			// PlayerState 구성
 			modelBuilder.ApplyConfigurationsFromAssembly( typeof( AppDbContext ).Assembly );
 		}
 	}

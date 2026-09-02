@@ -20,12 +20,10 @@ namespace Server.Game
 	{
 		private readonly long _playerRawId;
 		private readonly Dictionary<long, InventoryItem> _instanceItems;		// InstanceId -> Item 매핑
-		private readonly HashSet<long> _dirtyInstanceIds;  // 변경된 슬롯 추적
 		private readonly IDataManager _dataManager;
 
 		private long _gold = 0;
 		private int _maxSlots = 50;
-		private bool _isDirty = false;
 		private DateTime _lastSorted = DateTime.UtcNow;
 		private long _nextInstanceId = 1;
 
@@ -42,7 +40,6 @@ namespace Server.Game
 			_playerRawId = playerRawId;
 			_maxSlots = maxSlots;
 			_instanceItems = new Dictionary<long, InventoryItem>();
-			_dirtyInstanceIds = new HashSet<long>();
 		}
 
 		// 기본 속성
@@ -51,7 +48,6 @@ namespace Server.Game
 		public int MaxSlots => _maxSlots;
 		public int UsedSlots => _instanceItems.Count;
 		public int FreeSlots => _maxSlots - UsedSlots;
-		public bool IsDirty => _isDirty || _dirtyInstanceIds.Any();
 		public DateTime LastSorted => _lastSorted;
 
 		// 아이템 조회 메서드들
@@ -202,7 +198,6 @@ namespace Server.Game
 			foreach(var item in newItems)
 			{
 				_instanceItems[ item.InstanceId ] = item;
-				MarkInstanceDirty( item.InstanceId );
 				eventArgs.ChangedItems.Add( item );
 			}
 			_nextInstanceId = calcNextInstanceId;
@@ -317,7 +312,6 @@ namespace Server.Game
 			long oldGold = _gold;
 			_gold += addableAmount;  
 
-			MarkDirty();
 			eventArgs.NewGold = _gold;
 
 			if(eventArgs.HasChanges)
@@ -338,7 +332,6 @@ namespace Server.Game
 			long oldGold = _gold;
 			_gold -= amount;
 
-			MarkDirty();
 			eventArgs.NewGold = _gold;
 
 			if(eventArgs.HasChanges)
@@ -372,7 +365,6 @@ namespace Server.Game
 			if(toItem == null)
 			{
 				fromItem.Slot = toSlot;
-				MarkInstanceDirty( fromItem.InstanceId );
 				eventArgs.ChangedItems.Add( fromItem );
 				OnInventoryUpdated?.Invoke( this, eventArgs );
 				return true;
@@ -381,8 +373,6 @@ namespace Server.Game
 			{
 				fromItem.Slot = toSlot;
 				toItem.Slot = fromSlot;
-				MarkInstanceDirty( fromItem.InstanceId );
-				MarkInstanceDirty( toItem.InstanceId );
 				eventArgs.ChangedItems.Add( fromItem );
 				eventArgs.ChangedItems.Add( toItem );
 				OnInventoryUpdated?.Invoke( this, eventArgs );
@@ -401,13 +391,11 @@ namespace Server.Game
 			{
 				items[ i ].Slot = i;
 				_instanceItems[ items[i].InstanceId ] = items[ i ];
-				MarkInstanceDirty( items[ i ].InstanceId );
 			}
 
 			eventArgs.ChangedItems.AddRange( _instanceItems.Values );
 
 			_lastSorted = DateTime.UtcNow;
-			MarkDirty();
 			if(eventArgs.HasChanges)
 				OnInventoryUpdated?.Invoke( this, eventArgs );
 		}
@@ -434,7 +422,6 @@ namespace Server.Game
 			if(model == null) return;
 
 			_instanceItems.Clear();
-			_dirtyInstanceIds.Clear();
 
 			// 확장 데이터에서 추가 정보 로드
 			if(model.ExtensionData != null)
@@ -457,18 +444,6 @@ namespace Server.Game
 			_lastSorted= model.LastSorted;
 			_nextInstanceId = model.NextInstanceId;
 
-			_isDirty = false;
-		}
-
-		public void MarkClean()
-		{
-			_isDirty = false;
-			_dirtyInstanceIds.Clear();
-		}
-
-		public HashSet<long> GetDirtySlots()
-		{
-			return new HashSet<long>(_dirtyInstanceIds);
 		}
 
 		private bool RemoveInstanceInternal( InventoryUpdateEventArgs eventArgs, InventoryItem item )
@@ -479,7 +454,6 @@ namespace Server.Game
 			if(_instanceItems.Remove( item.InstanceId ) == false)
 				return false;
 
-			MarkInstanceDirty( item.InstanceId );
 			eventArgs.RemovedItemInstanceIds.Add( item.InstanceId );
 
 			return true;
@@ -494,7 +468,6 @@ namespace Server.Game
 				return RemoveInstanceInternal( eventArgs, item );
 
 			item.Quantity -= quantity;
-			MarkInstanceDirty( item.InstanceId );
 			eventArgs.ChangedItems.Add( item );
 
 			return true;
@@ -518,7 +491,6 @@ namespace Server.Game
 			int oldQuantity = item.Quantity;
 			item.Quantity += quantity;
 
-			MarkInstanceDirty( item.InstanceId );
 			eventArgs.ChangedItems.Add( item );
 
 			return true;
@@ -543,17 +515,6 @@ namespace Server.Game
 			return -1;	// 빈 슬롯 없음.
 		}
 
-		private void MarkDirty()
-		{
-			_isDirty = true;
-		}
-
-		private void MarkInstanceDirty(long instanceId)
-		{
-			_dirtyInstanceIds.Add( instanceId );
-			_isDirty = true;
-		}
-
 		public bool IsValid()
 		{
 			foreach(var kvp in _instanceItems)
@@ -576,7 +537,7 @@ namespace Server.Game
 
 		public override string ToString()
 		{
-			return $"Inventory[Player:{_playerRawId}], Items:{UsedSlots}/{_maxSlots}, Gold: { _gold}, Dirty: { IsDirty}";			
+			return $"Inventory[Player:{_playerRawId}], Items:{UsedSlots}/{_maxSlots}, Gold: { _gold}";			
 		}
 
 		public Dictionary<string, object> GetStatistics()
@@ -590,8 +551,6 @@ namespace Server.Game
 				["gold"] = _gold,
 				["totalItems"] = _instanceItems.Values.Sum(item => item.Quantity),
 				["uniqueItems"] = _instanceItems.Values.Select(item => item.ItemId).Distinct().Count(),
-				["isDirty"] = IsDirty,
-				["dirtySlots"] = _dirtyInstanceIds.Count,
 				["lastSorted"] = _lastSorted
 			};
 

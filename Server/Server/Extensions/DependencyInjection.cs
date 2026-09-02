@@ -15,6 +15,10 @@ using Server.Packet.Handlers;
 using Server.Infra.HealthCheck;
 using DatabaseLib;
 using DatabaseLib.Extensions;
+using Server.Services.Persistence;
+using Server.Room.Dependencies;
+using DatabaseLib.Persistence.Metrics;
+using Server.Infra.Metrics;
 
 namespace Server.Extensions
 {
@@ -49,6 +53,7 @@ namespace Server.Extensions
 				.AddCheck<RedisHealthCheck>( "redis" );
 
 			services.AddSingleton<PerformanceMonitoringService>();
+			services.AddSingleton<IDatabaseWriteQueueObserver, PrometheusDatabaseWriteQueueObserver>();
 			services.AddHostedService(sp => sp.GetRequiredService<PerformanceMonitoringService>() );
 
 			return services;
@@ -105,8 +110,9 @@ namespace Server.Extensions
 			// Service 등록
 			services.AddSingleton<ICombatService, CombatService>();
 			services.AddSingleton<IRewardService, RewardService>();
-			services.AddSingleton<IPlayerPositionService, PlayerPositionService>();			// 내부에서 Redis 사용
+			services.AddSingleton<IPlayerPositionService, PlayerPositionService>();         // 내부에서 Redis 사용
 
+			services.AddSingleton<RoomServices>();
 			return services;
 		}
 
@@ -117,6 +123,7 @@ namespace Server.Extensions
 		{
 			// 게임 데이터 서비스 등록 - db / redis 캐싱 / 데이터 관리
 			services.AddSingleton<IGameDataService, GameDataService>();
+			services.AddSingleton<IPlayerPersistenceService, PlayerPersistenceService>();
 
 			return services;
 		}

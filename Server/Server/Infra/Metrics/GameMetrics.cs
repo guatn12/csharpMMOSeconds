@@ -16,6 +16,39 @@ namespace Server.Infra.Metrics
 			"Current length of the job processing queue."
 		);
 
+		public static readonly Gauge DatabaseWriteQueueDepth = Prometheus.Metrics.CreateGauge(
+			"database_write_queue_depth",
+			"Current depth of the database write queue."
+		);
+
+		public static readonly Counter DatabaseWriteQueueFull = Prometheus.Metrics.CreateCounter(
+			"database_write_queue_full_total",
+			"Total number of times the database write queue was full."
+		);
+
+		public static readonly Counter DatabaseWriteResults = Prometheus.Metrics.CreateCounter(
+			"database_write_results_total",
+			"Total number of database write results categorized by status.",
+			new CounterConfiguration
+			{
+				LabelNames = new[] { "status" }
+			}
+		);
+
+		public static readonly Histogram DatabaseWriteCommandDuration = Prometheus.Metrics.CreateHistogram(
+			"database_write_command_duration_seconds",
+			"Histogram of database write command durations in seconds.",
+			new HistogramConfiguration
+			{
+				Buckets = Histogram.ExponentialBuckets(0.001, 2, 15) // 1ms to ~16s
+			}
+		);
+
+		public static readonly Counter CacheInvalidationFailures = Prometheus.Metrics.CreateCounter(
+			"player_cache_invalidation_failures_total",
+			"Total number of cache invalidation failures."
+		);
+
 		// ======= 프로세스 메트릭 =======
 
 		// Working Set 메모리 사용량 (bytes)

@@ -31,6 +31,9 @@ namespace Server.Core.Jobs
 
 		public async ValueTask ExecuteAsync()
 		{
+			if(_session == null || SessionState.Disconnecting <= _session.State)
+				return;
+
 			var packetData = new ArraySegment<byte>( _packetData );
 			await _handler.HandleAsync( _session, _packetId, packetData );
 		}

@@ -1,18 +1,20 @@
-using Microsoft.Extensions.Logging;
+using DatabaseLib.Redis;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Protocol;
+using Server.Config;
+using Server.Game;
 using Server.Infra;
 using Server.Packet;
 using Server.Services;
-using Microsoft.Extensions.Options;
-using Server.Config;
 using ServerCore;
-using DatabaseLib.Redis;
-using Protocol;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Server.Core.Session
 {
@@ -30,7 +32,7 @@ namespace Server.Core.Session
 		private readonly object _lock = new object();
 
 		private readonly ConcurrentDictionary<long, IClientSession> _sessionById;
-		private readonly ConcurrentDictionary<long, IClientSession> _sessionByPlayerId;
+		private readonly ConcurrentDictionary<long, IClientSession> _sessionByPlayerRawId;
 
 		#region 이벤트
 		public event EventHandler<SessionRegisteredEventArgs> SessionRegistered;
@@ -47,7 +49,7 @@ namespace Server.Core.Session
 			_redisService=redisService;
 			_playerPositionService=playerPositionService;
 			_sessionById = new ConcurrentDictionary<long, IClientSession>();
-			_sessionByPlayerId = new ConcurrentDictionary<long, IClientSession>();
+			_sessionByPlayerRawId = new ConcurrentDictionary<long, IClientSession>();
 
 			// 설정에서 주기 값 읽기
 			SessionConfig sessionConfig = settings.Value.Session;
@@ -137,109 +139,92 @@ namespace Server.Core.Session
 			return true;
 		}
 
-		public bool BindPlayerToSession( long sessionId )
+		public IClientSession BindPlayerToSession( long playerRawId, IClientSession newSession )
 		{
-			// sessionId에 해당하는 세션이 존재하는지 확인
-			if(!_sessionById.TryGetValue( sessionId, out var newSession))
-			{
-				_logger.LogWarning( "BindPlayerToSession: SessionId={SessionId} not found", sessionId );
-				return false;
-			}
+			if(playerRawId <= 0)
+				throw new ArgumentOutOfRangeException( nameof( playerRawId ) );
 
-			if(newSession.Player == null)
-			{
-				_logger.LogWarning( "BindPlayerToSession: Player is null for SessionId={SessionId}", sessionId );
-				return false;
-			}
+			if(newSession == null)
+				throw new ArgumentNullException( nameof( newSession ) );
 
-			long playerId = newSession.PlayerId;
 			IClientSession evicted = null;
 			lock(_lock)
 			{
-				_sessionByPlayerId.AddOrUpdate( playerId, newSession, ( _, old ) => { evicted = old; return newSession; } );
-			}
-
-			if(evicted != null && evicted.SessionId != sessionId)
-			{
-				try
+				if(_sessionById.TryGetValue(newSession.SessionId, out IClientSession registered) == false ||
+					ReferenceEquals(registered, newSession) == false)
 				{
-					evicted.Send( new S_ForceKick { Reason = "다른 곳에서 로그인되었습니다." } );
-				}
-				catch(Exception ex)
-				{
-					_logger.LogWarning( ex, "S_ForceKick send failed. SessionId={SessionId}", evicted.SessionId );
+					throw new InvalidOperationException( "Session must be registered before player binding." );
 				}
 
-				evicted.Disconnect();
+				newSession.BindPlayerRawId( playerRawId );
+				_sessionByPlayerRawId.AddOrUpdate( playerRawId, newSession, ( _, oldSession ) => { evicted = oldSession; return newSession; } );
 			}
 
 			// lock 밖에서 이벤트 발생 (이벤트 핸들러에서 deadlock 방지)
-			_logger.LogInformation( "Player bound to session: SessionId={SessionId}, PlayerId={PlayerId}",
-				sessionId, playerId );
+			_logger.LogInformation( "Player bound to session: SessionId={SessionId}, PlayerRawId={PlayerRawId}",
+				newSession.SessionId, playerRawId );
 
 			// 이벤트 발생
 			SessionRegistered?.Invoke( this, new SessionRegisteredEventArgs
 			{
-				SessionId = sessionId,
-				PlayerId = playerId,
+				SessionId = newSession.SessionId,
+				PlayerRawId = playerRawId,
 				RegisteredAt = DateTime.UtcNow
 			} );
 
-			return true;
+			return evicted != null && evicted.SessionId != newSession.SessionId ? evicted : null;
 		}
 
-		public bool UnregisterSession(long sessionId)
+		public async Task<bool> UnregisterSessionAsync(long sessionId)
 		{
 			IClientSession session = null;
+			bool removedPlayerBinding = false;
+
 			lock(_lock)
 			{
-				if(!_sessionById.TryRemove( sessionId, out session ))
+				if(_sessionById.TryRemove( sessionId, out session ) == false)
 				{
-					_logger.LogWarning( "UnregisterSession: SessionId={SessionId} not found", sessionId );
+					_logger.LogWarning( "UnregisterSessionAsync: SessionId={SessionId} not found", sessionId );
 					return false;
 				}
 
-				if(session.Player != null)
+				if( 0 < session.PlayerRawId )
 				{
 					// PlayerId 매핑 제거
 					// 키+값이 내 세션과 일치할때만 원자적 제거 - 스왑으로 이미 새 세션이 차지한 맵핑을 구세션이 되돌아와 지워버리는 것을 방지
-					((ICollection<KeyValuePair<long, IClientSession>>)_sessionByPlayerId)
-						.Remove( new KeyValuePair<long, IClientSession>( session.PlayerId, session ) );
-				}
+					removedPlayerBinding = ((ICollection<KeyValuePair<long, IClientSession>>)_sessionByPlayerRawId)
+						.Remove( new KeyValuePair<long, IClientSession>( session.PlayerRawId, session ) );
+				}	
 			}
 
-			_logger.LogInformation( "Session unregistered: SessionId={SessionId}, PlayerId={PlayerId}", session.SessionId,
-				session.PlayerId );
+			try
+			{
+				// Redis 세션 정보 삭제
+				await _redisService.DeleteAsync( $"session:{sessionId}" );
+				_logger.LogDebug( "Redis에서 세션 정보 삭제 완료: SessionId={SessionId}", sessionId );
+
+				if( removedPlayerBinding && session.Player != null)
+				{
+					// 플레이어 위치 정보 제거
+					await _playerPositionService.RemovePositionAsync( session.PlayerId );
+					_logger.LogDebug( "플레이어 위치 정보 삭제 완료: PlayerId={PlayerId}", session.PlayerId );
+				}
+			}
+			catch(Exception ex)
+			{
+				_logger.LogError( ex, "세션 정리 실패: SessionId={SessionId}, PlayerId={PlayerId}", sessionId, session.PlayerId );
+			}
+
+			_logger.LogInformation( "Session unregistered: SessionId={SessionId}, PlayerRawId={PlayerRawId}", session.SessionId,
+				session.PlayerRawId );
 
 			// 이벤트 발생
 			SessionUnregistered?.Invoke( this, new SessionUnregisteredEventArgs
 			{
 				SessionId = sessionId,
-				PlayerId = session.Player?.ObjectId ?? 0,
+				PlayerRawId = session.PlayerRawId,
 				UnregisteredAt = DateTime.UtcNow,
 				Reason = "Disconnected"
-			} );
-
-			// Redis 삭제 + PlayerPosition 제거
-			_ = Task.Run( async () =>
-			{
-				try
-				{
-					// Redis 세션 정보 삭제
-					await _redisService.DeleteAsync( $"session:{sessionId}" );
-					_logger.LogDebug( "Redis에서 세션 정보 삭제 완료: SessionId={SessionId}", sessionId );
-
-					if(session.Player != null)
-					{
-						// 플레이어 위치 정보 제거
-						await _playerPositionService.RemovePositionAsync( session.PlayerId );
-						_logger.LogDebug( "플레이어 위치 정보 삭제 완료: PlayerId={PlayerId}", session.PlayerId );
-					}
-				}
-				catch(Exception ex)
-				{
-					_logger.LogError( ex, "세션 정리 실패: SessionId={SessionId}, PlayerId={PlayerId}", sessionId, session.PlayerId );
-				}
 			} );
 
 			return true;
@@ -259,7 +244,8 @@ namespace Server.Core.Session
 			var args = new SessionDisconnectingEventArgs
 			{
 				SessionId = session.SessionId,
-				PlayerId = session.PlayerId,
+				PlayerRawId = session.PlayerRawId,
+				PlayerObjectId = session.PlayerId,
 				Reason = reason,
 				DisconnectingAt = DateTime.UtcNow,
 			};
@@ -279,6 +265,16 @@ namespace Server.Core.Session
 				}
 			}
 		}
+
+		public async Task DisconnectAllAsync()
+		{
+			List<IClientSession> sessions = _sessionById.Values.ToList();
+
+			foreach(IClientSession session in sessions)
+				session.DisconnectForShutdown();
+
+			await Task.WhenAll( sessions.Select( x => x.DisconnectCompletion ) );
+		}
 		#endregion
 
 		public IClientSession GetSession( long sessionId )
@@ -287,10 +283,17 @@ namespace Server.Core.Session
 			return session;
 		}
 
-		public IClientSession GetSessionByPlayerId( long playerId )
+		public IClientSession GetSessionByPlayerRawId( long playerRawId )
 		{
-			_sessionByPlayerId.TryGetValue( playerId, out IClientSession session );
+			_sessionByPlayerRawId.TryGetValue( playerRawId, out IClientSession session );
 			return session;
+		}
+
+		public bool IsCurrentPlayerSession( long playerRawId, IClientSession session )
+		{
+			return 0 < playerRawId && session != null &&
+				_sessionByPlayerRawId.TryGetValue( playerRawId, out IClientSession current ) &&
+				ReferenceEquals( current, session );
 		}
 
 		public int GetTotalSessionCount()
@@ -315,7 +318,7 @@ namespace Server.Core.Session
 				lock(_lock)
 				{
 					_sessionById.Clear();
-					_sessionByPlayerId.Clear();
+					_sessionByPlayerRawId.Clear();
 				}
 			}
 

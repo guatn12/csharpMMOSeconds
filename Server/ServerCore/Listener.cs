@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 
 namespace ServerCore
 {
@@ -10,48 +11,94 @@ namespace ServerCore
         private Socket _listenSocket;
         private Func<NetworkSession> _sessionFactory;
         private ILogger<Listener> _logger;
+		private int _stopping;
 
         public Listener(ILogger<Listener> logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
+		}
 
-        public void Init(IPEndPoint endPoint, Func<NetworkSession> sessionFactory, int listenBacklog = 10)
+		public void Init( IPEndPoint endPoint, Func<NetworkSession> sessionFactory, int listenBacklog = 10 )
+		{
+			_sessionFactory = sessionFactory;
+			_stopping = 0;
+			_listenSocket = new Socket( endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp );
+			_listenSocket.Bind( endPoint );
+			_listenSocket.Listen( listenBacklog );
+
+			for(int i = 0; i < 10; i++)
+			{
+				SocketAsyncEventArgs args = new SocketAsyncEventArgs();
+				args.Completed += OnAcceptCompleted;
+				RegisterAccept( args );
+			}
+		}
+
+		public void Stop()
+		{
+			if(Interlocked.Exchange( ref _stopping, 1 ) != 0)
+				return;
+
+			Socket socket = Interlocked.Exchange(ref _listenSocket, null);
+			if(socket == null)
+				return;
+
+			try
+			{
+				socket.Close();
+			}
+			catch(SocketException ex)
+			{
+				_logger.LogWarning( ex, "Listener close failed." );
+			}
+			finally
+			{
+				socket.Dispose();
+			}
+		}
+
+		private void RegisterAccept(SocketAsyncEventArgs args)
         {
-            _sessionFactory = sessionFactory;
-            _listenSocket = new Socket(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            _listenSocket.Bind(endPoint);
-            _listenSocket.Listen(listenBacklog);
+			if(Volatile.Read(ref _stopping) != 0)
+			{
+				args.Dispose();
+				return;
+			}
 
-            for (int i = 0; i < 10; i++)
-            {
-                SocketAsyncEventArgs args = new SocketAsyncEventArgs();
-                args.Completed += OnAcceptCompleted;
-                RegisterAccept(args);
-            }
-        }
-
-        private void RegisterAccept(SocketAsyncEventArgs args)
-        {
             args.AcceptSocket = null;
-
             try
             {
-                bool pending = _listenSocket.AcceptAsync(args);
-                if (pending == false)
-                {
-                    OnAcceptCompleted(null, args);
-                }
+				Socket listenSocket = Volatile.Read(ref _listenSocket);
+				if(listenSocket == null)
+				{
+					args.Dispose();
+					return;
+				}
+
+				if(listenSocket.AcceptAsync( args ) == false)
+					OnAcceptCompleted( null, args );
             }
+			catch(ObjectDisposedException) when (Volatile.Read(ref _stopping) != 0)
+			{
+				args.Dispose();
+			}
             catch (Exception e)
             {
                 //LogManager.Error(e, "RegisterAccept failed.");
                 _logger.LogError( e, "RegisterAccept failed." );
+				args.Dispose();
             }
         }
 
         private void OnAcceptCompleted(object sender, SocketAsyncEventArgs args)
         {
+			if(Volatile.Read(ref _stopping) != 0)
+			{
+				args.AcceptSocket?.Dispose();
+				args.Dispose();
+				return;
+			}
+
             if (args.SocketError == SocketError.Success)
             {
                 NetworkSession session = _sessionFactory.Invoke();

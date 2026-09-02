@@ -6,6 +6,7 @@ using Server.Config;
 using Server.Core.Session;
 using Server.Data;
 using Server.Room;
+using Server.Room.Requests;
 using ServerCore;
 using System;
 using System.Collections.Generic;
@@ -48,7 +49,7 @@ namespace Server.Tests.Room
 			{ }
 
 			public override RoomType RoomType => RoomType.Lobby;
-			protected override Task OnInitPlayerPosition( IClientSession session ) => Task.CompletedTask;
+			protected override Task OnInitPlayerPosition( RoomEnterRequest request ) => Task.CompletedTask;
 			protected override void SetupDefaultSpawnPoints()
 			{
 			}

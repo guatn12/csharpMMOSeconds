@@ -93,7 +93,10 @@ namespace Server.Packet.Handlers
 			{
 				// 4. 실패 응답
 				_room.SendToPlayer( session, new S_UseItem { Success = success, Message = "아이템 사용 실패" } );
+				return;
 			}
+
+			_room.RequestPlayerCheckpoint( session.Player, "UseItem" );
 
 			_logger.LogDebug( "Player {PlayerId} used item at InstanceId {InstanceId}, Success={Success}",
 				session.PlayerId, packet.InstanceId, success );
@@ -122,7 +125,10 @@ namespace Server.Packet.Handlers
 				_room.SendToPlayer( session, new S_EquipmentUpdate { Success = false, Reason = "장비 장착에 실패했습니다." } );
 				_logger.LogWarning( "Player {PlayerId} failed to equip item at InstanceId {InstanceId}",
 					session.PlayerId, packet.InstanceId );
+				return;
 			}
+
+			_room.RequestPlayerCheckpoint( session.Player, "EquipItem" );
 		}
 
 		/// <summary>
@@ -149,7 +155,10 @@ namespace Server.Packet.Handlers
 				_room.SendToPlayer( session, new S_EquipmentUpdate { Success = false, Reason = "장비 해제에 실패했습니다." } );
 				_logger.LogWarning( "Player {PlayerId} failed to unequip item at slot {Slot}",
 					session.PlayerId, packet.EquipSlot );
+				return;
 			}
+
+			_room.RequestPlayerCheckpoint( session.Player, "UnequipItem" );
 		}
 	}
 }

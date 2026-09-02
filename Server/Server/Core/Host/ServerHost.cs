@@ -15,6 +15,8 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DatabaseLib.Redis;
+using DatabaseLib.Persistence;
+using System.Collections.Generic;
 
 namespace Server.Core.Host
 {
@@ -31,6 +33,7 @@ namespace Server.Core.Host
 		private readonly IServiceProvider _serviceProvider;
 		private readonly ISessionManager _sessionManager;
 		private readonly TickService _tickService;
+		private readonly IDatabaseWriteQueue _databaseWriteQueue;
 		private CancellationTokenSource _cancellationTokenSource;
 
 		public ServerHost(
@@ -44,7 +47,8 @@ namespace Server.Core.Host
 			Listener listener,
 			IServiceProvider serviceProvider,
 			ISessionManager sessionManager,
-			TickService tickService)
+			TickService tickService,
+			IDatabaseWriteQueue databaseWriteQueue)
 		{
 			_logger = logger;
 			_serverSettings = serverSettings;
@@ -59,6 +63,7 @@ namespace Server.Core.Host
 			_cancellationTokenSource = new CancellationTokenSource();
 			_sessionManager = sessionManager;
 			_tickService = tickService;
+			_databaseWriteQueue = databaseWriteQueue;
 		}
 
 		public async Task StartAsync(CancellationToken token)
@@ -91,26 +96,44 @@ namespace Server.Core.Host
 		public async Task StopAsync(CancellationToken token)
 		{
 			_logger.LogInformation( "서버 종료 중..." );
+			var errors = new List<Exception>();
+
+			// 소켓 차단
+			await RunStopStepAsync( "listener", () =>
+			{
+				_listener.Stop();
+				return Task.CompletedTask;
+			}, errors );
+
+			// 틱 서비스 가장 먼저 중지 (새 작업 투입 차단)
+			// 주의: 이미 시작된 비동기 작업(cleanup 등)은 계속 실행될 수 있음
+			await RunStopStepAsync( "tick", _tickService.StopAsync, errors );
+
+			await RunStopStepAsync( "room producer gate", () =>
+			{
+				_roomManager.BeginShutdown();
+				return Task.CompletedTask;
+			}, errors );
+
+			await RunStopStepAsync( "session flush", _sessionManager.DisconnectAllAsync, errors );
+
+			await RunStopStepAsync( "game job queue drain", _jobQueueManager.StopAsync, errors );
+
+			await RunStopStepAsync( "database write queue drain", _databaseWriteQueue.CompleteAndDrainAsync, errors );
+
+			await RunStopStepAsync( "room cleanup", _roomManager.StopAsync, errors );
+
+			await RunStopStepAsync( "session cleanup", () =>
+			{
+				_sessionManager.Shutdown();
+				return Task.CompletedTask;
+			}, errors );
 
 			// 취소 신호 발송
 			_cancellationTokenSource.Cancel();
 
-			// 틱 서비스 가장 먼저 중지 (새 작업 투입 차단)
-			// 주의: 이미 시작된 비동기 작업(cleanup 등)은 계속 실행될 수 있음
-			// Phase 4에서 AutoSave 추가 시 CancellationToken 기반으로 업그레이드
-			_tickService.Stop();
-
-			// 리스너 정지
-			//_listener.Stop();
-
-			// JobQueue 정지
-			await _jobQueueManager.StopAsync();
-
-			// RoomManager 정지
-			await _roomManager.StopAsync();
-
-			// SessionManager 정지
-			_sessionManager.Shutdown();
+			if(0 < errors.Count)
+				throw new AggregateException( "Server shutdown completed with errors.", errors );
 
 			_logger.LogInformation( "서버 종료 완료" );
 		}
@@ -145,6 +168,9 @@ namespace Server.Core.Host
 		private async Task InitializeCoreServicesAsync()
 		{
 			ServerSettings settings = _serverSettings.Value;
+
+			// DB Queue 시작
+			await _databaseWriteQueue.StartAsync();
 
 			// JobQueue 시작
 			int threadCount = 0 < settings.JobQueue.WorkerThreadCount
@@ -196,6 +222,19 @@ namespace Server.Core.Host
 			// 리스너 시작
 			_listener.Init( endPoint, () => _sessionManager.CreateSession(), settings.Network.ListenBacklog );
 			_logger.LogInformation( "서버 리스닝 시작: {EndPoint}", endPoint );
+		}
+
+		private async Task RunStopStepAsync(string step, Func<Task> action, List<Exception> errors)
+		{
+			try
+			{
+				await action();
+			}
+			catch(Exception ex)
+			{
+				errors.Add( ex );
+				_logger.LogError( ex, "서버 종료 단계 실패: {Step}", step );
+			}
 		}
 	}
 }

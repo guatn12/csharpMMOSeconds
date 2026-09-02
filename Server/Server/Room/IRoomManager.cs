@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Protocol;
+using Server.Room.Requests;
 
 namespace Server.Room
 {
@@ -20,7 +21,7 @@ namespace Server.Room
 		Task<IReadOnlyList<IRoom>> GetRoomsByTypeAsync( RoomType roomType );
 		IReadOnlyList<IRoom> GetActiveRooms();
 
-		Task<RoomEnterResult> JoinDefaultLobbyAsync( IClientSession session );
+		Task<RoomEnterResult> JoinDefaultLobbyAsync( RoomEnterRequest request );
 		Task<IRoom> FindPlayerCurrentRoomAsync( IClientSession session );
 		Task<bool> RemovePlayerFromAllRoomsAsync( IClientSession session );
 
@@ -37,6 +38,7 @@ namespace Server.Room
 
 		Task StartAsync();
 		Task StopAsync();
+		void BeginShutdown();
 	}
 
 	public class RoomStatistics
