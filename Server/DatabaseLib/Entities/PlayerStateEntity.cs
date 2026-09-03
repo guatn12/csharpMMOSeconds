@@ -19,7 +19,7 @@ namespace DatabaseLib.Entities
 		public long PlayerId { get; set; }
 
 		[Column( "version" )]
-		public int Version { get; set; } = 1;
+		public long Version { get; set; } = 1;
 
 		[Column( "State_data", TypeName = "jsonb" )]
 		public string StateDataJson { get; set; } = "{}";

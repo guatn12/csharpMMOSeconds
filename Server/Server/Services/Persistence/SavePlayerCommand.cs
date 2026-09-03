@@ -70,9 +70,9 @@ namespace Server.Services.Persistence
 			return new PlayerSaveCommit( _snapshot.PlayerRawId, _snapshot.Revision, _inventory.Version, _equipment.Version, _playerState.Version );
 		}
 
-		private static void SetExpectedVersion<TEntity>(EntityEntry<TEntity> entry, int expectedVersion) where TEntity : class
+		private static void SetExpectedVersion<TEntity>(EntityEntry<TEntity> entry, long expectedVersion) where TEntity : class
 		{
-			var version = entry.Property<int>("Version");
+			var version = entry.Property<long>("Version");
 			version.OriginalValue = expectedVersion;
 			version.CurrentValue = checked(expectedVersion + 1);
 		}

@@ -19,7 +19,7 @@ namespace DatabaseLib.Entities
 		public int MaxSlots { get; set; } = 50;
 
 		[Column( "version" )]
-		public int Version { get; set; } = 1; // 낙관적 동시성 제어용?
+		public long Version { get; set; } = 1; // 낙관적 동시성 제어용?
 
 		[Column( "last_updated" )]
 		public DateTime LastUpdated { get; set; } = DateTime.UtcNow;

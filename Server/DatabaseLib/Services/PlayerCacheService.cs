@@ -12,7 +12,6 @@ namespace DatabaseLib.Services
 		private readonly IRedisService _redis;
 		private readonly ILogger<PlayerCacheService> _logger;
 
-		private const string PLAYER_ACCOUNT_CACHE_PREFIX = "account:";
 		private readonly TimeSpan _cacheTTL = TimeSpan.FromHours(1);
 
 		public PlayerCacheService(IDbContextFactory<AppDbContext> contextFactory, IRedisService redis, ILogger<PlayerCacheService> logger)
@@ -25,7 +24,7 @@ namespace DatabaseLib.Services
 		// Cache-Aside 패턴 : 플레이어 조회
 		public async Task<PlayerEntity> GetPlayerAsync( long accountId, long playerId )
 		{
-			var cacheKey = $"{PLAYER_ACCOUNT_CACHE_PREFIX}{accountId}";
+			var cacheKey = PlayerPersistenceCacheKeys.Account(accountId);
 
 			try
 			{
@@ -77,7 +76,7 @@ namespace DatabaseLib.Services
 
 		public async Task<List<PlayerEntity>> GetPlayerListByAccountIdAsync(long accountId)
 		{
-			var cacheKey = $"{PLAYER_ACCOUNT_CACHE_PREFIX}{accountId}";
+			var cacheKey = PlayerPersistenceCacheKeys.Account(accountId);
 			
 			try
 			{
@@ -144,53 +143,6 @@ namespace DatabaseLib.Services
 			using var context = _contextFactory.CreateDbContext();
 			return await context.Players.AsNoTracking()
 				.AnyAsync( p => p.PlayerId == playerId && p.AccountId == accountId );
-		}
-
-		public async Task<bool> SavePlayerToDbAsync(PlayerEntity player)
-		{
-			try
-			{
-				using var context = _contextFactory.CreateDbContext();
-				player.UpdatedAt = DateTime.UtcNow;
-				context.Players.Update( player );
-				await context.SaveChangesAsync();
-
-				return true;
-			}
-			catch(Exception ex)
-			{
-				_logger.LogError( ex, "플레이어 DB 저장 실패 : PlayerId={PlayerId}", player.PlayerId );
-				return false;
-			}
-		}
-
-		public async Task<bool> UpdatePlayerRedisCacheAsync(PlayerEntity player)
-		{
-			var cacheKey = $"{PLAYER_ACCOUNT_CACHE_PREFIX}{player.AccountId}";
-			bool keyExists = await _redis.KeyExistsAsync( cacheKey );
-			if(!keyExists)
-				return true;
-
-			await _redis.HashSetAsync( cacheKey, new Dictionary<string, string> { { player.PlayerId.ToString(), 
-					JsonSerializer.Serialize(player)} }, _cacheTTL );
-
-			return true;
-		}
-
-		// 캐시 무효화
-		public async Task InvalidatePlayerCacheAsync(PlayerEntity player)
-		{
-			var cacheKey = $"{PLAYER_ACCOUNT_CACHE_PREFIX}{player.AccountId}";
-
-			try
-			{
-				await _redis.DeleteAsync( cacheKey );
-				_logger.LogDebug( "플레이어 캐시 무효화 : {AccountId}", player.AccountId );
-			}
-			catch(Exception ex)
-			{
-				_logger.LogError( ex, "플레이어 캐시 무효화 실패 : {AccountId}", player.AccountId );
-			}
 		}
 	}
 }
