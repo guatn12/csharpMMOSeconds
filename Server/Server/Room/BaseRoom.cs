@@ -356,6 +356,12 @@ namespace Server.Room
 			// Notify
 			// 룸 별 입장 로직 실행 - 주로 입장 시 초기 정보 전송 담당
 			await OnPlayerEnterAsync( session );
+			if(request.IsInitialGameEntry)
+			{
+				session.Player.RecordInitialGameEntry( DateTime.UtcNow );
+				RequestPlayerCheckpoint(session.Player, "InitialGameEntry" );
+			}
+
 			return RoomEnterResult.Success;
 		}
 

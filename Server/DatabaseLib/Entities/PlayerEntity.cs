@@ -26,12 +26,8 @@ namespace DatabaseLib.Entities
 		[Column( "experience" )]
 		public long Experience { get; set; } = 0;
 
-		[MaxLength( 255 )]
-		[Column( "login_token" )]
-		public string LoginToken { get; set; }
-
-		[Column("last_login_at")]
-		public DateTime? LastLoginAt { get; set; }
+		[Column("last_entered_game_at")]
+		public DateTime? LastEnteredGameAt { get; set; }
 
 		[Column( "total_play_time_minutes" )]
 		public long TotalPlayTimeMinutes { get; set; } = 0;

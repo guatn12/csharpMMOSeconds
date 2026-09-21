@@ -3,6 +3,7 @@ using System;
 using DatabaseLib;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DatabaseLib.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260907065817_AddAccountAndPlayerEntryTimestamp")]
+    partial class AddAccountAndPlayerEntryTimestamp
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -69,7 +72,7 @@ namespace DatabaseLib.Migrations
 
                     b.HasIndex("NormalizedLoginId")
                         .IsUnique()
-                        .HasDatabaseName("ux_accounts_normalized_login_id");
+                        .HasDatabaseName("idx_accounts_normalized_login_id");
 
                     b.ToTable("accounts", (string)null);
                 });

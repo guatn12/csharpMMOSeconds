@@ -26,8 +26,7 @@ namespace DatabaseLib.Configurations
 			.HasMaxLength( 50 );
 
 			entity.Property( e => e.AccountId )
-				.HasColumnName( "account_id" )
-				.HasDefaultValue( 0L );
+				.HasColumnName( "account_id" );
 
 			entity.Property( e => e.Level )
 			.HasColumnName( "level" )
@@ -37,12 +36,8 @@ namespace DatabaseLib.Configurations
 			.HasColumnName( "experience" )
 			.HasDefaultValue( 0L );
 
-			entity.Property( e => e.LoginToken )
-			.HasColumnName( "login_token" )
-			.HasMaxLength( 255 );
-
-			entity.Property( e => e.LastLoginAt )
-			.HasColumnName( "last_login_at" );
+			entity.Property( e => e.LastEnteredGameAt )
+			.HasColumnName( "last_entered_game_at" );
 
 			entity.Property( e => e.TotalPlayTimeMinutes )
 			.HasColumnName( "total_play_time_minutes" )
@@ -70,11 +65,13 @@ namespace DatabaseLib.Configurations
 			entity.HasIndex( e => e.CreatedAt )
 			.HasDatabaseName( "ix_players_created_at" );
 
-			entity.HasIndex( e => e.LoginToken )
-			.HasDatabaseName( "ix_players_login_token" );
-
 			entity.HasIndex( e => e.AccountId )
 				.HasDatabaseName( "ix_players_account_id" );
+
+			entity.HasOne<AccountEntity>()
+				.WithMany()
+				.HasForeignKey( x => x.AccountId )
+				.OnDelete( DeleteBehavior.Restrict );
 
 			// JSONB 인덱스 (GIN)
 			entity.HasIndex( e => e.PlayerSettingsJson )

@@ -27,6 +27,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DatabaseLib", "DatabaseLib\DatabaseLib.csproj", "{353FFFF7-F23C-421A-B627-BEFFB7D412C4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthServer", "AuthServer\AuthServer.csproj", "{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthContractGenerate", "AuthContractGenerate\AuthContractGenerate.csproj", "{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -121,12 +125,37 @@ Global
 		{353FFFF7-F23C-421A-B627-BEFFB7D412C4}.Release|x64.Build.0 = Release|Any CPU
 		{353FFFF7-F23C-421A-B627-BEFFB7D412C4}.Release|x86.ActiveCfg = Release|Any CPU
 		{353FFFF7-F23C-421A-B627-BEFFB7D412C4}.Release|x86.Build.0 = Release|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Debug|x64.Build.0 = Debug|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Debug|x86.Build.0 = Debug|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Release|x64.ActiveCfg = Release|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Release|x64.Build.0 = Release|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Release|x86.ActiveCfg = Release|Any CPU
+		{A94B10BD-C4C3-4E65-A8FE-08BB9CA38D19}.Release|x86.Build.0 = Release|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Debug|x64.Build.0 = Debug|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Debug|x86.Build.0 = Debug|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Release|x64.ActiveCfg = Release|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Release|x64.Build.0 = Release|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Release|x86.ActiveCfg = Release|Any CPU
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{8858D034-B792-4B63-B6C7-2C16687CF351} = {C8D5274F-AC00-46C7-1F8D-E88E81087A52}
+		{AAC7E52E-67DC-428D-A280-12D3B14A4CBF} = {C8D5274F-AC00-46C7-1F8D-E88E81087A52}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {F197E3FC-4FC6-403E-B2FA-046545917402}

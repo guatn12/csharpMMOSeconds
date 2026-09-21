@@ -42,6 +42,7 @@ namespace Server.Services.Persistence
 				PlayerSettings = new PlayerSettingsModel(),
 				CreatedAt = now,
 				UpdatedAt = now,
+				LastEnteredGameAt = null,
 			};
 
 			_inventory = new InventoryEntity

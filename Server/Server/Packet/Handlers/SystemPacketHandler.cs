@@ -175,7 +175,8 @@ namespace Server.Packet.Handlers
 					RotationX = state.RotationX,
 					RotationY = state.RotationY,
 					RotationZ = state.RotationZ,
-				}
+				},
+				IsInitialGameEntry = true,
 			};
 
 			// 자동 로비 입장

@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.Tools" Version="2.83.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="..\..\Common\Protobuf\Auth\AuthInternal.proto" ProtoRoot="..\..\Common\Protobuf\Auth" GrpcServices="$(AuthContractRole)" OutputDir="$(AuthContractOutputDir)" GrpcOutputDir="$(AuthContractOutputDir)" CompileOutputs="false" />
+  </ItemGroup>
+
+  <Target Name="ValidateAuthContractGeneration" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(AuthContractRole)' != 'Client' and '$(AuthContractRole)' != 'Server'" Text="AuthContractRole must be Client or Server." />
+    <Error Condition="'$(AuthContractOutputDir)' == ''" Text="AuthContractOutputDir is required." />
+  </Target>
+</Project>

@@ -41,13 +41,13 @@ namespace Server.Services.Persistence
 
 			DateTime now = DateTime.UtcNow;
 
-			// LoginToken과 LastLoginAt은 로그인 경로 소유이므로 저장 스냅샷으로 덮지 않는다.
 			player.PlayerName = _snapshot.PlayerName;
 			player.Level = _snapshot.Level;
 			player.Experience = _snapshot.Experience;
 			player.TotalPlayTimeMinutes = _snapshot.TotalPlayTimeMinutes;
 			player.PlayerSettingsJson = _snapshot.PlayerSettingsJson;
 			player.UpdatedAt = now;
+			player.LastEnteredGameAt = _snapshot.LastEnteredGameAt;
 
 			_inventory.MaxSlots = _snapshot.InventoryMaxSlots;
 			_inventory.InventoryDataJson = _snapshot.InventoryDataJson;
