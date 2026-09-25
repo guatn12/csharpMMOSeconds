@@ -14,8 +14,7 @@ indent_style = tab
 tab_width = 4
 
 # 새 줄 기본 설정
-end_of_line = crlf
-insert_final_newline = false
+insert_final_newline = true
 
 #### .NET 코드 작업 ####
 

@@ -18,6 +18,7 @@ using DatabaseLib.Extensions;
 using Server.Services.Persistence;
 using Server.Room.Dependencies;
 using DatabaseLib.Persistence.Metrics;
+using Microsoft.Extensions.Hosting;
 using Server.Infra.Metrics;
 
 namespace Server.Extensions
@@ -27,7 +28,7 @@ namespace Server.Extensions
 		///<summary>
 		///모든 애플리케이션 서비스를 등록합니다.
 		///</summary>
-		public static IServiceCollection AddAppServices( this IServiceCollection services, IConfiguration configuration )
+		public static IServiceCollection AddAppServices( this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment )
 		{
 			// 설정 시스템 등록
 			services.AddConfigurationServices( configuration );
@@ -36,7 +37,7 @@ namespace Server.Extensions
 			services.AddCoreServices( configuration );
 
 			// DB 라이브러리를 이용해 DB / Redis / 일부 서비스 등록
-			services.AddDatabaseLib( configuration );
+			services.AddDatabaseLib( configuration, environment );
 
 			// 게임 로직 서비스 등록
 			services.AddGameServices();

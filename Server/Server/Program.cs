@@ -32,7 +32,7 @@ namespace Server
 					.ConfigureServices((context, services) =>
 					{
 						// 기존 services.AddAppServices() 호출
-						services.AddAppServices(context.Configuration);
+						services.AddAppServices(context.Configuration, context.HostingEnvironment);
 						services.AddHostedService<ServerHost>();	// 핵심.
 					})
 					.UseSerilog((context, services, configuration) => configuration

@@ -116,6 +116,12 @@ UpgradeLog*.htm
 App_Data/*.mdf
 App_Data/*.ldf
 
+# BenchMark Data
+**/BenchmarkDotNet.Artifacts/
+
+# local docker compose credentials
+Common/Scripts/.env
+
 # =========================
 # Windows detritus
 # =========================
@@ -146,3 +152,11 @@ Common/Generated/*.h
 Priority.txt
 *.md
 /Server/DatabaseLib/dbcontext.designtime.json
+
+# =========================
+# Linux detritus
+# =========================
+
+# Linux Rider config file
+.idea/
+**/.idea/

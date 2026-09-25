@@ -5,6 +5,7 @@ using DatabaseLib.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using StackExchange.Redis;
@@ -13,15 +14,13 @@ namespace DatabaseLib.Extensions
 {
 	public static class ServiceCollectionExtensions
 	{
-		public static IServiceCollection AddDatabaseLib( this IServiceCollection services, IConfiguration config )
+		public static IServiceCollection AddDatabaseLib( this IServiceCollection services, IConfiguration config, IHostEnvironment environment )
 		{
 			// Options 바인딩 + 라이브러리 소유 검증 (실행 시 실패)
 			services.AddOptions<DatabaseOptions>().Bind( config.GetSection( "ServerSettings:Database" ) ).ValidateOnStart();
 			services.AddOptions<RedisOptions>().Bind( config.GetSection( "ServerSettings:Redis" ) ).ValidateOnStart();
 			services.AddSingleton<IValidateOptions<DatabaseOptions>, DatabaseOptionsValidator>();
 			services.AddSingleton<IValidateOptions<RedisOptions>, RedisOptionsValidator>();
-
-			var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
 
 			services.AddDbContextFactory<AppDbContext>( ( sp, options ) =>
 			{
@@ -32,7 +31,7 @@ namespace DatabaseLib.Extensions
 					npgsql.MigrationsAssembly( "DatabaseLib" );
 				} );
 
-				if(environment == "Development" && db.EnableSensitiveDataLogging)
+				if(environment.IsDevelopment() && db.EnableSensitiveDataLogging)
 				{
 					options.EnableSensitiveDataLogging();
 					options.EnableDetailedErrors();
@@ -64,7 +63,7 @@ namespace DatabaseLib.Extensions
 			return services;
 		}
 
-		private static string BuildConnectionString(DatabaseOptions options, string environment )
+		private static string BuildConnectionString(DatabaseOptions options, IHostEnvironment environment )
 		{
 			// Npgsql Connection Pool 최적화
 			var connectionStringBuilder = new NpgsqlConnectionStringBuilder(options.ConnectionString)
@@ -77,7 +76,7 @@ namespace DatabaseLib.Extensions
 
 				// 추가 성능 최적화
 				Pooling = true,
-				IncludeErrorDetail = environment == "Development"
+				IncludeErrorDetail = environment.IsDevelopment()
 			};
 
 			return connectionStringBuilder.ConnectionString;

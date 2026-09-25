@@ -40,6 +40,9 @@ namespace Server.Config
 
 			// DB 자동 저장 설정 검증
 			ValidateAutoSaveTime( options.AutoSaveTime, failures );
+			
+			// 매트릭 설정 검증
+			ValidateMetrics( options.Metrics, failures );
 
 			return failures.Count == 0
 				? ValidateOptionsResult.Success
@@ -164,5 +167,23 @@ namespace Server.Config
 				failures.Add( $"AutoSaveTime.DefaultIntervalMs must be between 5000 and 600000, got: {autoSaveTime.DefaultIntervalMs}" );
 		}
 
+		private void ValidateMetrics( MetricsConfig metrics, List<string> failures )
+		{
+			if(metrics == null)
+			{
+				failures.Add( "Metrics configuration is required" );
+				return;
+			}
+			
+			if(string.IsNullOrWhiteSpace( metrics.Host ))
+				failures.Add( "Network Host is required" );
+			else if(metrics.Host == "0.0.0.0")
+				failures.Add("Metrics Host cannot be 0.0.0.0 because MetricServer uses an HttpListener URL prefix");
+			else if(metrics.Host != "+" && Uri.CheckHostName( metrics.Host ) == UriHostNameType.Unknown)
+				failures.Add( $"Invalid Metrics Host:{metrics.Host}" );
+
+			if(metrics.Port < 1 || 65535 < metrics.Port)
+				failures.Add( $"Network Port must be between 1 and 65535, got: {metrics.Port}" );
+		}
 	}
 }

@@ -64,23 +64,15 @@ namespace Server.Infra.Metrics
 		);
 
 		// 스레드 수
-		public static readonly Gauge ThreadCount = Prometheus.Metrics.CreateGauge(
+		public static readonly Gauge ProcessThreadCount = Prometheus.Metrics.CreateGauge(
 			"process_thread_count",
-			"Number of threads in the process."
+			"Number of operating system threads in the GameServer process."
 		);
-
-		// ========= Windows 전용 메트릭 =========
 
 		// CPU 사용률 (%)
-		public static readonly Gauge CpuUsagePercent = Prometheus.Metrics.CreateGauge(
-			"system_cpu_usage_percent",
-			"System CPU usage percentage (Windows only)."
-		);
-
-		// 사용 가능한 메모리 (bytes)
-		public static readonly Gauge MemoryAvailable = Prometheus.Metrics.CreateGauge(
-			"system_memory_available_bytes",
-			"Available system memory in bytes (Windows only)."
+		public static readonly Gauge ProcessCpuUsagePercent = Prometheus.Metrics.CreateGauge(
+			"process_cpu_usage_percent",
+			"CPU usage of the GameServer process as a percentage of available processor capacity."
 		);
 
 		// ======= 인프라 헬스 체크 메트릭 =======

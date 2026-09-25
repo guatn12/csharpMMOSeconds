@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Prometheus;
+using Server.Config;
 using Server.Core.Session;
 using Server.Infra.Metrics;
 using ServerCore;
@@ -17,46 +19,35 @@ namespace Server.Infra
 	public class PerformanceMonitoringService : BackgroundService
 	{
 		private readonly ILogger<PerformanceMonitoringService> _logger;
-		private readonly bool _isWindows;
 		private readonly HealthCheckService _healthCheckService;
-		private PerformanceCounter _cpuCounter;
-		private PerformanceCounter _memoryCounter;
+		private readonly MetricsConfig _settings;
 
 		private readonly ISessionManager _sessionManager;
 		private readonly IJobQueueManager _jobQueueManager;
 		private MetricServer _metricServer;
-		private readonly int _port = 9100;
+
+		private TimeSpan _previousTotalProcessorTime;
+		private long _previousTImestamp;
+		private bool _hasPreviousCpuSample;
+
+		private readonly int _processorCount = Math.Max( 1, Environment.ProcessorCount );
 
 		public PerformanceMonitoringService(ILogger<PerformanceMonitoringService> logger, ISessionManager sessionManager,
-			IJobQueueManager jobQueueManager, HealthCheckService healthCheckService)
+			IJobQueueManager jobQueueManager, HealthCheckService healthCheckService, IOptions<ServerSettings> settings)
 		{
 			_logger = logger;
 			_sessionManager = sessionManager;
 			_jobQueueManager = jobQueueManager;
 			_healthCheckService = healthCheckService;
-			_isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-
-			// Windows 전용 카운터 초기화
-			if(_isWindows )
-			{
-				try
-				{
-					_cpuCounter = new PerformanceCounter( "Processor", "% Processor Time", "_Total" );
-					_memoryCounter = new PerformanceCounter( "Memory", "Available MBytes" );
-				}
-				catch(Exception ex)
-				{
-					_logger.LogWarning( ex, "Windows performance counters not available" );
-				}
-			}
+			_settings = settings.Value.Metrics;
 		}
 
 		protected override async Task ExecuteAsync( CancellationToken stoppingToken )
 		{
 			// Metric Server 시작
-			_metricServer = new MetricServer(hostname: "localhost", port: _port );
+			_metricServer = new MetricServer(hostname: _settings.Host, port: _settings.Port );
 			_metricServer.Start();
-			_logger.LogInformation( "Prometheus Metric Server started on port {Port}", _port );
+			_logger.LogInformation( "Prometheus Metric Server started on port {Port}", _settings.Port );
 
 			// PeriodcTimer 생성 (30초 간격)
 			using var timer = new PeriodicTimer( TimeSpan.FromSeconds( 30 ) );
@@ -90,7 +81,11 @@ namespace Server.Infra
 
 		private void CollectMetrics()
 		{
-			Process process = Process.GetCurrentProcess();
+			long currentTimestamp = Stopwatch.GetTimestamp();
+			
+			using var process = Process.GetCurrentProcess();
+
+			TimeSpan currentTotalProcessorTime = process.TotalProcessorTime;
 			long workingSetBytes = process.WorkingSet64;
 			long gcMemoryBytes = GC.GetTotalMemory(false);
 			int threadCount = process.Threads.Count;
@@ -102,36 +97,28 @@ namespace Server.Infra
 			// 프로세스 메트릭
 			GameMetrics.ProcessWorkingSet.Set( workingSetBytes );
 			GameMetrics.GCMemory.Set(gcMemoryBytes);
-			GameMetrics.ThreadCount.Set(threadCount);
+			GameMetrics.ProcessThreadCount.Set(threadCount);
+
+			bool hasCpuUsage = TryCalculateCpuUsagePercent( currentTotalProcessorTime, currentTimestamp,
+				out double cpuUsagePercent );
+			if(hasCpuUsage)
+			{
+				GameMetrics.ProcessCpuUsagePercent.Set( cpuUsagePercent );
+
+				_logger.LogInformation( "Process CPU Usage: {CpuUsage:F1}%", cpuUsagePercent );
+				if(90.0 < cpuUsagePercent)
+				{
+					_logger.LogWarning( "High process CPU usage: {CpuUsage:F1}%", cpuUsagePercent );
+				}
+			}
 
 			// 로깅 (MB 단위)
 			long workingSetMB = workingSetBytes / (1024 * 1024);
 			long gcMemoryMB = gcMemoryBytes / (1024 * 1024);
-
+			
 			// 기본 성능 메트릭 (모든 플랫폼)
 			_logger.LogInformation( "Performance Metrics - Working Set: {WorkingSet}MB, GC Memory: {GcMemory}MB, Threads: {ThreadCount}",
 				workingSetMB, gcMemoryMB, threadCount );
-
-			// Windows 전용 카운터
-			if(_isWindows && _cpuCounter != null && _memoryCounter != null)
-			{
-				float cpuUsage = _cpuCounter.NextValue();
-				float availableMemoryMB = _memoryCounter.NextValue();
-
-				// Prometheus Gauge 업데이트
-				GameMetrics.CpuUsagePercent.Set(cpuUsage);
-				GameMetrics.MemoryAvailable.Set(availableMemoryMB * 1024 * 1024); // bytes 단위로 변환
-
-				_logger.LogInformation( "Windows Metrics - CPU: {CpuUsage:F1}%, Available Memory: {AvailableMemory}MB",
-					cpuUsage, availableMemoryMB );
-
-				// 경고 임계값 체크
-				if(90 < cpuUsage)
-					_logger.LogWarning( "High CPU usage warning: {CpuUsage:F1}%", cpuUsage );
-
-				if(availableMemoryMB < 500)
-					_logger.LogWarning( "Low memory warning: {AvailableMemory}MB available", availableMemoryMB );
-			}
 
 			// 메모리 사용량
 			if(500 < workingSetMB)
@@ -159,11 +146,39 @@ namespace Server.Infra
 			}
 		}
 
-		public override void Dispose()
+		private bool TryCalculateCpuUsagePercent( TimeSpan currentTotalProcessorTime, long currentTimestamp,
+			out double cpuUsagePercent )
 		{
-			_cpuCounter?.Dispose();
-			_memoryCounter?.Dispose();
-			base.Dispose();
+			cpuUsagePercent = 0;
+
+			// 첫 표본은 비교 대상이 없으므로 기준값만 저장한다.
+			if(!_hasPreviousCpuSample)
+			{
+				_previousTotalProcessorTime = currentTotalProcessorTime;
+				_previousTImestamp = currentTimestamp;
+				_hasPreviousCpuSample = true;
+
+				return false;
+			}
+
+			TimeSpan processorTimeDelta = currentTotalProcessorTime - _previousTotalProcessorTime;
+
+			TimeSpan elapsedTime = Stopwatch.GetElapsedTime( _previousTImestamp, currentTimestamp );
+
+			// 다음 수집을 위해 현재 값을 이전 표본으로 저장한다.
+			_previousTotalProcessorTime = currentTotalProcessorTime;
+			_previousTImestamp = currentTimestamp;
+
+			// 정상적으로는 발생하지 않지만 잘못된 표본으로 나누는 것을 방지한다.
+			if(elapsedTime <= TimeSpan.Zero || processorTimeDelta < TimeSpan.Zero)
+				return false;
+
+			double availableProcessorTime = elapsedTime.TotalSeconds * _processorCount;
+
+			double calculatedUsage = processorTimeDelta.TotalSeconds / availableProcessorTime * 100.0;
+			cpuUsagePercent = Math.Clamp( calculatedUsage, 0.0, 100.0 );
+
+			return true;
 		}
 	}
 }

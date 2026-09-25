@@ -1,11 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.IO;
-using System.Linq;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Server.Config
 {
@@ -45,6 +39,11 @@ namespace Server.Config
 		/// DB 자동 저장 타임 설정
 		/// </summary>
 		public AutoSaveTimeConfig AutoSaveTime { get; set; } = new();
+
+		/// <summary>
+		/// 메트릭 연결 설정
+		/// </summary>
+		public MetricsConfig Metrics { get; set; } = new();
 	}
 
 	/// <summary>
@@ -177,5 +176,15 @@ namespace Server.Config
 	{
 		[Range( 5000, 600000 )]
 		public int DefaultIntervalMs { get; set; } = 60000;
+	}
+
+	public class MetricsConfig
+	{
+		[Required]
+		public string Host { get; set; } = "127.0.0.1";
+
+		[Required]
+		[Range( 1, 65535 )]
+		public int Port { get; set; } = 9100;
 	}
 }

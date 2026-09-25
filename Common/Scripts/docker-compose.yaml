@@ -5,11 +5,11 @@ services:
     image: postgres:16-alpine
     container_name: postgres_db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1q2w3e4r@!
-      POSTGRES_DB: mmo_db
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      POSTGRES_DB: "mmo_db"
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       # ✅ Postgres 데이터는 유지 (테이블과 데이터를 보존)
       - postgres-data:/var/lib/postgresql/data
@@ -19,7 +19,7 @@ services:
     image: redis:8-alpine
     container_name: redis_cache
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     # ❌ Redis 볼륨은 제거. 'down'할 때마다 데이터가 초기화됩니다.
     # volumes:
     #   - redis-data:/data
@@ -30,9 +30,9 @@ services:
     container_name: pgadmin4_container
     environment:
       PGADMIN_DEFAULT_EMAIL: "admin@local.host"
-      PGADMIN_DEFAULT_PASSWORD: "1q2w3e4r@!"
+      PGADMIN_DEFAULT_PASSWORD: "${PGADMIN_DEFAULT_PASSWORD:?PGADMIN_DEFAULT_PASSWORD is required}"
     ports:
-      - "5050:80"
+      - "127.0.0.1:5050:80"
     volumes:
       # ✅ pgAdmin 설정은 유지 (서버 연결 정보를 보존)
       - pgadmin-data:/var/lib/pgadmin
@@ -44,7 +44,7 @@ services:
     image: redis/redisinsight:latest
     container_name: redisinsight
     ports:
-      - "5540:5540"
+      - "127.0.0.1:5540:5540"
     volumes:
       - redisinsight-data:/data
     restart: always

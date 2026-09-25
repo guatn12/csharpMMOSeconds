@@ -29,7 +29,6 @@
     <PackageReference Include="Serilog.Settings.Configuration" Version="9.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.7" />
   </ItemGroup>
 
   <ItemGroup>
@@ -48,14 +47,22 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ProtocolContracts\ProtocolContracts.csproj" />
     <ProjectReference Include="..\ServerCore\ServerCore.csproj" />
     <ProjectReference Include="..\DatabaseLib\DatabaseLib.csproj" />
   </ItemGroup>
-
+    
+    <ItemGroup>
+        <Content Include="../../Common/GameData/*.json" Link="GameData/%(Filename)%(Extension)">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </Content>
+    </ItemGroup>
+<!-- 별도 프로젝트로 이전.
   <ItemGroup>
     <Compile Include="../../Common/Protobuf/Protocol.cs" Link="Packet/Protocol.cs" />
   </ItemGroup>
-
+-->
   <ItemGroup>
     <Folder Include="Database\Configurations\" />
     <Folder Include="Packet\Handlers\GenerateHandlers\" />

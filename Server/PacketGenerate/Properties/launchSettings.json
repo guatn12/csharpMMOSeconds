@@ -2,7 +2,8 @@
   "profiles": {
     "PacketGenerate": {
       "commandName": "Project",
-      "commandLineArgs": "E:\\backup_study\\study\\csharpMMO\\Common\\Protobuf\\Protocol.proto"
+      "commandLineArgs": "--repo-root .",
+      "workingDirectory": "../.."
     }
   }
 }

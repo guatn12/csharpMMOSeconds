@@ -11,47 +11,44 @@ namespace PacketGenerator
 	{
 		static void Main( string[] args )
 		{
-			// 현재 프로젝트의 경로를 기준으로 상대 경로 설정
-			string generatorDir = Directory.GetCurrentDirectory();
-
-			// 아웃풋 경로 변경.
-			string outputDir = Path.Combine(generatorDir, "Generated");
-
-			string solutionDir = FindSolutionDirectory(generatorDir);
-
+			if(args.Length != 2 || args[ 0 ] != "--repo-root" || string.IsNullOrWhiteSpace( args[ 1 ] ))
+			{
+				throw new ArgumentException( "Usage: PacketGenerate --repo-root <repository-root>" );
+			}
+			
+			// LanuchSettings에 의해 경로는 최상단 루트경로로 지정. ex) ~/csharpMMO
+			string repoRoot = Path.GetFullPath( args[ 1 ] );
+			
+			// Server, DummyClient 경로 설정.
+			string serverDir = Path.Combine( repoRoot, "Server", "Server", "Packet" );
+			string dummyCliDir = Path.Combine( repoRoot, "Server", "DummyClient", "Packet" );
+			
 			// proto 파일 경로
-			string protoPath = args[0];
+			string protoPath = Path.Combine( repoRoot, "Common", "Protobuf", "Protocol.proto" );
+
+			if(!File.Exists( protoPath ))
+			{
+				throw new FileNotFoundException( "Protocol.proto was not found. check --repo-root.", protoPath );
+			}
+			
+			// 디렉토리 없는 경우 생성
+			Directory.CreateDirectory( serverDir );
+			Directory.CreateDirectory( dummyCliDir );
 
 			//파일 읽기 및 파싱
 			string protoText = File.ReadAllText(protoPath);
-			ParseProto( protoText, outputDir );
+			ParseProto( protoText, serverDir, dummyCliDir );
 
 			Console.WriteLine( "PacketGenerator Executed Successfully" );
 		}
 
-		static string FindSolutionDirectory( string currentDir )
-		{
-			while(currentDir != null)
-			{
-				if(0 < Directory.GetFiles( currentDir, "*.sln" ).Length)
-				{
-					currentDir = Directory.GetParent( currentDir ).FullName;
-					return currentDir;
-				}
-				currentDir = Directory.GetParent( currentDir )?.FullName;
-			}
-
-			return null;
-		}
-
-		static void ParseProto( string protoText, string outputDir )
+		static void ParseProto( string protoText, string serverDir, string dummyCliDir )
 		{
 			// 정규식을 사용하여 MsgId enum 블록 추출
 			Match idMatch = Regex.Match(protoText, @"enum\s+MsgId\s*\{([\s\S]*?)\}");
 			if(!idMatch.Success)
 			{
-				Console.WriteLine( "Could not find MsgId enum in .proto file." );
-				return;
+				throw new InvalidDataException( "Could not find MsgId enum in .proto file." );
 			}
 
 			string idBlock = idMatch.Groups[1].Value;
@@ -81,30 +78,30 @@ namespace PacketGenerator
 			// 서버용 PacketID enum 생성
 			StringBuilder serverPacketEnum = new StringBuilder();
 			GeneratePacketEnum( matches, serverPacketEnum, "Server" );
-			File.WriteAllText( "Gen_Server_PacketID.cs", serverPacketEnum.ToString() );
+			File.WriteAllText( Path.Combine(serverDir, "Gen_Server_PacketID.cs"), serverPacketEnum.ToString(), new UTF8Encoding(false) );
 
-			// 클라이언트(unity)용 PacketID enum 생성
+			// 클라이언트(unity)용 PacketID enum 생성 - 현재는 더미용
 			StringBuilder clientPacketEnum = new StringBuilder();
 			GeneratePacketEnum( matches, clientPacketEnum, "Client" );
-			File.WriteAllText( "Gen_Client_PacketID.cs", clientPacketEnum.ToString() );
+			File.WriteAllText( Path.Combine(dummyCliDir, "Gen_Client_PacketID.cs") , clientPacketEnum.ToString(), new UTF8Encoding(false) );
 
 			// 서버용 PacketManager 생성 ( 새로운 구조 )
 			StringBuilder ServerManager = new StringBuilder();
 			GeneratePacketManager( matches, ServerManager, "Server", packetCategoryList );
-			File.WriteAllText( "Gen_Server_PacketManager.cs", ServerManager.ToString() );
+			File.WriteAllText( Path.Combine(serverDir, "Gen_Server_PacketManager.cs"), ServerManager.ToString(), new UTF8Encoding(false) );
 
-			// 클라이언트(unity)용 Packetmanager 생성
+			// 클라이언트(unity)용 Packetmanager 생성 - 현재는 더미용
 			StringBuilder ClientManager = new StringBuilder();
 			GeneratePacketManager( matches, ClientManager, "Client", packetCategoryList );
-			File.WriteAllText( "Gen_Client_PacketManager.cs", ClientManager.ToString() );
+			File.WriteAllText( Path.Combine(dummyCliDir, "Gen_Client_PacketManager.cs"), ClientManager.ToString(), new UTF8Encoding(false) );
 
 			// 클라이언트(unreal)용 c++ 헤더 생성
-			StringBuilder unrealHeader = new StringBuilder();
-			GenerateUnrealHeader( matches, unrealHeader );
-			File.WriteAllText( "Gen_PacketID.h", unrealHeader.ToString() );
+			// StringBuilder unrealHeader = new StringBuilder();
+			// GenerateUnrealHeader( matches, unrealHeader );
+			// File.WriteAllText( "Gen_PacketID.h", unrealHeader.ToString(), new UTF8Encoding(false) );
 
 			// IPacketHandler 인터페이스 생성
-			GenerateIPacketHandler();
+			GenerateIPacketHandler(serverDir);
 
 			// Category별 핸들러 생성
 			var packetHandlerList = packetCategoryList.Where( p => p.Item3 == "C_" )
@@ -116,7 +113,7 @@ namespace PacketGenerator
 			foreach ( var category in packetHandlerList )
 			{
 				string handlerProperty = ToCamelCase(category) + "PacketHandler";  // "RoomPacketHandler"
-				GeneratePacketHandlers( packetCategoryList, category, handlerProperty );
+				GeneratePacketHandlers( serverDir, packetCategoryList, category, handlerProperty );
 			}
 
 			Console.WriteLine( "모든 핸들러 생성 완료\n" );
@@ -538,7 +535,7 @@ namespace PacketGenerator
 			sb.AppendLine( "};" );
 		}
 
-		static void GenerateIPacketHandler()
+		static void GenerateIPacketHandler(string serverDir)
 		{
 			var sb = new StringBuilder();
 
@@ -556,12 +553,17 @@ namespace PacketGenerator
 					}
 				}
 				""" );
-
-			File.WriteAllText( "IPacketHandler.cs", sb.ToString() );
+			
+			string combinePath = Path.Combine( serverDir, "Handlers", "GenerateHandlers" );
+			// 디렉토리 없을 경우 생성.
+			Directory.CreateDirectory( combinePath );
+			
+			combinePath = Path.Combine( combinePath, "IPacketHandler.cs" );
+			File.WriteAllText( combinePath, sb.ToString(), new UTF8Encoding(false) );
 			Console.WriteLine( "IPacketHandler.cs 생성 완료" );
 		}
 
-		static void GeneratePacketHandlers( List<Tuple<string, string, string>> packetCategoryList, string category, string handlerName )
+		static void GeneratePacketHandlers( string serverDir, List<Tuple<string, string, string>> packetCategoryList, string category, string handlerName )
 		{
 			var sb = new StringBuilder();
 
@@ -668,7 +670,12 @@ namespace PacketGenerator
 
 			// 파일 저장
 			string fileName = $"{handlerName}.Generated.cs";
-			File.WriteAllText( fileName, sb.ToString() );
+			string filePath = Path.Combine( serverDir, "Handlers", "GenerateHandlers" );
+			// 디렉토리 없을 경우 생성
+			Directory.CreateDirectory( filePath );
+			
+			filePath = Path.Combine( filePath, fileName );
+			File.WriteAllText( filePath, sb.ToString(), new UTF8Encoding(false) );
 			Console.WriteLine( $"{handlerName}.Generated.cs 생성 완료 ({categoryPackets.Count}개 패킷 )" );
 		}
 

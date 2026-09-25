@@ -27,6 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ProtocolContracts\ProtocolContracts.csproj" />
     <ProjectReference Include="..\ServerCore\ServerCore.csproj" />
   </ItemGroup>
 
@@ -45,8 +46,17 @@
     </None>
   </ItemGroup>
 
+    <ItemGroup>
+        <Content Include="../../Common/GameData/*.json" Link="GameData/%(Filename)%(Extension)">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </Content>
+    </ItemGroup>
+    
+<!-- 별도 프로젝트로 이전
   <ItemGroup>
     <Compile Include="../../Common/Protobuf/Protocol.cs" Link="Packet/Protocol.cs" />
   </ItemGroup>
-
+-->
+    
 </Project>
