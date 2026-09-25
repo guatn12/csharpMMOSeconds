@@ -22,6 +22,7 @@ namespace Server.Game
 		private readonly TimeSpan _attackCooldown = TimeSpan.FromSeconds(1); // 공격 후 1초간 이동 불가
 
 		public long TotalPlayTimeMinutes { get; private set; }
+		public DateTime? LastEnteredGameAt { get; private set; }
 
 		public PlayerSettingsModel PlayerSettings { get; private set; } = new();
 
@@ -70,7 +71,14 @@ namespace Server.Game
 		public long RequiredExp => Stats.Level * 100; // 임시 레벨업 필요 경험치.
 		public long CombatTargetId => _combatTargetId;
 
-		
+		public void RecordInitialGameEntry(DateTime enteredAtUtc)
+		{
+			if(enteredAtUtc.Kind != DateTimeKind.Utc)
+				throw new ArgumentException( "enteredAtUtc must be in UTC.", nameof( enteredAtUtc ) );
+
+			LastEnteredGameAt = enteredAtUtc;
+			MarkPersistenceDirty();
+		}
 
 
 		public List<long> ApplyLoadedData(PlayerEntity playerEntity, PlayerStateEntity playerStateEntity, InventoryEntity inventoryEntity, EquipmentEntity equipmentEntity)
@@ -81,6 +89,7 @@ namespace Server.Game
 			_statInfo.Experience = playerEntity.Experience;
 			TotalPlayTimeMinutes = playerEntity.TotalPlayTimeMinutes;
 			PlayerSettings = playerEntity.PlayerSettings;
+			LastEnteredGameAt = playerEntity.LastEnteredGameAt;
 
 			// 장비 데이터보다 무조건 우선
 			if(inventoryEntity?.InventoryData != null)
@@ -447,7 +456,7 @@ namespace Server.Game
 			return new PlayerSaveSnapshot( ObjectRawId, _persistence.AccountId, Persistence.DirtyRevision, Name, Level, Experience,
 				TotalPlayTimeMinutes, JsonSerializer.Serialize( PlayerSettings ), _persistence.InventoryId, _persistence.InventoryDbVersion,
 				Inventory.MaxSlots, JsonSerializer.Serialize( Inventory.ToInventoryModel() ), _persistence.EquipmentId, _persistence.EquipmentDbVersion,
-				JsonSerializer.Serialize( Equipment.GetEquipmentRefs() ), _persistence.PlayerStateId, _persistence.PlayerStateDbVersion, JsonSerializer.Serialize( state ) );
+				JsonSerializer.Serialize( Equipment.GetEquipmentRefs() ), _persistence.PlayerStateId, _persistence.PlayerStateDbVersion, JsonSerializer.Serialize( state ), LastEnteredGameAt );
 		}
 
 		// 인벤 / 장비 데이터 로드 (DB / Redis에서 복원용)

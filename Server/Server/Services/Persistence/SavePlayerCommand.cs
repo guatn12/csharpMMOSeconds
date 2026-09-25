@@ -41,13 +41,13 @@ namespace Server.Services.Persistence
 
 			DateTime now = DateTime.UtcNow;
 
-			// LoginToken과 LastLoginAt은 로그인 경로 소유이므로 저장 스냅샷으로 덮지 않는다.
 			player.PlayerName = _snapshot.PlayerName;
 			player.Level = _snapshot.Level;
 			player.Experience = _snapshot.Experience;
 			player.TotalPlayTimeMinutes = _snapshot.TotalPlayTimeMinutes;
 			player.PlayerSettingsJson = _snapshot.PlayerSettingsJson;
 			player.UpdatedAt = now;
+			player.LastEnteredGameAt = _snapshot.LastEnteredGameAt;
 
 			_inventory.MaxSlots = _snapshot.InventoryMaxSlots;
 			_inventory.InventoryDataJson = _snapshot.InventoryDataJson;
@@ -70,9 +70,9 @@ namespace Server.Services.Persistence
 			return new PlayerSaveCommit( _snapshot.PlayerRawId, _snapshot.Revision, _inventory.Version, _equipment.Version, _playerState.Version );
 		}
 
-		private static void SetExpectedVersion<TEntity>(EntityEntry<TEntity> entry, int expectedVersion) where TEntity : class
+		private static void SetExpectedVersion<TEntity>(EntityEntry<TEntity> entry, long expectedVersion) where TEntity : class
 		{
-			var version = entry.Property<int>("Version");
+			var version = entry.Property<long>("Version");
 			version.OriginalValue = expectedVersion;
 			version.CurrentValue = checked(expectedVersion + 1);
 		}

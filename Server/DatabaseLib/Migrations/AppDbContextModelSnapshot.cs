@@ -22,6 +22,58 @@ namespace DatabaseLib.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("DatabaseLib.Entities.AccountEntity", b =>
+                {
+                    b.Property<long>("AccountId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("account_id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("AccountId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime?>("LastLoginAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_login_at");
+
+                    b.Property<string>("LoginId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("login_id");
+
+                    b.Property<string>("NormalizedLoginId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("normalized_login_id");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("password_hash");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("AccountId");
+
+                    b.HasIndex("NormalizedLoginId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_accounts_normalized_login_id");
+
+                    b.ToTable("accounts", (string)null);
+                });
+
             modelBuilder.Entity("DatabaseLib.Entities.EquipmentEntity", b =>
                 {
                     b.Property<long>("EquipmentId")
@@ -53,11 +105,11 @@ namespace DatabaseLib.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("player_id");
 
-                    b.Property<int>("Version")
+                    b.Property<long>("Version")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1)
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L)
                         .HasColumnName("version");
 
                     b.HasKey("EquipmentId");
@@ -156,11 +208,11 @@ namespace DatabaseLib.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("player_id");
 
-                    b.Property<int>("Version")
+                    b.Property<long>("Version")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1)
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L)
                         .HasColumnName("version");
 
                     b.HasKey("InventoryId");
@@ -190,9 +242,7 @@ namespace DatabaseLib.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("PlayerId"));
 
                     b.Property<long>("AccountId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("bigint")
-                        .HasDefaultValue(0L)
                         .HasColumnName("account_id");
 
                     b.Property<DateTime>("CreatedAt")
@@ -207,20 +257,15 @@ namespace DatabaseLib.Migrations
                         .HasDefaultValue(0L)
                         .HasColumnName("experience");
 
-                    b.Property<DateTime?>("LastLoginAt")
+                    b.Property<DateTime?>("LastEnteredGameAt")
                         .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_login_at");
+                        .HasColumnName("last_entered_game_at");
 
                     b.Property<int>("Level")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasDefaultValue(1)
                         .HasColumnName("level");
-
-                    b.Property<string>("LoginToken")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("login_token");
 
                     b.Property<string>("PlayerName")
                         .IsRequired()
@@ -253,9 +298,6 @@ namespace DatabaseLib.Migrations
 
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("ix_players_created_at");
-
-                    b.HasIndex("LoginToken")
-                        .HasDatabaseName("ix_players_login_token");
 
                     b.HasIndex("PlayerName")
                         .IsUnique()
@@ -300,11 +342,11 @@ namespace DatabaseLib.Migrations
                         .HasDefaultValue("{}")
                         .HasColumnName("state_data");
 
-                    b.Property<int>("Version")
+                    b.Property<long>("Version")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1)
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L)
                         .HasColumnName("version");
 
                     b.HasKey("PlayerStateId");
@@ -347,6 +389,15 @@ namespace DatabaseLib.Migrations
                         .IsRequired();
 
                     b.Navigation("Player");
+                });
+
+            modelBuilder.Entity("DatabaseLib.Entities.PlayerEntity", b =>
+                {
+                    b.HasOne("DatabaseLib.Entities.AccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("DatabaseLib.Entities.PlayerStateEntity", b =>

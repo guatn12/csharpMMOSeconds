@@ -11,11 +11,11 @@ namespace Server.Services.Persistence
 	{
 		public long AccountId { get; private set; }
 		public long InventoryId { get; private set; }
-		public int InventoryDbVersion { get; private set; }
+		public long InventoryDbVersion { get; private set; }
 		public long EquipmentId { get; private set; }
-		public int EquipmentDbVersion { get; private set; }
+		public long EquipmentDbVersion { get; private set; }
 		public long PlayerStateId { get; private set; }
-		public int PlayerStateDbVersion { get; private set; }
+		public long PlayerStateDbVersion { get; private set; }
 		
 		public long DirtyRevision { get; private set; }
 		public long CleanRevision { get; private set; }
@@ -24,8 +24,8 @@ namespace Server.Services.Persistence
 
 		public Task<DatabaseWriteResult<PlayerSaveCommit>> PendingSave { get; private set; }
 
-		public void ResetAfterLoad(long accountId, long inventoryId, int inventoryDbVersion, 
-			long equipmentId, int equipmentDbVersion, long playerStateId, int  playerStateDbVersion)
+		public void ResetAfterLoad(long accountId, long inventoryId, long inventoryDbVersion, 
+			long equipmentId, long equipmentDbVersion, long playerStateId, long  playerStateDbVersion)
 		{
 			AccountId = accountId;
 			InventoryId = inventoryId;

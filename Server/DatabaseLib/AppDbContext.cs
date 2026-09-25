@@ -5,6 +5,7 @@ namespace DatabaseLib
 {
 	public class AppDbContext : DbContext
 	{
+		public DbSet<AccountEntity> Accounts { get; set; }
 		public DbSet<PlayerEntity> Players { get; set; }
 		public DbSet<PlayerStateEntity> PlayerState { get; set; }
 		public DbSet<InventoryEntity> Inventory { get; set; }
