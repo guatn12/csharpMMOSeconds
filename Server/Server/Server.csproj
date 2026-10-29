@@ -67,7 +67,6 @@
   <ItemGroup>
     <Folder Include="Database\Configurations\" />
     <Folder Include="Packet\Handlers\GenerateHandlers\" />
-    <Folder Include="Services\Auth\" />
   </ItemGroup>
 
 	<ItemGroup>

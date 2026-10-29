@@ -16,6 +16,7 @@ namespace DatabaseLib.Redis
 		Task<T> GetAsync<T>( string key ) where T : class;
 		Task<String> GetStringAsync( string key );
 		Task<bool> DeleteAsync( string key );
+		Task<T> GetDeleteAsync<T>( string key ) where T : class;
 		Task HashSetAsync( string key, IReadOnlyDictionary<string, string> fields, TimeSpan? expiry = null );
 		Task<T> HashGetAsync<T>( string key, string fieldKey ) where T : class;
 		Task<IReadOnlyDictionary<string, string>> HashGetAllAsync( string key );

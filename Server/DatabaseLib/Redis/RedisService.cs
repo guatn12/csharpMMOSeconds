@@ -42,7 +42,7 @@ namespace DatabaseLib.Redis
 			}
 			catch ( Exception ex )
 			{
-				_logger.LogError( ex, "Redis Ping 실패" );
+				_logger.LogError( "Redis Ping 실패. ErrorType={ErrorType}", ex.GetType().Name );
 				return false;
 			}
 		}
@@ -54,13 +54,8 @@ namespace DatabaseLib.Redis
 			TimeSpan actualExpiry = expiry ?? TimeSpan.FromHours(1);
 
 			bool success = await _database.StringSetAsync(redisKey, serializedValue, actualExpiry);
-			if(!success)
-			{
-				_logger.LogDebug( "Redis Set 실패: Key={Key}", key );
-				return false;	
-			}
 
-			_logger.LogDebug( "Redis Set 성공: Key={Key}, Expiry={Expiry}", key, actualExpiry );
+			_logger.LogDebug( "Redis Set 성공: Result={Result}, Expiry={Expiry}", success, actualExpiry );
 			return success;
 		}
 
@@ -92,8 +87,23 @@ namespace DatabaseLib.Redis
 			string redisKey = GetKey(key);
 			bool success = await _database.KeyDeleteAsync(redisKey);
 
-			_logger.LogDebug( "Redis Delete: Key={Key}, Result={Result}", key, success );
+			_logger.LogDebug( "Redis Delete 완료. Result={Result}", success );
 			return success;
+		}
+
+		public async Task<T> GetDeleteAsync<T>( string key ) where T : class
+		{
+			string redisKey = GetKey( key );
+			RedisValue value = await _database.StringGetDeleteAsync( redisKey );
+			if(value.HasValue == false)
+			{
+				_logger.LogDebug( "Redis GetDelete - 키 없음" );
+				return null;
+			}
+
+			T result = JsonSerializer.Deserialize<T>( value.ToString() );
+			_logger.LogDebug( "Redis GetDelete 성공" );
+			return result;
 		}
 
 		public async Task HashSetAsync(string key, IReadOnlyDictionary<string, string> fields, TimeSpan? expiry = null)
@@ -162,7 +172,7 @@ namespace DatabaseLib.Redis
 			}
 			catch(Exception ex)
 			{
-				_logger.LogError( ex, "RedisService Dispose 오류" );
+				_logger.LogError( "RedisService Dispose 오류" );
 			}
 		}
 	}

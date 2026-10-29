@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,12 +15,21 @@
     </PackageReference>
   </ItemGroup>
 
-  <ItemGroup>
-    <Protobuf Include="..\..\Common\Protobuf\Auth\AuthInternal.proto" ProtoRoot="..\..\Common\Protobuf\Auth" GrpcServices="$(AuthContractRole)" OutputDir="$(AuthContractOutputDir)" GrpcOutputDir="$(AuthContractOutputDir)" CompileOutputs="false" />
+  <ItemGroup Condition="'$(AuthContractGeneration)' == 'true'">
+    <Protobuf Include="..\..\Common\Protobuf\Auth\AuthInternal.proto" 
+              ProtoRoot="..\..\Common\Protobuf\Auth" 
+              GrpcServices="$(AuthContractRole)" 
+              OutputDir="$(AuthContractOutputDir)" 
+              GrpcOutputDir="$(AuthContractOutputDir)" 
+              CompileOutputs="false" />
   </ItemGroup>
 
-  <Target Name="ValidateAuthContractGeneration" BeforeTargets="PrepareForBuild">
+  <Target Name="ValidateAuthContractGeneration">
+      <Error Condition="'$(AuthContractGeneration)' != 'true'" Text="AuthContractGeneration must be true." />
     <Error Condition="'$(AuthContractRole)' != 'Client' and '$(AuthContractRole)' != 'Server'" Text="AuthContractRole must be Client or Server." />
     <Error Condition="'$(AuthContractOutputDir)' == ''" Text="AuthContractOutputDir is required." />
   </Target>
+    
+    <Target Name="GenerateAuthContracts"
+            DependsOnTargets="ValidateAuthContractGeneration; Protobuf_Compile" />
 </Project>

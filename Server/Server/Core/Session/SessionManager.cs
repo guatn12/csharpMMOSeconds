@@ -74,7 +74,7 @@ namespace Server.Core.Session
 			var jobQueueManager = _serviceProvider.GetRequiredService<IJobQueueManager>();
 
 			// GameSession  생성
-			var session = new ClientSession(logger, packetManager, this, jobQueueManager, _redisService, sessionId );
+			var session = new ClientSession(logger, packetManager, this, jobQueueManager, sessionId );
 
 			_logger.LogInformation( "Session created: SessionId={SessionId}", sessionId );
 

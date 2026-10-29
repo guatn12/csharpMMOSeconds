@@ -1,6 +1,5 @@
 using DatabaseLib.Entities;
 using DatabaseLib.Persistence;
-using DatabaseLib.Redis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Protocol;
@@ -10,8 +9,10 @@ using Server.Data;
 using Server.Room;
 using Server.Room.Requests;
 using Server.Services;
+using Server.Services.Auth;
 using Server.Services.Persistence;
 using Server.Utils;
+using ServerCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -30,13 +31,13 @@ namespace Server.Packet.Handlers
 		private readonly ServerSettings _serverSettings;
 		private readonly IRoomTransitionCoordinator _transitionCoordinator;
 		private readonly IGameDataService _gameDataService;
-		private readonly IRedisService _redisService;
+		private readonly IAuthGateway _authGateway;
 		private readonly ISessionManager _sessionManager;
 		private readonly IDataManager _dataManager;
 		private readonly IPlayerPersistenceService _playerPersistenceService;
 
 		public SystemPacketHandler(ILogger<SystemPacketHandler> logger, IRoomManager roomManager, IOptions<ServerSettings> settings, 
-			IRoomTransitionCoordinator transitionCoordinator, IGameDataService gameDataService, IRedisService redisService, ISessionManager sessionManager,
+			IRoomTransitionCoordinator transitionCoordinator, IGameDataService gameDataService, IAuthGateway authGateway, ISessionManager sessionManager,
 			IDataManager dataManager, IPlayerPersistenceService playerPersistenceService)
 		{
 			_logger = logger;
@@ -44,7 +45,7 @@ namespace Server.Packet.Handlers
 			_serverSettings = settings.Value;
 			_transitionCoordinator = transitionCoordinator;
 			_gameDataService = gameDataService;
-			_redisService = redisService;
+			_authGateway = authGateway;
 			_sessionManager = sessionManager;
 			_dataManager = dataManager;
 			_playerPersistenceService = playerPersistenceService;
@@ -59,29 +60,49 @@ namespace Server.Packet.Handlers
 			// 세션에 플레이어가 있는지 여부를 통해 이미 로그인 상태인지 체크
 			if(session.Player != null)
 			{
-				session.TryTransitionTo( SessionState.Connected );  // 상태 복구
-				session.Send( new S_Login { Success = false, Message = "이미 로그인 상태" } );
+				_logger.LogWarning( "C_Login rejected because Player is already bound. SessionId={SessionId}",
+					session.SessionId );
+				RejectLogin( session );
 				return;
 			}
-
-			string tokenId = await _redisService.GetStringAsync(RedisKeys.TokenUserId(packet.Token));
-			if(string.IsNullOrEmpty( tokenId ))
-			{
-				session.TryTransitionTo( SessionState.Connected );      // 상태 복구 (Disconnect 직전에라도 일관성)
-				session.Send( new S_Login { Success = false, Message = "인증 실패" } );
-				session.Disconnect();
-				return;
-			}
-
-			long accountId = long.Parse(tokenId);
 			
+			if(string.IsNullOrWhiteSpace(packet.Token))
+			{
+				_logger.LogWarning( "C_Login rejected because login ticket is empty. SessionId={SessionId}",
+					session.SessionId );
+				RejectLogin( session );
+				return;
+			}
 
-			List<PlayerEntity> players = await _gameDataService.GetPlayerListByAccountIdAsync(accountId);
+			AuthRedeemResult redeemResult =
+				await _authGateway.RedeemLoginTicketAsync( packet.Token, CancellationToken.None );
+			if(redeemResult.Status != AuthRedeemStatus.Active)
+			{
+				if(redeemResult.Status == AuthRedeemStatus.DependencyUnavailable)
+				{
+					_logger.LogError( "C_Login Auth dependency unavailable. SessionId={SessionId}", session.SessionId );
+				}
+				else
+				{
+					_logger.LogWarning( "C_Login ticket rejected. SessionId={SessionId}, Result={Result}",
+						session.SessionId, redeemResult.Status );
+				}
+				
+				RejectLogin( session );
+				return;
+			}
 
-			session.TryTransitionTo( SessionState.Authenticated );
+			long accountId = redeemResult.AccountId;
+			List<PlayerEntity> players = await _gameDataService.GetPlayerListByAccountIdAsync( accountId );
 
-			// 로그인 완료 시 session token 변경
-			session.SetLoginToken( packet.Token );
+			if(session.TryTransitionTo( SessionState.Authenticated ) == false)
+			{
+				_logger.LogError( "C_Login state transition failed. SessionId={SessionId}, State={State}",
+					session.SessionId, session.State );
+				RejectLogin( session );
+				return;
+			}
+			
 			session.BindAccountId( accountId );
 
 			var response = new S_Login { Success = true, AccountId = accountId };
@@ -95,8 +116,8 @@ namespace Server.Packet.Handlers
 			
 			session.Send( response );
 
-			_logger.LogInformation( "로그인 성공: sessionId={SessionId}, accountId={accountId}",
-				session.SessionId, accountId );
+			_logger.LogInformation( "로그인 성공: sessionId={SessionId}, PlayerCount={PlayerCount}",
+				session.SessionId, response.Players.Count );
 		}
 
 		private async Task HandleC_EnterGameAsync( IClientSession session, C_EnterGame packet)
@@ -363,6 +384,26 @@ namespace Server.Packet.Handlers
 				session.PlayerId, session.SessionId );
 
 			return Task.CompletedTask;
+		}
+
+		private void RejectLogin( IClientSession session )
+		{
+			if(SessionState.Disconnecting <= session.State)
+				return;
+
+			try
+			{
+				session.Send( new S_Login { Success = false, Message = "인증 실패" } );
+			}
+			catch(Exception ex) when(!ExceptionPolicy.IsCritical(ex))
+			{
+				_logger.LogDebug( ex, "Failed to send login rejection. SessionId={SessionId}", session.SessionId );
+			}
+			finally
+			{
+				if( session.State < SessionState.Disconnecting)
+					session.Disconnect();
+			}
 		}
 
 		private string MapTransitionResultToFailReason( RoomTransitionResult result )

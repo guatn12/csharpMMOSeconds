@@ -23,6 +23,6 @@ namespace AuthServer.Services
 	{
 		public string Dependency { get; }
 		public AuthDependencyException(string dependency, Exception? inner = null)
-			: base("Authentication dependency unavailable.", inner) => dependency = dependency;
+			: base("Authentication dependency unavailable.", inner) => Dependency = dependency;
 	}
 }

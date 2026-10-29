@@ -1,7 +1,6 @@
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Protocol;
-using DatabaseLib.Entities;
 using Server.Game;
 using Server.Game.Objects;
 using Server.Packet;
@@ -13,7 +12,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DatabaseLib.Redis;
 using Server.Data;
 using Server.Extensions;
 
@@ -24,7 +22,6 @@ namespace Server.Core.Session
         private readonly PacketManager _packetManager;
         private readonly ISessionManager _sessionManager;
 		private readonly SessionJobQueue _sessionQueue;
-		private readonly IRedisService _redisService;
         private IRoom _currentRoom;
 		private long _playerRawId;
 		private readonly TaskCompletionSource _disconnectCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -33,9 +30,6 @@ namespace Server.Core.Session
         private readonly object _roomLock = new object();
 		private long _lastActiveTime = Environment.TickCount64;
 		private int _state = (int)SessionState.Connected;
-		private long _lastTokenRefreshTick = Environment.TickCount64;
-
-		private const long TokenRefreshDebounceMs = 300000;
 
         public IRoom CurrentRoom
         {
@@ -53,7 +47,6 @@ namespace Server.Core.Session
 
 		public long SessionId { get; private set; }
 		public long AccountId { get; private set; }
-		public string LoginToken { get; private set; }
 		public long LastActiveTime => _lastActiveTime;
 		public Player Player { get; private set; }
         public string PlayerName => Player?.Name ?? $"Session_{SessionId}";
@@ -78,17 +71,15 @@ namespace Server.Core.Session
 		};
 
         public ClientSession( ILogger<ClientSession> logger, PacketManager packetManager, ISessionManager sessionManager, 
-			IJobQueueManager jobQueueManager, IRedisService redisService, long sessionId)
+			IJobQueueManager jobQueueManager, long sessionId)
 			:base( logger )
 		{
             _packetManager = packetManager;
             _sessionManager = sessionManager;
-			_redisService = redisService;
             SessionId = sessionId;
 			_sessionQueue = new SessionJobQueue( jobQueueManager, this, logger );
         }
-
-		public void SetLoginToken( string token ) => LoginToken = token;
+        
 		public void BindAccountId(long accountId) => AccountId = accountId;
 		public void BindPlayerRawId(long playerRawId)
 		{
@@ -129,15 +120,7 @@ namespace Server.Core.Session
 			}
 
 			Interlocked.Exchange( ref _lastActiveTime, Environment.TickCount64 );
-			if(IsAuthenticated && string.IsNullOrEmpty(LoginToken) == false)
-			{
-				long now = Environment.TickCount64;
-				long prev = Interlocked.Read(ref _lastTokenRefreshTick);
-				if(TokenRefreshDebounceMs < now - prev && Interlocked.CompareExchange(ref _lastTokenRefreshTick, now, prev) == prev)
-				{
-					_ = RefreshLoginTokenTtlAsync( LoginToken );
-				}
-			}
+			
 			PacketRoute packetRoute = _packetManager.RouteIncoming(this, buffer);
 
 			_logger.LogDebug( "Packet Received. SessionId: {SessionId}, Size: {Size}", SessionId, buffer.Count );
@@ -273,24 +256,6 @@ namespace Server.Core.Session
 
 				Player.OnDeath -= OnPlayerDeath;
 				Player.OnStateChanged -= OnPlayerStateChanged;
-			}
-		}
-
-		private async Task RefreshLoginTokenTtlAsync(string token)
-		{
-			try
-			{
-				bool refreshed = await _redisService.KeyExpireAsync(RedisKeys.TokenUserId(token), TimeSpan.FromHours(1));
-				if(refreshed == false)
-				{
-					_logger.LogWarning( "Login token TTL refresh failed because the Redis key was not found. SessionId={SessionId}, AccountId={AccountId}",
-						SessionId, AccountId );
-				}
-			}
-			catch(Exception ex)
-			{
-				_logger.LogWarning( ex, "Login token TTL refresh failed. SessionId={SessionId}, AccountId={AccountId}",
-					SessionId, AccountId );
 			}
 		}
 

@@ -7,5 +7,7 @@ namespace DatabaseLib.Redis
 	public static class RedisKeys
 	{
 		public static string TokenUserId( string token ) => $"token:{token}:userId";
+
+		public static string LoginTicket( string ticketHash ) => $"auth:ticket:{ticketHash}";
 	}
 }

@@ -3,7 +3,8 @@
     "DummyClient": {
       "commandName": "Project",
       "environmentVariables": {
-        "DOTNET_ENVIRONMENT": "Development"
+        "DOTNET_ENVIRONMENT": "Development",
+        "AuthClient__Password": "password123456"
       }
     }
   }

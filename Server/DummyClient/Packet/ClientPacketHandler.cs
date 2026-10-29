@@ -19,13 +19,13 @@ namespace DummyClient.Packet
 
 		public override ValueTask On_S_Login( NetworkSession session, S_Login packet ) 
 		{
-			if(packet.Success == false)
+			var serverSession = session as ServerSession;
+			serverSession.CompleteLogin( packet.Success );
+			if(!packet.Success)
 			{
-				_logger.LogWarning( "[Client] S_Login 실패 - Message:{Message}", packet.Message );
+				_logger.LogWarning( "게임 서버 로그인 거부. Message={Message}", packet.Message );
 				return ValueTask.CompletedTask;
 			}
-
-			var serverSession = session as ServerSession;
 
 			if( 0 < packet.Players.Count)
 			{
@@ -34,17 +34,16 @@ namespace DummyClient.Packet
 				{
 					PlayerId = packet.Players[ 0 ].PlayerId,
 				} );
-				return ValueTask.CompletedTask;
 			}
 			else
 			{
 				// 캐릭터 없음 -> 생성
 				serverSession.Send( new Protocol.C_CreatePlayer
 				{
-					PlayerName = $"Dummy{serverSession.SessionId}",
+					PlayerName = "Dummy" + Guid.NewGuid().ToString("N")[..10]
 				} );
-				return ValueTask.CompletedTask;
 			}
+			return ValueTask.CompletedTask;
 		}
 
 		public override ValueTask On_S_CreatePlayer( NetworkSession session, S_CreatePlayer packet ) 
@@ -53,7 +52,10 @@ namespace DummyClient.Packet
 			if(packet.Success)
 				serverSession.Send( new Protocol.C_EnterGame { PlayerId = packet.Player.PlayerId } );
 			else
-				_logger.LogWarning( "[Client] 캐릭터 생성 실패 - {Reason}", packet.FailReason );
+			{
+				serverSession.CompleteEntry( false );
+				_logger.LogWarning("캐릭터 생성 거부 {Reason}", packet.FailReason);
+			}
 
 			return ValueTask.CompletedTask; 
 		}
@@ -95,6 +97,9 @@ namespace DummyClient.Packet
 
 			// 전체 출력
 			ctx.MyPlayer.LogStatus( _logger );
+
+			// 새션 접속 성공 처리
+			((ServerSession)session).CompleteEntry( true );
 
 			return ValueTask.CompletedTask;
 		}

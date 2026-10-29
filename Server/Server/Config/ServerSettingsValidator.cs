@@ -43,6 +43,9 @@ namespace Server.Config
 			
 			// 매트릭 설정 검증
 			ValidateMetrics( options.Metrics, failures );
+			
+			// AuthGrpc 설정 검증
+			ValidateAuthGrpc( options.AuthGrpc, failures );
 
 			return failures.Count == 0
 				? ValidateOptionsResult.Success
@@ -184,6 +187,26 @@ namespace Server.Config
 
 			if(metrics.Port < 1 || 65535 < metrics.Port)
 				failures.Add( $"Network Port must be between 1 and 65535, got: {metrics.Port}" );
+		}
+
+		private void ValidateAuthGrpc( AuthGrpcConfig authGrpc, List<string> failures )
+		{
+			if(authGrpc == null)
+			{
+				failures.Add( "AuthGrpc configuration is required." );
+				return;
+			}
+
+			if(Uri.TryCreate( authGrpc.Address, UriKind.Absolute, out Uri adress ) == false ||
+			   adress.Scheme != Uri.UriSchemeHttps)
+			{
+				failures.Add( "AuthGrpc address must be an absolute HTTPS URI" );
+			}
+
+			if(authGrpc.DeadLineMs < 100 || 30000 < authGrpc.DeadLineMs)
+			{
+				failures.Add( "AuthGrpc DeadlineMs must be between 100 and 30000" );
+			}
 		}
 	}
 }

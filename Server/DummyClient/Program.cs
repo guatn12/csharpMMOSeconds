@@ -17,6 +17,9 @@ using System.Linq;
 using DummyClient.Data;
 using DummyClient.Config;
 using DummyClient.Data.Models;
+using DummyClient.Services;
+using System.IO;
+using System.Net.Sockets;
 
 namespace DummyClient
 {
@@ -168,7 +171,7 @@ namespace DummyClient
 		// ping 전송
 		private const int PingIntervalSeconds = 20;
 
-		static void Main( string[] args )
+		static async Task Main( string[] args )
 		{
 			var environmentName = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
 			var builder = new ConfigurationBuilder()
@@ -189,10 +192,12 @@ namespace DummyClient
 				// DI 컨테이너 설정
 				ServiceCollection services = new ServiceCollection();
 				ConfigureServices( services, configuration );
+				services.AddSingleton<IConfiguration>( configuration );
+				services.AddSingleton<AuthApiClient>();
 				_serviceProvider = services.BuildServiceProvider();
 				_logger = _serviceProvider.GetRequiredService<ILogger<Program>>();
 
-				RunClient();
+				await RunClientAsync();
 			}
 			catch(Exception ex)
 			{
@@ -200,6 +205,7 @@ namespace DummyClient
 			}
 			finally
 			{
+				(_serviceProvider as IDisposable)?.Dispose();
 				Log.CloseAndFlush();
 				//_serviceProvider?.Dispose();
 			}
@@ -231,7 +237,7 @@ namespace DummyClient
 			services.AddSingleton<DataManager>();
 		}
 
-		private static void RunClient()
+		private static async Task RunClientAsync()
 		{
 			IClientConfigurationService configService = _serviceProvider.GetRequiredService<IClientConfigurationService>();
 			ClientConfiguration config = configService.Current;
@@ -246,7 +252,7 @@ namespace DummyClient
 			// DataManager 초기화 및 데이터 로드 추가.
 			DataManagerInstance = _serviceProvider.GetRequiredService<DataManager>();
 			_logger.LogInformation( "게임 데이터 로드 중..." );
-			bool loadSuccess = DataManagerInstance.LoadAllDataAsync().GetAwaiter().GetResult();
+			bool loadSuccess = await DataManagerInstance.LoadAllDataAsync();
 
 			if(!loadSuccess)
 			{
@@ -271,292 +277,190 @@ namespace DummyClient
 			if(1 < clientCount)
 			{
 				_logger.LogInformation( "다중 클라이언트 모드 시작 - 클라이언트 수: {ClientCount}", clientCount );
-				RunMultipleClients( clientCount, endPoint, config );
+				await RunMultipleClientsAsync( clientCount, endPoint, config );
 			}
 			else
 			{
 				_logger.LogInformation( "단일 클라이언트 모드 시작" );
-				RunSingleClient( endPoint, config );
+				await RunSingleClientAsync( endPoint, config );
 			}
 		}
 
-		private static void RunMultipleClients( int clientCount, IPEndPoint endPoint, ClientConfiguration config )
+		private static async Task<ServerSession> ConnectAuthenticatedAsync( int clientId, IPEndPoint endPoint,
+			ClientConfiguration config, CancellationToken token )
+		{
+			AuthApiClient auth = _serviceProvider.GetRequiredService<AuthApiClient>();
+			for(int attempt = 1; attempt <= config.Connection.MaxReconnectAttempts; attempt++)
+			{
+				// TCP 시도마다 새 로그인 티켓. REST의 명시적 거부는 이 메서드 밖으로 전파
+				string ticket = await auth.AcquireTicketAsync( clientId, token );
+				var socket = new Socket( endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp );
+				ServerSession session = null;
+				try
+				{
+					using(var connect = CancellationTokenSource.CreateLinkedTokenSource( token ))
+					{
+						connect.CancelAfter( config.Connection.ConnectionTimeoutMs );
+						try
+						{
+							await socket.ConnectAsync( endPoint, connect.Token );
+						}
+						catch(OperationCanceledException) when(!token.IsCancellationRequested)
+						{
+							throw new TimeoutException( "TCP connection time out" );
+						}
+					}
+
+					session = new ServerSession( _serviceProvider.GetRequiredService<ILogger<ServerSession>>(),
+						_serviceProvider.GetRequiredService<PacketManager>(), ticket )
+					{
+						Context = new ClientContext()
+					};
+					session.Start( socket );
+					session.OnConnected( endPoint );
+					HandshakeResult login =
+						await session.LoginCompletion.WaitAsync( TimeSpan.FromSeconds( 10 ), token );
+					if(login == HandshakeResult.Rejected)
+						throw new InvalidOperationException( "Game login was rejected." );
+					if(login == HandshakeResult.Disconnected)
+						throw new IOException( "Connection closed before login confirmation" );
+
+					HandshakeResult entry =
+						await session.EntryCompletion.WaitAsync( TimeSpan.FromSeconds( 20 ), token );
+					if(entry == HandshakeResult.Rejected)
+						throw new InvalidOperationException( "Game entry was rejected." );
+					if(entry == HandshakeResult.Disconnected)
+						throw new IOException( "Connection closed before entry confirmation." );
+
+					return session;
+				}
+				catch(Exception ex) when(ex is SocketException or IOException or TimeoutException)
+				{
+					session?.Close();
+					socket.Dispose();
+					if(attempt == config.Connection.MaxReconnectAttempts)
+						throw;
+				}
+				catch
+				{
+					session?.Close();
+					socket.Dispose();
+					throw;
+				}
+
+				await Task.Delay( config.Connection.ReconnectIntervalMs, token );
+			}
+
+			throw new InvalidOperationException( "NO TCP connection attempt was configured." );
+		}
+
+		private static async Task RunMultipleClientsAsync( int clientCount, IPEndPoint endPoint, ClientConfiguration config )
 		{
 			_logger.LogInformation( "=== 다중 클라이언트 테스트 시작 ===" );
 			_logger.LogInformation( "서버: {EndPoint}, 클라이언트 수: {ClientCount}, 메시지 간격: {IntervalMs}ms",
 				endPoint, clientCount, config.Simulation.MessageIntervalMs );
 
-			List<Task> clientTasks = new List<Task>();
-			CancellationTokenSource globalCts = new CancellationTokenSource();
-			List<CancellationTokenSource> clientCtsList = new List<CancellationTokenSource>();
-
-			// 각 클라이언트를 별도 Task로 실행 (개별 CTS 사용)
-			for(int i = 0; i < clientCount; i++)
+			using var stopping = new CancellationTokenSource();
+			var senders = new List<CancellationTokenSource>();
+			var tasks = new List<Task>();
+			ConsoleCancelEventHandler cancel = ( _, args ) =>
 			{
-				int clientId = i + 1;
-				var clientCts = CancellationTokenSource.CreateLinkedTokenSource(globalCts.Token);
-				clientCtsList.Add( clientCts );
+				args.Cancel = true;
+				stopping.Cancel();
+			};
+			Console.CancelKeyPress += cancel;
 
-				Task clientTask = Task.Run(() => RunClientInstance(clientId, endPoint, config, clientCts.Token));
-				clientTasks.Add( clientTask );
-
-				// 연결 간격 (서버 부하 방지)
-				Thread.Sleep( 200 );
+			try
+			{
+				// 각 클라이언트를 별도 Task로 실행 (개별 CTS 사용)
+				for(int i = 0; i < clientCount; i++)
+				{
+					var sender = CancellationTokenSource.CreateLinkedTokenSource( stopping.Token );
+					senders.Add( sender );
+					tasks.Add( RunClientInstanceAsync( i + 1, endPoint, config, sender.Token, stopping.Token ) );
+					// 연결 간격 (서버 부하 방지)
+					await Task.Delay( 200, stopping.Token );
+				}
+				
+				_logger.LogInformation( "모든 클라이언트 시작 완료." );
+				
+				// 정상 전송 후 절반은 전송만 중단 - 서버 idle 종료 관찰용.
+				await Task.Delay( 20000, stopping.Token );
+				for(int i = 0; i < senders.Count / 2; i++)
+				{
+					_logger.LogInformation( "[테스트] 클라이언트 {ClientId} 패킷 전송 중단(타임아웃 테스트)", i + 1 );
+					senders[ i ].Cancel();
+				}
+				await Task.Delay( 80000, stopping.Token );
 			}
-
-			_logger.LogInformation( "모든 클라이언트 시작 완료." );
-
-			// ===== 세션 타임아웃 테스트 =====
-			_logger.LogInformation( "[테스트] 20초간 정상 동작 대기..." );
-			Thread.Sleep( 20000 );
-
-			int halfCount = clientCount / 2;
-			for(int i = 0; i < halfCount; i++)
+			catch(OperationCanceledException) when(stopping.IsCancellationRequested){}
+			finally
 			{
-				_logger.LogInformation( "[테스트] 클라이언트 {ClientId} 패킷 전송 중단(타임아웃 테스트)", i + 1 );
-				clientCtsList[ i ].Cancel();
-			}
-
-			_logger.LogInformation( "[테스트] 서버 타임아웃 감지 대기 중 (80초)..." );
-			Thread.Sleep( 80000 );
-
-			_logger.LogInformation( "[테스트] 나머지 클라이언트 종료" );
-			globalCts.Cancel();
-
-			bool allCompleted = Task.WaitAll(clientTasks.ToArray(), TimeSpan.FromSeconds(5));
-
-			if(!allCompleted)
-			{
-				_logger.LogWarning( "일부 클라이언트가 정상 종료되지 않았습니다." );
+				stopping.Cancel();
+				await Task.WhenAll(tasks);
+				foreach(CancellationTokenSource sender in senders)
+					sender.Dispose();
+				Console.CancelKeyPress -= cancel;
 			}
 
 			_logger.LogInformation( "=== 다중 클라이언트 테스트 종료 ===" );
 		}
 
 		// 다중 클라이언트 실행
-		private static void RunClientInstance( int clientId, IPEndPoint endPoint, ClientConfiguration config, CancellationToken cancellationToken )
+		private static async Task RunClientInstanceAsync( int clientId, IPEndPoint endPoint, ClientConfiguration config, 
+			CancellationToken sendingToken, CancellationToken stoppingToken )
 		{
+			ServerSession session = null;
 			try
 			{
-				var logger = _serviceProvider.GetRequiredService<ILogger<Program>>();
-				var ctx = new ClientContext();
+				// 접속까지는 sending 취소도 반영하되, 연결 후에는 전송 중단과 종료를 구분.
+				using(var connecting = CancellationTokenSource.CreateLinkedTokenSource( sendingToken, stoppingToken ))
+					session = await ConnectAuthenticatedAsync( clientId, endPoint, config, connecting.Token );
 
-				logger.LogInformation( "클라이언트 {ClientId} 시작", clientId );
-
-				// PacketManager를 DI 컨테이너에서 직접 가져옴
-				var packetManager = _serviceProvider.GetRequiredService<PacketManager>();
-
-				// 연결 재시도 로직(최대 5초, 1초마다 재시도)
-				int maxRetries = 5;
-				int retryCount = 0;
-				bool connected = false;
-
-				Connector connector = null;
-
-				while(retryCount < maxRetries && !cancellationToken.IsCancellationRequested)
-				{
-					retryCount++;
-
-					if(connector != null)
-					{
-						try
-						{
-							connector = null;
-						}
-						catch { }
-					}
-
-					logger.LogInformation( "클라이언트 {ClientId} 연결 시도 {RetryCount}/{MaxRetries}...",
-						clientId, retryCount, maxRetries );
-
-					// connector 생성.
-					connector = new Connector();
-
-					connector.Connect( endPoint, () =>
-					{
-						var sessionLogger = _serviceProvider.GetRequiredService<ILogger<ServerSession>>();
-						// ServerSession 생성자에 DI에서 관리되는 PacketManager 인스턴스 주입
-						var session = new ServerSession( sessionLogger, packetManager );
-						session.Context = ctx;
-						return session;
-					} );
-
-					// 연결 완료 대기(최대 1초)
-					bool signaled = connector.ConnectDone.WaitOne(3000);
-
-					if(cancellationToken.IsCancellationRequested)
-					{
-						logger.LogInformation( "클라이언트 {ClientId} 연결 취소됨.", clientId );
-						return;
-					}
-
-					if(signaled && connector.IsConnected)
-					{
-						connected = true;
-						logger.LogInformation( "클라이언트 {ClientId} 연결 성공 ({RetryCount} 번째 시도)",
-							clientId, retryCount );
-						break;
-					}
-					else if(signaled)
-					{
-						logger.LogWarning( "클라이언트 {ClientId} 연결 실패: {Error} - 재시도 대기...",
-							clientId, connector.LastError );
-					}
-					else
-					{
-						logger.LogWarning( "클라이언트 {ClientId} 연결 타임아웃 - 재시도 대기...", clientId );
-					}
-
-					// 재시도 간격(마지막 시도가 아닐 때만)
-					if(retryCount < maxRetries && !cancellationToken.IsCancellationRequested)
-					{
-						Thread.Sleep( 1500 );
-					}
-				}
-
-				if(cancellationToken.IsCancellationRequested)
-				{
-					logger.LogInformation( "클라이언트 {ClientId} 연결 취소됨.", clientId );
-					return;
-				}
-
-				if(!connected)
-				{
-					logger.LogError( "클라이언트 {ClientId} 연결 실패 - {MaxRetries}초 타임아웃",
-							clientId, maxRetries );
-					return;
-				}
-
-				logger.LogInformation( "클라이언트 {ClientId} 연결 성공", clientId );
-
-				if(connector.ConnectionSession == null)
-				{
-					logger.LogError( "클라이언트 {ClientId} 연결 성공했지만 세션이 null 입니다.", clientId );
-					return;
-				}
-
-				while(true)
-				{
-					// 룸 입장 대기
-					if(ctx.MyPlayer != null && 0 < ctx.MyPlayer.PlayerId)
-						break;
-					Thread.Sleep( 100 );
-				}
-
-				logger.LogInformation( "클라이언트 {ClientId}, 플레이어ID: {PlayerId}로 로그인 완료",
-					clientId, ctx.MyPlayer.PlayerId );
-
-				//개별 클라이언트 루프 실행 (통합 MainLoop 호출)
-				MainLoop( clientId, (ServerSession)connector.ConnectionSession, config, logger, ctx, cancellationToken );
+				await Task.Run( () => MainLoop( clientId, session, config, _logger, session.Context, sendingToken ) );
+				if(sendingToken.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
+					await session.Disconnected.WaitAsync( stoppingToken );
 			}
+			catch(OperationCanceledException) when(sendingToken.IsCancellationRequested ||
+			                                       stoppingToken.IsCancellationRequested) { }
 			catch(Exception ex)
 			{
-				var logger = _serviceProvider.GetService<ILogger<Program>>();
-				logger.LogError( ex, "클라이언트 {ClientId} 실행 중 오류", clientId );
+				_logger.LogError( "클라이언트 실행 실패. ClientId={ClientId}, ErrorType={ErrorType}", clientId,
+					ex.GetType().Name );
+			}
+			finally
+			{
+				session?.Close();
 			}
 		}
 
 		// 단일 클라이언트 실행 (기존 로직을 메서드로 분리)
-		private static void RunSingleClient( IPEndPoint endPoint, ClientConfiguration config )
+		private static async Task RunSingleClientAsync( IPEndPoint endPoint, ClientConfiguration config )
 		{
 			var logger = _serviceProvider.GetRequiredService<ILogger<Program>>();
-			long clientId = 1;
-			var ctx = new ClientContext();
+			int clientId = 1;
+			using var stopping = new CancellationTokenSource();
+			ConsoleCancelEventHandler cancel = ( _, args ) =>
+			{
+				args.Cancel = true;
+				stopping.Cancel();
+			};
+			Console.CancelKeyPress += cancel;
+
+			try
+			{
+				Session = await ConnectAuthenticatedAsync( clientId, endPoint, config, stopping.Token );
+				// 통합 MainLoop 호출
+				await Task.Run( () => MainLoop( clientId, Session, config, _logger, Session.Context, stopping.Token ) );
+			}
+			catch(OperationCanceledException) when(stopping.IsCancellationRequested) { }
+			finally
+			{
+				Session?.Close();
+				Console.CancelKeyPress -= cancel;
+			}
+
 			logger.LogInformation( "클라이언트 {ClientId} 시작", clientId );
-
-			// 연결 재시도 로직(최대 5초, 1초마다 재시도)
-			int maxRetries = 5;
-			int retryCount = 0;
-			bool connected = false;
-
-			Connector connector = null;
-
-			while(retryCount < maxRetries )
-			{
-				retryCount++;
-
-				if(connector != null)
-				{
-					try
-					{
-						connector = null;
-					}
-					catch { }
-				}
-
-				logger.LogInformation( "클라이언트 {ClientId} 연결 시도 {RetryCount}/{MaxRetries}...",
-					clientId, retryCount, maxRetries );
-
-				// connector 생성.
-				connector = new Connector();
-
-				connector.Connect( endPoint, () =>
-				{
-					var sessionLogger = _serviceProvider.GetRequiredService<ILogger<ServerSession>>();
-					PacketManager packetManager = _serviceProvider.GetRequiredService<PacketManager>();
-					// ServerSession 생성자에 DI에서 관리되는 PacketManager 인스턴스 주입
-					var session = new ServerSession( sessionLogger, packetManager );
-					session.Context = ctx;
-					return session;
-				} );
-
-				// 연결 완료 대기(최대 3초)
-				bool signaled = connector.ConnectDone.WaitOne(3000);
-
-				if(signaled && connector.IsConnected)
-				{
-					Session = (ServerSession)connector.ConnectionSession;
-					connected = true;
-					logger.LogInformation( "클라이언트 {ClientId} 연결 성공 ({RetryCount} 번째 시도)",
-						clientId, retryCount );
-					break;
-				}
-				else if(signaled)
-				{
-					logger.LogWarning( "클라이언트 {ClientId} 연결 실패: {Error} - 재시도 대기...",
-						clientId, connector.LastError );
-				}
-				else
-				{
-					logger.LogWarning( "클라이언트 {ClientId} 연결 타임아웃 - 재시도 대기...", clientId );
-				}
-
-				// 재시도 간격(마지막 시도가 아닐 때만)
-				if(retryCount < maxRetries)
-				{
-					Thread.Sleep( 1500 );
-				}
-			}
-
-			if(!connected)
-			{
-				logger.LogError( "클라이언트 {ClientId} 연결 실패 - {MaxRetries}초 타임아웃",
-						clientId, maxRetries );
-				return;
-			}
-
-			logger.LogInformation( "클라이언트 {ClientId} 연결 성공", clientId );
-
-			// 연결된 session 확인 (전역 Session 사용)
-			if(Session == null)
-			{
-				logger.LogError( "클라이언트 {ClientId} 세션이 null입니다.", clientId );
-				return;
-			}
-
-			while(true)
-			{
-				// 룸 입장 대기
-				if(ctx.MyPlayer != null && 0 < ctx.MyPlayer.PlayerId)
-					break;
-				Thread.Sleep( 100 );
-			}
-
-			logger.LogInformation( "클라이언트 {ClientId}, 플레이어ID: {PlayerId}로 로그인 완료",
-				clientId, ctx.MyPlayer.PlayerId );
-
-			// 통합 MainLoop 호출
-			MainLoop( (int)clientId, Session, config, logger, ctx );
 		}
 
 		// 통합 메인 루프 (단일/다중 클라이언트 공용)

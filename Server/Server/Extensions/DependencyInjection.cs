@@ -1,3 +1,4 @@
+using AuthContracts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -20,6 +21,8 @@ using Server.Room.Dependencies;
 using DatabaseLib.Persistence.Metrics;
 using Microsoft.Extensions.Hosting;
 using Server.Infra.Metrics;
+using Server.Services.Auth;
+using System;
 
 namespace Server.Extensions
 {
@@ -38,6 +41,9 @@ namespace Server.Extensions
 
 			// DB 라이브러리를 이용해 DB / Redis / 일부 서비스 등록
 			services.AddDatabaseLib( configuration, environment );
+			
+			// 인증 서비스 등록
+			services.AddAuthServices();
 
 			// 게임 로직 서비스 등록
 			services.AddGameServices();
@@ -65,11 +71,12 @@ namespace Server.Extensions
 		/// </summary>
 		private static IServiceCollection AddConfigurationServices( this IServiceCollection services, IConfiguration configuration )
 		{
-			// 통합된 서버 설정 바인딩
-			services.Configure<ServerSettings>( configuration.GetSection( "ServerSettings" ) );
-
 			// 설정 검증자 등록 (1개로 통합)
 			services.AddSingleton<IValidateOptions<ServerSettings>, ServerSettingsValidator>();
+
+			// 통합된 서버 설정 바인딩
+			services.AddOptions<ServerSettings>().Bind( configuration.GetSection( "ServerSettings" ) )
+				.ValidateOnStart();
 
 			return services;
 		}
@@ -133,6 +140,20 @@ namespace Server.Extensions
 		{
 			// 기본 데이터 관리
 			services.AddSingleton<IDataManager, DataManager>();
+
+			return services;
+		}
+
+		private static IServiceCollection AddAuthServices( this IServiceCollection services )
+		{
+			services.AddGrpcClient<AuthInternal.AuthInternalClient>( ( serviceProvider, options ) =>
+			{
+				ServerSettings settings = serviceProvider.GetRequiredService<IOptions<ServerSettings>>().Value;
+
+				options.Address = new Uri( settings.AuthGrpc.Address, UriKind.Absolute );
+			} );
+
+			services.AddSingleton<IAuthGateway, GrpcAuthGateway>();
 
 			return services;
 		}

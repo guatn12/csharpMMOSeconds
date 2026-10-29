@@ -13,14 +13,12 @@ namespace Server.Core.Session
 		long AccountId { get; }
 		long PlayerId { get; }
 		long PlayerRawId { get; }
-		string LoginToken { get; }
 		long LastActiveTime { get; }
 		bool IsAuthenticated { get; }
 		Player Player { get; }
 		IRoom CurrentRoom { get; }
 		SessionState State { get; }
 		void CreatePlayer( IDataManager dataManager, long playerId, string playerName );
-		void SetLoginToken( string token );
 		void BindAccountId( long accountId );
 		void BindPlayerRawId( long playerRawId );
 		void EnqueueSystemJob( IJob job );

@@ -44,6 +44,11 @@ namespace Server.Config
 		/// 메트릭 연결 설정
 		/// </summary>
 		public MetricsConfig Metrics { get; set; } = new();
+
+		/// <summary>
+		/// 인증 서버 설정
+		/// </summary>
+		public AuthGrpcConfig AuthGrpc { get; set; } = new();
 	}
 
 	/// <summary>
@@ -186,5 +191,17 @@ namespace Server.Config
 		[Required]
 		[Range( 1, 65535 )]
 		public int Port { get; set; } = 9100;
+	}
+
+	/// <summary>
+	/// 인증 서버 설정
+	/// </summary>
+	public class AuthGrpcConfig
+	{
+		[ Required ] 
+		public string Address { get; set; } = "https://localhost:7002";
+
+		[ Range( 100, 30000 ) ] 
+		public int DeadLineMs { get; set; } = 3000;
 	}
 }
